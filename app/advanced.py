@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import re
 import uuid
 from pathlib import PurePosixPath
@@ -439,7 +440,12 @@ def get_context_pack(slug: str, memory_limit: int = 20) -> dict[str, Any]:
             memories = cur.fetchall()
     pack = {"project": {key: project[key] for key in ("slug", "name", "source_host", "source_root", "default_branch")},
             "snapshot": snapshot, "memories": memories}
-    return {**pack, "pack_hash": canonical_hash(pack)}
+    return {**pack, "pack_hash": stable_context_pack_hash(pack)}
+
+
+def stable_context_pack_hash(pack: dict[str, Any]) -> str:
+    normalized = json.loads(json.dumps(pack, ensure_ascii=True, default=str))
+    return canonical_hash(normalized)
 
 
 def context_for_prompt(slug: str, max_chars: int = 6000) -> str:

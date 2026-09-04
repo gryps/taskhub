@@ -1,10 +1,11 @@
 import os
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from app.advanced import decide_governance, quality_score, validate_project_location
+from app.advanced import decide_governance, quality_score, stable_context_pack_hash, validate_project_location
 from app.taskhub import least_loaded_worker, worker_pool
 
 
@@ -66,6 +67,11 @@ class AdvancedStageTests(unittest.TestCase):
         policy = {"autonomy_enabled": True, "allowed_actions": ["refresh_context"], "max_risk": "low"}
         self.assertEqual(decide_governance(policy, "refresh_context", "low")[0], "allowed")
         self.assertEqual(decide_governance(policy, "refresh_context", "medium")[0], "human_required")
+
+    def test_context_hash_accepts_database_timestamps(self):
+        pack = {"snapshot": {"created_at": datetime(2026, 9, 5, tzinfo=timezone.utc)}}
+        self.assertEqual(stable_context_pack_hash(pack), stable_context_pack_hash(pack))
+        self.assertEqual(len(stable_context_pack_hash(pack)), 64)
 
 
 if __name__ == "__main__":
