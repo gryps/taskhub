@@ -61,6 +61,25 @@ parents succeed; failed, blocked, or canceled parents block pending descendants.
 Five-role planner runs persist a redacted, hash-linked evidence chain and stop at
 the human approval gate.
 
+## Production Pipelines
+
+TaskHub pipelines isolate routing and workspaces for concurrent product work:
+
+- `POST /taskhub/pipelines` creates a pipeline with a unique `workspace_id` and optional default worker.
+- `PATCH /taskhub/pipelines/{id}` pauses or resumes dispatch with `state=paused|active`.
+- Tasks may provide `pipeline_id`, `target_worker_id`, `workspace_id`, and `resource_keys`.
+- Only the target worker can claim a routed task, and paused pipelines do not dispatch.
+- A workspace automatically becomes an exclusive resource. Explicit keys such as `model:plus` or `gui:windows-31-34` protect other shared resources.
+- Resource leases follow task heartbeats and are released on completion, failure, block, cancel, or lease expiry.
+
+Default role routing follows the deployed hardware architecture:
+
+- code tasks: `worker-31-31-implementation`
+- test and model-review tasks: `worker-31-24-quality`
+- H5 GUI inspection: `worker-31-34-gui`
+
+Override these IDs with `TASKHUB_IMPLEMENTATION_WORKER`, `TASKHUB_QUALITY_WORKER`, and `TASKHUB_GUI_WORKER` when nodes change.
+
 ## Run
 
 ```bash

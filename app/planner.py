@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import stat
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -98,6 +99,7 @@ class PlannerRequest(BaseModel):
     provider: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=160)
+    pipeline_id: uuid.UUID | None = None
 
 
 class ProviderTestRequest(BaseModel):
@@ -1246,6 +1248,8 @@ def create_planner_tasks(request: PlannerRequest, plan: dict[str, Any], actor: s
     if request.idempotency_key:
         for index, spec in enumerate(task_specs):
             spec.idempotency_key = f"planner:{request.idempotency_key}:{index}"
+    for spec in task_specs:
+        spec.pipeline_id = request.pipeline_id
     tasks = create_task_graph(
         task_specs,
         {1: [0], 2: [1], 3: [2]},

@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 router = APIRouter(prefix="/taskhub", tags=["taskhub"])
 
 TASK_STATES = {"pending", "running", "succeeded", "failed", "blocked", "canceled"}
+PIPELINE_STATES = {"active", "paused", "completed", "canceled"}
 ALLOWED_TRANSITIONS = {
     ("pending", "running"),
     ("pending", "blocked"),
@@ -53,6 +54,9 @@ APPROVAL_DOWNSTREAM_TYPES = {
     "test.run",
     "h5.inspect",
 }
+IMPLEMENTATION_TASK_TYPES = {"code.change", "code.diff.preview", "code.change.apply"}
+QUALITY_TASK_TYPES = {"test.run", "quality.env.check", "review.model"}
+GUI_TASK_TYPES = {"h5.inspect"}
 
 
 class TaskCreate(BaseModel):
@@ -64,12 +68,32 @@ class TaskCreate(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=200)
     depends_on: list[uuid.UUID] = Field(default_factory=list)
+    pipeline_id: uuid.UUID | None = None
+    workspace_id: str | None = Field(default=None, max_length=200)
+    target_worker_id: str | None = Field(default=None, max_length=200)
+    resource_keys: list[str] = Field(default_factory=list, max_length=20)
 
 
 class TaskClaim(BaseModel):
     worker_id: str = Field(..., min_length=1)
     project: str = Field("douyin-listing-workbench", min_length=1)
     types: list[str] = Field(default_factory=list)
+
+
+class PipelineCreate(BaseModel):
+    project: str = Field("douyin-listing-workbench", min_length=1)
+    name: str = Field(..., min_length=1, max_length=120)
+    workspace_id: str = Field(..., min_length=1, max_length=200)
+    default_worker_id: str | None = Field(default=None, max_length=200)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class PipelineUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    state: str | None = None
+    workspace_id: str | None = Field(default=None, min_length=1, max_length=200)
+    default_worker_id: str | None = Field(default=None, max_length=200)
+    metadata: dict[str, Any] | None = None
 
 
 class TaskHeartbeat(BaseModel):
@@ -118,6 +142,27 @@ def canonical_hash(value: Any) -> str:
 
 def lease_duration() -> timedelta:
     return timedelta(seconds=max(30, int(os.getenv("TASKHUB_LEASE_SECONDS", "120"))))
+
+
+def normalize_resource_keys(keys: list[str], workspace_id: str | None = None) -> list[str]:
+    normalized = {str(key).strip() for key in keys if str(key).strip()}
+    if workspace_id:
+        normalized.add(f"workspace:{workspace_id.strip()}")
+    if any(len(key) > 240 for key in normalized):
+        raise HTTPException(status_code=400, detail="resource key is too long")
+    if len(normalized) > 20:
+        raise HTTPException(status_code=400, detail="too many resource keys")
+    return sorted(normalized)
+
+
+def default_target_worker(task_type: str) -> str | None:
+    if task_type in IMPLEMENTATION_TASK_TYPES:
+        return os.getenv("TASKHUB_IMPLEMENTATION_WORKER", "worker-31-31-implementation").strip() or None
+    if task_type in QUALITY_TASK_TYPES:
+        return os.getenv("TASKHUB_QUALITY_WORKER", "worker-31-24-quality").strip() or None
+    if task_type in GUI_TASK_TYPES:
+        return os.getenv("TASKHUB_GUI_WORKER", "worker-31-34-gui").strip() or None
+    return None
 
 
 def redact(value: Any) -> Any:
@@ -184,8 +229,43 @@ def init_taskhub() -> None:
                 "alter table taskhub_tasks add column if not exists lease_expires_at timestamptz",
                 "alter table taskhub_tasks add column if not exists heartbeat_at timestamptz",
                 "alter table taskhub_tasks add column if not exists approval_content_hash text",
+                "alter table taskhub_tasks add column if not exists pipeline_id uuid",
+                "alter table taskhub_tasks add column if not exists workspace_id text",
+                "alter table taskhub_tasks add column if not exists target_worker_id text",
+                "alter table taskhub_tasks add column if not exists resource_keys text[] not null default '{}'::text[]",
             ):
                 cur.execute(statement)
+            cur.execute(
+                """
+                create table if not exists taskhub_pipelines (
+                    id uuid primary key,
+                    project text not null,
+                    name text not null,
+                    state text not null check (state in ('active', 'paused', 'completed', 'canceled')),
+                    workspace_id text not null,
+                    default_worker_id text,
+                    metadata jsonb not null default '{}'::jsonb,
+                    created_at timestamptz not null,
+                    updated_at timestamptz not null,
+                    unique (project, name),
+                    unique (project, workspace_id)
+                )
+                """
+            )
+            cur.execute(
+                """
+                create table if not exists taskhub_resource_leases (
+                    resource_key text primary key,
+                    task_id uuid references taskhub_tasks(id) on delete set null,
+                    pipeline_id uuid,
+                    worker_id text,
+                    lease_token uuid,
+                    expires_at timestamptz,
+                    created_at timestamptz not null,
+                    updated_at timestamptz not null
+                )
+                """
+            )
             cur.execute(
                 """
                 create table if not exists taskhub_task_history (
@@ -215,6 +295,9 @@ def init_taskhub() -> None:
             cur.execute("create index if not exists idx_taskhub_tasks_updated on taskhub_tasks (updated_at desc)")
             cur.execute("create index if not exists idx_taskhub_history_task on taskhub_task_history (task_id, created_at desc)")
             cur.execute("create index if not exists idx_taskhub_dependencies_parent on taskhub_task_dependencies (depends_on_task_id)")
+            cur.execute("create index if not exists idx_taskhub_tasks_pipeline on taskhub_tasks (pipeline_id, state, priority desc, created_at)")
+            cur.execute("create index if not exists idx_taskhub_tasks_target_worker on taskhub_tasks (target_worker_id, state)")
+            cur.execute("create index if not exists idx_taskhub_resource_task on taskhub_resource_leases (task_id) where task_id is not null")
             cur.execute(
                 "create unique index if not exists idx_taskhub_idempotency on taskhub_tasks (project, idempotency_key) where idempotency_key is not null"
             )
@@ -393,6 +476,158 @@ def create_workflow_evidence(project: str, requirement: str, plan: dict[str, Any
     }
 
 
+@router.post("/pipelines")
+def create_pipeline(request: Request, payload: PipelineCreate) -> dict[str, Any]:
+    pipeline_id = uuid.uuid4()
+    created_at = now_utc()
+    try:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    insert into taskhub_pipelines
+                        (id, project, name, state, workspace_id, default_worker_id, metadata, created_at, updated_at)
+                    values (%s, %s, %s, 'active', %s, %s, %s, %s, %s)
+                    returning *
+                    """,
+                    (
+                        pipeline_id,
+                        payload.project,
+                        payload.name.strip(),
+                        payload.workspace_id.strip(),
+                        payload.default_worker_id.strip() if payload.default_worker_id else None,
+                        Jsonb(redact(payload.metadata)),
+                        created_at,
+                        created_at,
+                    ),
+                )
+                row = cur.fetchone()
+            conn.commit()
+    except psycopg.errors.UniqueViolation as exc:
+        raise HTTPException(status_code=409, detail="pipeline name or workspace already exists") from exc
+    record_audit_event(
+        request.state.actor,
+        "pipeline.create",
+        201,
+        detail={"pipeline_id": str(pipeline_id), "project": payload.project},
+    )
+    return row
+
+
+@router.get("/pipelines")
+def list_pipelines(
+    project: str | None = None,
+    state: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+) -> list[dict[str, Any]]:
+    filters: list[str] = []
+    params: list[Any] = []
+    if project:
+        filters.append("pipeline.project = %s")
+        params.append(project)
+    if state:
+        if state not in PIPELINE_STATES:
+            raise HTTPException(status_code=400, detail="invalid pipeline state")
+        filters.append("pipeline.state = %s")
+        params.append(state)
+    where = f"where {' and '.join(filters)}" if filters else ""
+    params.append(limit)
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                select pipeline.*,
+                       count(task.id) as task_count,
+                       count(task.id) filter (where task.state = 'pending') as pending_count,
+                       count(task.id) filter (where task.state = 'running') as running_count,
+                       count(task.id) filter (where task.state = 'failed') as failed_count,
+                       count(task.id) filter (where task.state = 'blocked') as blocked_count,
+                       count(task.id) filter (where task.state = 'succeeded') as succeeded_count
+                from taskhub_pipelines pipeline
+                left join taskhub_tasks task on task.pipeline_id = pipeline.id
+                {where}
+                group by pipeline.id
+                order by pipeline.updated_at desc
+                limit %s
+                """,
+                params,
+            )
+            return cur.fetchall()
+
+
+@router.get("/pipelines/{pipeline_id}")
+def get_pipeline(pipeline_id: uuid.UUID) -> dict[str, Any]:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("select * from taskhub_pipelines where id = %s", (pipeline_id,))
+            pipeline = cur.fetchone()
+            if not pipeline:
+                raise HTTPException(status_code=404, detail="pipeline not found")
+            cur.execute(
+                "select * from taskhub_tasks where pipeline_id = %s order by created_at",
+                (pipeline_id,),
+            )
+            tasks = cur.fetchall()
+    return {**pipeline, "tasks": [serialize_task(task) for task in tasks]}
+
+
+@router.patch("/pipelines/{pipeline_id}")
+def update_pipeline(pipeline_id: uuid.UUID, request: Request, payload: PipelineUpdate) -> dict[str, Any]:
+    if payload.state is not None and payload.state not in PIPELINE_STATES:
+        raise HTTPException(status_code=400, detail="invalid pipeline state")
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="no pipeline fields supplied")
+    assignments: list[str] = []
+    params: list[Any] = []
+    for field in ("name", "state", "workspace_id", "default_worker_id"):
+        if field in updates:
+            value = updates[field]
+            if isinstance(value, str):
+                value = value.strip() or None
+            assignments.append(f"{field} = %s")
+            params.append(value)
+    if "metadata" in updates:
+        assignments.append("metadata = %s")
+        params.append(Jsonb(redact(updates["metadata"] or {})))
+    assignments.append("updated_at = %s")
+    params.append(now_utc())
+    params.append(pipeline_id)
+    try:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"update taskhub_pipelines set {', '.join(assignments)} where id = %s returning *",
+                    params,
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="pipeline not found")
+            conn.commit()
+    except psycopg.errors.UniqueViolation as exc:
+        raise HTTPException(status_code=409, detail="pipeline name or workspace already exists") from exc
+    record_audit_event(
+        request.state.actor,
+        "pipeline.update",
+        200,
+        detail={"pipeline_id": str(pipeline_id), "fields": sorted(updates)},
+    )
+    return row
+
+
+@router.get("/resource-leases")
+def list_resource_leases(active_only: bool = True) -> list[dict[str, Any]]:
+    where = "where task_id is not null and expires_at >= %s" if active_only else ""
+    params = (now_utc(),) if active_only else ()
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"select * from taskhub_resource_leases {where} order by resource_key",
+                params,
+            )
+            return cur.fetchall()
+
+
 @router.get("/workflows")
 def list_workflows(project: str | None = None, limit: int = Query(50, ge=1, le=200)) -> list[dict[str, Any]]:
     where = "where project = %s" if project else ""
@@ -478,13 +713,37 @@ def insert_task(cur, request: TaskCreate, actor: str, reason: str) -> dict[str, 
     task_id = uuid.uuid4()
     created_at = now_utc()
     approval_hash = canonical_hash(request.input.get("approval_plan", [])) if request.type == "review.human" else None
+    workspace_id = request.workspace_id.strip() if request.workspace_id else None
+    target_worker_id = request.target_worker_id.strip() if request.target_worker_id else None
+    pipeline_worker_id = None
+    if not target_worker_id:
+        legacy_target = request.metadata.get("required_worker")
+        target_worker_id = str(legacy_target).strip() if legacy_target else None
+    if request.pipeline_id:
+        cur.execute("select * from taskhub_pipelines where id = %s", (request.pipeline_id,))
+        pipeline = cur.fetchone()
+        if not pipeline:
+            raise HTTPException(status_code=400, detail="pipeline does not exist")
+        if pipeline["project"] != request.project:
+            raise HTTPException(status_code=400, detail="pipeline belongs to a different project")
+        if pipeline["state"] in {"completed", "canceled"}:
+            raise HTTPException(status_code=409, detail=f"pipeline is {pipeline['state']}")
+        workspace_id = workspace_id or pipeline["workspace_id"]
+        pipeline_worker_id = pipeline["default_worker_id"]
+    if not target_worker_id:
+        if request.type in IMPLEMENTATION_TASK_TYPES:
+            target_worker_id = pipeline_worker_id or default_target_worker(request.type)
+        else:
+            target_worker_id = default_target_worker(request.type) or pipeline_worker_id
+    resource_keys = normalize_resource_keys(request.resource_keys, workspace_id)
     cur.execute(
         """
         insert into taskhub_tasks
             (id, project, type, title, state, priority, input, metadata, idempotency_key,
-             approval_content_hash, retry_count, created_at, updated_at)
+             approval_content_hash, pipeline_id, workspace_id, target_worker_id, resource_keys,
+             retry_count, created_at, updated_at)
         values
-            (%s, %s, %s, %s, 'pending', %s, %s, %s, %s, %s, 0, %s, %s)
+            (%s, %s, %s, %s, 'pending', %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, %s)
         on conflict (project, idempotency_key) where idempotency_key is not null do nothing
         returning *
         """,
@@ -498,6 +757,10 @@ def insert_task(cur, request: TaskCreate, actor: str, reason: str) -> dict[str, 
             Jsonb(redact(request.metadata)),
             request.idempotency_key,
             approval_hash,
+            request.pipeline_id,
+            workspace_id,
+            target_worker_id,
+            resource_keys,
             created_at,
             created_at,
         ),
@@ -615,6 +878,10 @@ def downstream_tasks_for_approval(task: dict[str, Any], approval_plan_override: 
                     "approval_content_hash": approved_plan_hash,
                 },
                 idempotency_key=f"approval:{task['id']}:{approved_plan_hash}:{index}",
+                pipeline_id=task.get("pipeline_id"),
+                workspace_id=str(item.get("workspace_id") or task.get("workspace_id") or "") or None,
+                target_worker_id=str(item.get("target_worker_id") or "") or None,
+                resource_keys=item.get("resource_keys") if isinstance(item.get("resource_keys"), list) else [],
             )
         )
     return downstream
@@ -626,6 +893,8 @@ def list_tasks(
     state: str | None = None,
     type: str | None = None,
     worker_id: str | None = None,
+    pipeline_id: uuid.UUID | None = None,
+    target_worker_id: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> list[dict[str, Any]]:
@@ -645,6 +914,12 @@ def list_tasks(
     if worker_id:
         filters.append("worker_id = %s")
         params.append(worker_id)
+    if pipeline_id:
+        filters.append("pipeline_id = %s")
+        params.append(pipeline_id)
+    if target_worker_id:
+        filters.append("target_worker_id = %s")
+        params.append(target_worker_id)
 
     where = f"where {' and '.join(filters)}" if filters else ""
     params.extend([limit, offset])
@@ -674,12 +949,16 @@ def list_tasks(
 
 
 @router.get("/stats")
-def task_stats(project: str | None = None) -> dict[str, Any]:
+def task_stats(project: str | None = None, pipeline_id: uuid.UUID | None = None) -> dict[str, Any]:
     params: list[Any] = []
-    where = ""
+    filters: list[str] = []
     if project:
-        where = "where project = %s"
+        filters.append("project = %s")
         params.append(project)
+    if pipeline_id:
+        filters.append("pipeline_id = %s")
+        params.append(pipeline_id)
+    where = f"where {' and '.join(filters)}" if filters else ""
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -694,7 +973,7 @@ def task_stats(project: str | None = None) -> dict[str, Any]:
             rows = cur.fetchall()
     counts = {state: 0 for state in sorted(TASK_STATES)}
     counts.update({row["state"]: row["count"] for row in rows})
-    return {"project": project, "states": counts, "total": sum(counts.values())}
+    return {"project": project, "pipeline_id": pipeline_id, "states": counts, "total": sum(counts.values())}
 
 
 @router.get("/audit")
@@ -777,6 +1056,72 @@ def block_tasks_with_failed_dependencies(cur, project: str, actor: str) -> None:
         add_history(cur, task["id"], "pending", "blocked", actor, "upstream dependency failed", error)
 
 
+def release_resource_leases(cur, task_id: uuid.UUID) -> None:
+    cur.execute(
+        """
+        update taskhub_resource_leases
+        set task_id = null, pipeline_id = null, worker_id = null, lease_token = null,
+            expires_at = null, updated_at = %s
+        where task_id = %s
+        """,
+        (now_utc(), task_id),
+    )
+
+
+def acquire_resource_leases(
+    cur,
+    task: dict[str, Any],
+    worker_id: str,
+    lease_token: uuid.UUID,
+    expires_at: datetime,
+) -> bool:
+    resource_keys = normalize_resource_keys(task.get("resource_keys") or [], task.get("workspace_id"))
+    if not resource_keys:
+        return True
+    timestamp = now_utc()
+    for resource_key in resource_keys:
+        cur.execute(
+            """
+            insert into taskhub_resource_leases (resource_key, created_at, updated_at)
+            values (%s, %s, %s)
+            on conflict (resource_key) do nothing
+            """,
+            (resource_key, timestamp, timestamp),
+        )
+    cur.execute(
+        """
+        select * from taskhub_resource_leases
+        where resource_key = any(%s)
+        order by resource_key
+        for update
+        """,
+        (resource_keys,),
+    )
+    leases = cur.fetchall()
+    for lease in leases:
+        if lease.get("task_id") and lease["task_id"] != task["id"]:
+            if lease.get("expires_at") and lease["expires_at"] >= timestamp:
+                return False
+    cur.execute(
+        """
+        update taskhub_resource_leases
+        set task_id = %s, pipeline_id = %s, worker_id = %s, lease_token = %s,
+            expires_at = %s, updated_at = %s
+        where resource_key = any(%s)
+        """,
+        (
+            task["id"],
+            task.get("pipeline_id"),
+            worker_id,
+            lease_token,
+            expires_at,
+            timestamp,
+            resource_keys,
+        ),
+    )
+    return True
+
+
 @router.post("/claim")
 def claim_task(request: TaskClaim) -> dict[str, Any]:
     type_filter = ""
@@ -793,6 +1138,15 @@ def claim_task(request: TaskClaim) -> dict[str, Any]:
             block_tasks_with_failed_dependencies(cur, request.project, "taskhub:dependency-reconciler")
             cur.execute(
                 """
+                update taskhub_resource_leases
+                set task_id = null, pipeline_id = null, worker_id = null, lease_token = null,
+                    expires_at = null, updated_at = %s
+                where task_id is not null and expires_at < %s
+                """,
+                (claimed_at, claimed_at),
+            )
+            cur.execute(
+                """
                 select * from taskhub_tasks
                 where state = 'running' and lease_expires_at < %s
                 for update skip locked
@@ -800,6 +1154,7 @@ def claim_task(request: TaskClaim) -> dict[str, Any]:
                 (claimed_at,),
             )
             for expired in cur.fetchall():
+                release_resource_leases(cur, expired["id"])
                 cur.execute(
                     """
                     update taskhub_tasks
@@ -824,6 +1179,14 @@ def claim_task(request: TaskClaim) -> dict[str, Any]:
                 select task.* from taskhub_tasks task
                 where task.state = 'pending' and task.project = %s
                 {type_filter}
+                and (task.target_worker_id is null or task.target_worker_id = %s)
+                and (
+                    task.pipeline_id is null
+                    or exists (
+                        select 1 from taskhub_pipelines pipeline
+                        where pipeline.id = task.pipeline_id and pipeline.state = 'active'
+                    )
+                )
                 and not exists (
                     select 1
                     from taskhub_task_dependencies dependency
@@ -832,11 +1195,15 @@ def claim_task(request: TaskClaim) -> dict[str, Any]:
                 )
                 order by priority desc, created_at
                 for update skip locked
-                limit 1
+                limit 20
                 """,
-                params,
+                [*params, request.worker_id],
             )
-            task = cur.fetchone()
+            task = None
+            for candidate in cur.fetchall():
+                if acquire_resource_leases(cur, candidate, request.worker_id, lease_token, lease_expires_at):
+                    task = candidate
+                    break
             if not task:
                 conn.commit()
                 return {"task": None}
@@ -899,6 +1266,14 @@ def heartbeat_task(task_id: uuid.UUID, request: TaskHeartbeat) -> dict[str, Any]
                 (heartbeat_at, heartbeat_at + lease_duration(), heartbeat_at, task_id),
             )
             row = cur.fetchone()
+            cur.execute(
+                """
+                update taskhub_resource_leases
+                set expires_at = %s, updated_at = %s
+                where task_id = %s and lease_token = %s
+                """,
+                (heartbeat_at + lease_duration(), heartbeat_at, task_id, uuid.UUID(request.lease_token)),
+            )
         conn.commit()
     return {"task_id": str(task_id), "lease_expires_at": row["lease_expires_at"]}
 
@@ -922,6 +1297,7 @@ def complete_task(task_id: uuid.UUID, request: TaskComplete) -> dict[str, Any]:
                 (Jsonb(redact(request.result)), completed_at, completed_at, task_id),
             )
             row = cur.fetchone()
+            release_resource_leases(cur, task_id)
             add_history(cur, task_id, task["state"], "succeeded", request.worker_id, "task completed", request.result)
         conn.commit()
     return serialize_task(row)
@@ -945,6 +1321,7 @@ def fail_task(task_id: uuid.UUID, request: TaskFail) -> dict[str, Any]:
                 (Jsonb(redact(request.error)), updated_at, task_id),
             )
             row = cur.fetchone()
+            release_resource_leases(cur, task_id)
             add_history(cur, task_id, task["state"], "failed", request.worker_id, "task failed", request.error)
         conn.commit()
     return serialize_task(row)
@@ -957,6 +1334,7 @@ def retry_task(task_id: uuid.UUID, request: Request, payload: TaskAction) -> dic
         with conn.cursor() as cur:
             task = load_task_for_update(cur, task_id)
             assert_transition(task["state"], "pending")
+            release_resource_leases(cur, task_id)
             cur.execute(
                 """
                 update taskhub_tasks
@@ -987,10 +1365,12 @@ def block_task(task_id: uuid.UUID, request: Request, payload: TaskAction) -> dic
         with conn.cursor() as cur:
             task = load_task_for_update(cur, task_id)
             assert_transition(task["state"], "blocked")
+            release_resource_leases(cur, task_id)
             cur.execute(
                 """
                 update taskhub_tasks
-                set state = 'blocked', error = %s, updated_at = %s
+                set state = 'blocked', error = %s, worker_id = null, lease_token = null,
+                    lease_expires_at = null, heartbeat_at = null, updated_at = %s
                 where id = %s
                 returning *
                 """,
@@ -1084,6 +1464,7 @@ def cancel_task(task_id: uuid.UUID, request: Request, payload: TaskAction) -> di
         with conn.cursor() as cur:
             task = load_task_for_update(cur, task_id)
             assert_transition(task["state"], "canceled")
+            release_resource_leases(cur, task_id)
             cur.execute(
                 """
                 update taskhub_tasks

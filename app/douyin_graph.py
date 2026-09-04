@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import uuid
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -20,6 +21,7 @@ class RequirementInvoke(BaseModel):
     priority: int = 50
     metadata: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=160)
+    pipeline_id: uuid.UUID | None = None
 
 
 def requirement_text(request: RequirementInvoke) -> str:
@@ -146,6 +148,8 @@ def invoke_requirement_flow(request: RequirementInvoke) -> dict[str, Any]:
     if request.idempotency_key:
         for index, spec in enumerate(task_specs):
             spec.idempotency_key = f"graph:{request.idempotency_key}:{index}"
+    for spec in task_specs:
+        spec.pipeline_id = request.pipeline_id
     tasks = [create_task_record(spec, actor="douyin_stage1_requirement_flow", reason="graph created task") for spec in task_specs]
 
     return {

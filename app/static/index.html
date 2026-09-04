@@ -292,6 +292,9 @@
       .failed { background: #fdecec; color: var(--red); }
       .blocked { background: #fff2df; color: var(--orange); }
       .canceled { background: #f2f2f2; color: var(--gray); }
+      .active { background: #e8f6ee; color: var(--green); }
+      .paused { background: #fff2df; color: var(--orange); }
+      .completed { background: #eef2f7; color: var(--gray); }
 
       .form {
         display: grid;
@@ -603,6 +606,9 @@
           </div>
           <div class="section" id="plannerAlerts"></div>
           <form class="form section" id="plannerForm">
+            <label>生产流水线
+              <select name="pipelineId" id="plannerPipelineSelect"><option value="">不绑定流水线</option></select>
+            </label>
             <label>Provider
               <select name="provider">
                 <option value="">多角色 fallback</option>
@@ -630,9 +636,26 @@
         </div>
 
         <div id="tasks" class="hidden">
+          <div class="section">
+            <div class="toolbar"><h2>生产流水线</h2><span class="muted" id="pipelineStatus">等待刷新</span></div>
+            <form class="form" id="pipelineForm">
+              <label>流水线名称
+                <input name="name" required placeholder="例如：商品工作台 A 线" />
+              </label>
+              <label>独立工作区
+                <input name="workspaceId" required placeholder="例如：douyin-line-a" />
+              </label>
+              <label>默认实施节点
+                <select name="defaultWorkerId" id="pipelineWorkerSelect"><option value="">按任务类型调度</option></select>
+              </label>
+              <div class="actions"><button class="primary" type="submit">创建流水线</button></div>
+            </form>
+            <div class="section" id="pipelineList"></div>
+          </div>
           <div id="taskCreateSlot"></div>
           <div class="toolbar">
             <h2>任务跟踪</h2>
+            <select id="pipelineFilter"><option value="">全部流水线</option></select>
             <select id="stateFilter">
               <option value="">全部状态</option>
               <option value="blocked">blocked</option>
@@ -677,6 +700,9 @@
             <label>验收地址
               <input name="url" type="url" value="https://e.grypszhang.com" required />
             </label>
+            <label>生产流水线
+              <select name="pipelineId" id="qualityPipelineSelect"><option value="">不绑定流水线</option></select>
+            </label>
             <label>必须可见的选择器
               <input name="selectors" value="#root" placeholder="逗号分隔，例如 #root, main" />
             </label>
@@ -702,6 +728,9 @@
             <span class="muted" id="codeStatus">等待刷新</span>
           </div>
           <form class="form" id="codeForm">
+            <label>生产流水线
+              <select name="pipelineId" id="codePipelineSelect"><option value="">不绑定流水线</option></select>
+            </label>
             <label>变更需求
               <textarea name="requirement" required placeholder="描述要改什么、验收标准和限制"></textarea>
             </label>
@@ -779,6 +808,15 @@
                 <option value="review.human">review.human</option>
               </select>
             </label>
+            <label>流水线
+              <select name="pipelineId" id="taskPipelineSelect"><option value="">不绑定流水线</option></select>
+            </label>
+            <label>指定实施节点
+              <select name="targetWorkerId" id="taskWorkerSelect"><option value="">使用流水线默认节点</option></select>
+            </label>
+            <label>额外独占资源
+              <input name="resourceKeys" placeholder="逗号分隔，例如 model:plus,gui:windows-31-34" />
+            </label>
             <label>标题
               <input name="title" required value="新的 LangGraph 任务" />
             </label>
@@ -817,6 +855,8 @@
       let currentAccountProviderConfig = null;
       let proxyConfigDirty = false;
       let proxyConfigSaving = false;
+      let cachedPipelines = [];
+      let cachedWorkers = [];
 
       const redact = (value) => {
         if (Array.isArray(value)) return value.map(redact);
@@ -928,6 +968,9 @@
           ${detailItem("状态", task.state)}
           ${detailItem("类型", task.type)}
           ${detailItem("实施节点", task.worker_id || "未领取")}
+          ${detailItem("目标节点", task.target_worker_id || "自动调度")}
+          ${detailItem("流水线", task.pipeline_id ? shortId(task.pipeline_id) : "未绑定")}
+          ${detailItem("工作区", task.workspace_id || "默认")}
           ${detailItem("优先级", task.priority)}
           ${detailItem("更新时间", formatDate(task.updated_at))}
           ${detailItem("上游依赖", Array.isArray(task.dependencies) ? task.dependencies.length : 0)}
@@ -1274,11 +1317,12 @@
         }
         container.innerHTML = `
           <table>
-            <thead><tr><th>ID</th><th>标题</th><th>类型</th><th>状态</th><th>实施节点</th><th>更新</th></tr></thead>
+            <thead><tr><th>ID</th><th>流水线</th><th>标题</th><th>类型</th><th>状态</th><th>实施节点</th><th>更新</th></tr></thead>
             <tbody>
               ${rows.map(task => `
                 <tr data-task="${task.id}">
                   <td>${escapeHtml(shortId(task.id))}</td>
+                  <td>${escapeHtml(task.pipeline_id ? shortId(task.pipeline_id) : "-")}</td>
                   <td>${escapeHtml(task.title)}</td>
                   <td>${escapeHtml(task.type)}</td>
                   <td>${statusBadge(task.state)}</td>
@@ -1600,9 +1644,107 @@
         }
       };
 
+      const syncPipelineControls = () => {
+        const activePipelineOptions = cachedPipelines
+          .filter(item => ["active", "paused"].includes(item.state))
+          .map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} (${escapeHtml(item.state)})</option>`)
+          .join("");
+        const allPipelineOptions = cachedPipelines
+          .map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} (${escapeHtml(item.state)})</option>`)
+          .join("");
+        for (const select of [
+          document.getElementById("taskPipelineSelect"),
+          document.getElementById("pipelineFilter"),
+          document.getElementById("plannerPipelineSelect"),
+          document.getElementById("qualityPipelineSelect"),
+          document.getElementById("codePipelineSelect"),
+        ]) {
+          const selected = select.value;
+          const emptyLabel = select.id === "pipelineFilter" ? "全部流水线" : "不绑定流水线";
+          const options = select.id === "pipelineFilter" ? allPipelineOptions : activePipelineOptions;
+          select.innerHTML = `<option value="">${emptyLabel}</option>${options}`;
+          if ([...select.options].some(option => option.value === selected)) select.value = selected;
+        }
+        const workerOptions = cachedWorkers
+          .filter(item => item.worker_id)
+          .map(item => `<option value="${escapeHtml(item.worker_id)}">${escapeHtml(item.worker_id)} (${escapeHtml(item.status)})</option>`)
+          .join("");
+        for (const select of [document.getElementById("pipelineWorkerSelect"), document.getElementById("taskWorkerSelect")]) {
+          const selected = select.value;
+          const emptyLabel = select.id === "pipelineWorkerSelect" ? "按任务类型调度" : "使用流水线默认节点";
+          select.innerHTML = `<option value="">${emptyLabel}</option>${workerOptions}`;
+          if ([...select.options].some(option => option.value === selected)) select.value = selected;
+        }
+      };
+
+      const renderPipelines = (pipelines, leases) => {
+        const activeCount = pipelines.filter(item => item.state === "active").length;
+        document.getElementById("pipelineStatus").textContent = `${activeCount} 条运行中 | ${leases.length} 项资源占用`;
+        document.getElementById("pipelineList").innerHTML = pipelines.length ? `
+          <table>
+            <thead><tr><th>名称</th><th>状态</th><th>工作区</th><th>默认节点</th><th>任务</th><th>运行/等待</th><th>操作</th></tr></thead>
+            <tbody>${pipelines.map(item => `
+              <tr>
+                <td>${escapeHtml(item.name)}</td>
+                <td>${statusBadge(item.state)}</td>
+                <td>${escapeHtml(item.workspace_id)}</td>
+                <td>${escapeHtml(item.default_worker_id || "自动调度")}</td>
+                <td>${escapeHtml(item.task_count)}</td>
+                <td>${escapeHtml(item.running_count)} / ${escapeHtml(item.pending_count)}</td>
+                <td>${item.state === "active"
+                  ? `<button class="secondary" data-pipeline-state="paused" data-pipeline-id="${escapeHtml(item.id)}">暂停</button>`
+                  : item.state === "paused"
+                    ? `<button class="secondary" data-pipeline-state="active" data-pipeline-id="${escapeHtml(item.id)}">恢复</button>`
+                    : "-"}</td>
+              </tr>
+            `).join("")}</tbody>
+          </table>
+        ` : '<div class="muted">尚未创建生产流水线</div>';
+        for (const button of document.querySelectorAll("[data-pipeline-state]")) {
+          button.addEventListener("click", async () => {
+            await api(`/taskhub/pipelines/${button.dataset.pipelineId}`, {
+              method: "PATCH",
+              body: JSON.stringify({ state: button.dataset.pipelineState }),
+            });
+            await loadPipelines();
+            await loadTasks();
+          });
+        }
+      };
+
+      const loadPipelines = async () => {
+        const [pipelines, leases, workers] = await Promise.all([
+          api(`/taskhub/pipelines?project=${project}`),
+          api("/taskhub/resource-leases"),
+          api("/workers"),
+        ]);
+        cachedPipelines = pipelines;
+        cachedWorkers = workers;
+        syncPipelineControls();
+        renderPipelines(pipelines, leases);
+      };
+
+      const createPipeline = async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.target);
+        await api("/taskhub/pipelines", {
+          method: "POST",
+          body: JSON.stringify({
+            project,
+            name: form.get("name"),
+            workspace_id: form.get("workspaceId"),
+            default_worker_id: form.get("defaultWorkerId") || null,
+            metadata: { source: "web-console" },
+          }),
+        });
+        event.target.reset();
+        await loadPipelines();
+      };
+
       const loadTasks = async () => {
         const state = document.getElementById("stateFilter").value;
-        const url = `/taskhub/tasks?project=${project}&limit=100${state ? `&state=${state}` : ""}`;
+        const pipelineId = document.getElementById("pipelineFilter").value;
+        const url = `/taskhub/tasks?project=${project}&limit=100${state ? `&state=${state}` : ""}${pipelineId ? `&pipeline_id=${pipelineId}` : ""}`;
         renderTasks(document.getElementById("taskTable"), await api(url));
       };
 
@@ -1656,6 +1798,7 @@
       };
 
       const createQualityTask = async (command) => {
+        const pipelineId = document.getElementById("qualityPipelineSelect").value || null;
         const task = await api("/taskhub/tasks", {
           method: "POST",
           body: JSON.stringify({
@@ -1665,6 +1808,7 @@
             priority: 80,
             input: { command },
             metadata: { source: "web-quality-panel" },
+            pipeline_id: pipelineId,
           }),
         });
         selectedQualityTaskId = task.id;
@@ -1673,6 +1817,7 @@
       };
 
       const createQualityEnvCheck = async () => {
+        const pipelineId = document.getElementById("qualityPipelineSelect").value || null;
         const task = await api("/taskhub/tasks", {
           method: "POST",
           body: JSON.stringify({
@@ -1682,6 +1827,7 @@
             priority: 85,
             input: {},
             metadata: { source: "web-quality-panel" },
+            pipeline_id: pipelineId,
           }),
         });
         selectedQualityTaskId = task.id;
@@ -1713,6 +1859,8 @@
               ],
             },
             metadata: { source: "web-h5-acceptance", required_worker: "worker-31-34-gui" },
+            pipeline_id: form.get("pipelineId") || null,
+            resource_keys: ["gui:windows-31-34"],
           }),
         });
         selectedQualityTaskId = task.id;
@@ -1762,6 +1910,7 @@
               files,
             },
             metadata: { source: "web-code-panel" },
+            pipeline_id: form.get("pipelineId") || null,
           }),
         });
         selectedCodeTaskId = task.id;
@@ -1770,6 +1919,7 @@
       };
 
       const createCodeDiffPreview = async () => {
+        const pipelineId = document.getElementById("codePipelineSelect").value || null;
         const task = await api("/taskhub/tasks", {
           method: "POST",
           body: JSON.stringify({
@@ -1779,6 +1929,7 @@
             priority: 84,
             input: { paths: [] },
             metadata: { source: "web-code-panel" },
+            pipeline_id: pipelineId,
           }),
         });
         selectedCodeTaskId = task.id;
@@ -1806,6 +1957,7 @@
               apply: false,
             },
             metadata: { source: "web-code-panel" },
+            pipeline_id: document.getElementById("codePipelineSelect").value || null,
           }),
         });
         selectedCodeTaskId = task.id;
@@ -1919,6 +2071,10 @@
       const createTask = async (event) => {
         event.preventDefault();
         const form = new FormData(event.target);
+        const resourceKeys = String(form.get("resourceKeys") || "")
+          .split(",")
+          .map(item => item.trim())
+          .filter(Boolean);
         const payload = {
           project: form.get("project"),
           type: form.get("type"),
@@ -1926,6 +2082,9 @@
           priority: Number(form.get("priority")),
           input: { note: form.get("input") || "" },
           metadata: { source: "web-console" },
+          pipeline_id: form.get("pipelineId") || null,
+          target_worker_id: form.get("targetWorkerId") || null,
+          resource_keys: resourceKeys,
         };
         const task = await api("/taskhub/tasks", { method: "POST", body: JSON.stringify(payload) });
         document.getElementById("createSummary").innerHTML = renderTaskSummary(task);
@@ -1947,6 +2106,7 @@
             priority: Number(form.get("priority")),
             requirement: text,
             metadata: { source: "web-console" },
+            pipeline_id: form.get("pipelineId") || null,
           }),
         });
         document.getElementById("createSummary").innerHTML = `
@@ -1978,6 +2138,7 @@
             priority: Number(form.get("priority")),
             requirement: form.get("requirement"),
             metadata: { source: "web-planner" },
+            pipeline_id: form.get("pipelineId") || null,
           }),
         });
         const reviewTask = (result.tasks || []).find(task => task.type === "review.human") || (result.tasks || [])[0];
@@ -2010,6 +2171,7 @@
       const refresh = async () => {
         const current = document.querySelector("nav button.active").dataset.view;
         try {
+          if (["tasks", "planning", "code", "quality"].includes(current)) await loadPipelines();
           if (current === "overview") await loadOverview();
           if (current === "planner") await loadPlanner();
           if (current === "tasks") await loadTasks();
@@ -2080,6 +2242,8 @@
       });
       document.querySelector('#proxyConfigForm [name="enabled"]').addEventListener("change", syncProxyFields);
       document.getElementById("stateFilter").addEventListener("change", loadTasks);
+      document.getElementById("pipelineFilter").addEventListener("change", loadTasks);
+      document.getElementById("pipelineForm").addEventListener("submit", createPipeline);
       document.getElementById("createForm").addEventListener("submit", createTask);
       document.getElementById("codeForm").addEventListener("submit", createCodeTask);
       document.getElementById("codeDiffPreview").addEventListener("click", createCodeDiffPreview);

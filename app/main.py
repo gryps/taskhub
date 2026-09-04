@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -208,16 +209,34 @@ def invoke(request: InvokeRequest) -> dict[str, str]:
 
 
 @app.get("/workers")
-def workers() -> list[dict[str, str]]:
+def workers() -> list[dict[str, Any]]:
     result = []
     for url in worker_urls():
         try:
             response = httpx.get(f"{url}/health", timeout=3)
             response.raise_for_status()
             payload = response.json()
-            result.append({"url": url, "status": "ok", "detail": str(payload)})
+            result.append(
+                {
+                    "url": url,
+                    "status": "ok",
+                    "worker_id": str(payload.get("worker") or ""),
+                    "hostname": str(payload.get("hostname") or ""),
+                    "task_types": str(payload.get("task_types") or ""),
+                    "detail": str(payload),
+                }
+            )
         except Exception as exc:
-            result.append({"url": url, "status": "error", "detail": exc.__class__.__name__})
+            result.append(
+                {
+                    "url": url,
+                    "status": "error",
+                    "worker_id": "",
+                    "hostname": "",
+                    "task_types": "",
+                    "detail": exc.__class__.__name__,
+                }
+            )
     return result
 
 
