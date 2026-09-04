@@ -13,6 +13,8 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
+from app.workflow_graph import WORKFLOW_STATES, resolve_workflow_transition
+
 
 router = APIRouter(prefix="/taskhub", tags=["taskhub"])
 
@@ -122,6 +124,12 @@ class TaskApprove(BaseModel):
     result: dict[str, Any] = Field(default_factory=dict)
     approval_plan: list[dict[str, Any]] | None = None
     approval_hash: str = Field(..., min_length=64, max_length=64)
+
+
+class WorkflowAction(BaseModel):
+    action: str = Field(..., min_length=1, max_length=40)
+    reason: str = Field(..., min_length=1, max_length=2000)
+    output: dict[str, Any] = Field(default_factory=dict)
 
 
 def database_url() -> str:
@@ -329,6 +337,15 @@ def init_taskhub() -> None:
                 )
                 """
             )
+            for statement in (
+                "alter table taskhub_workflows add column if not exists pipeline_id uuid",
+                "alter table taskhub_workflows add column if not exists active_role text",
+                "alter table taskhub_workflows add column if not exists resume_state text",
+                "alter table taskhub_workflows add column if not exists iteration integer not null default 0",
+                "alter table taskhub_workflows add column if not exists max_iterations integer not null default 3",
+                "alter table taskhub_workflows add column if not exists context jsonb not null default '{}'::jsonb",
+            ):
+                cur.execute(statement)
             cur.execute(
                 """
                 create table if not exists taskhub_role_evidence (
@@ -348,9 +365,111 @@ def init_taskhub() -> None:
                 )
                 """
             )
+            cur.execute(
+                """
+                create table if not exists taskhub_workflow_transitions (
+                    id uuid primary key,
+                    workflow_id uuid not null references taskhub_workflows(id) on delete cascade,
+                    from_state text,
+                    to_state text not null,
+                    action text not null,
+                    actor text not null,
+                    reason text not null,
+                    role text,
+                    iteration integer not null,
+                    payload jsonb not null default '{}'::jsonb,
+                    created_at timestamptz not null
+                )
+                """
+            )
             cur.execute("create index if not exists idx_taskhub_audit_created on taskhub_audit_events (created_at desc)")
             cur.execute("create index if not exists idx_taskhub_workflows_project on taskhub_workflows (project, created_at desc)")
             cur.execute("create index if not exists idx_taskhub_evidence_workflow on taskhub_role_evidence (workflow_id, ordinal)")
+            cur.execute("create index if not exists idx_taskhub_workflow_transitions on taskhub_workflow_transitions (workflow_id, created_at)")
+            cur.execute(
+                """
+                update taskhub_workflows workflow
+                set state = case
+                        when exists (
+                            select 1 from taskhub_tasks task
+                            where task.metadata->>'workflow_id' = workflow.id::text
+                              and task.type = 'review.human' and task.state = 'canceled'
+                        ) then 'canceled'
+                        when exists (
+                            select 1 from taskhub_tasks task
+                            where task.metadata->>'workflow_id' = workflow.id::text
+                              and task.type = 'review.human' and task.state = 'blocked'
+                        ) then 'blocked'
+                        when exists (
+                            select 1 from taskhub_tasks task
+                            where task.metadata->>'workflow_id' = workflow.id::text
+                              and task.type = 'review.human' and task.state = 'succeeded'
+                        ) and not exists (
+                            select 1 from taskhub_tasks task
+                            where task.metadata->>'workflow_id' = workflow.id::text
+                              and task.metadata ? 'approval_source_task_id'
+                              and task.state <> 'succeeded'
+                        ) then 'review'
+                        when exists (
+                            select 1 from taskhub_tasks task
+                            where task.metadata->>'workflow_id' = workflow.id::text
+                              and task.type = 'review.human' and task.state = 'succeeded'
+                        ) then 'implementation'
+                        else 'awaiting_plan_approval'
+                    end,
+                    active_role = case
+                        when exists (
+                            select 1 from taskhub_tasks task
+                            where task.metadata->>'workflow_id' = workflow.id::text
+                              and task.type = 'review.human' and task.state = 'succeeded'
+                        ) and not exists (
+                            select 1 from taskhub_tasks task
+                            where task.metadata->>'workflow_id' = workflow.id::text
+                              and task.metadata ? 'approval_source_task_id'
+                              and task.state <> 'succeeded'
+                        ) then 'reviewer'
+                        when exists (
+                            select 1 from taskhub_tasks task
+                            where task.metadata->>'workflow_id' = workflow.id::text
+                              and task.type = 'review.human' and task.state = 'succeeded'
+                        ) then 'coder'
+                        else 'supervisor'
+                    end,
+                    resume_state = case
+                        when exists (
+                            select 1 from taskhub_tasks task
+                            where task.metadata->>'workflow_id' = workflow.id::text
+                              and task.type = 'review.human' and task.state = 'blocked'
+                        ) then 'awaiting_plan_approval'
+                        else null
+                    end
+                where workflow.state = 'awaiting_human_approval'
+                """
+            )
+            cur.execute(
+                """
+                select workflow.*
+                from taskhub_workflows workflow
+                where not exists (
+                    select 1 from taskhub_workflow_transitions transition
+                    where transition.workflow_id = workflow.id
+                )
+                """
+            )
+            for workflow in cur.fetchall():
+                cur.execute(
+                    """
+                    insert into taskhub_workflow_transitions
+                        (id, workflow_id, from_state, to_state, action, actor, reason,
+                         role, iteration, payload, created_at)
+                    values (%s, %s, null, %s, 'legacy_migrated', 'taskhub:migration',
+                            'legacy workflow state inferred from existing tasks', %s, %s, %s, %s)
+                    """,
+                    (
+                        uuid.uuid4(), workflow["id"], workflow["state"], workflow.get("active_role"),
+                        workflow["iteration"], Jsonb({"inferred": True}), now_utc(),
+                    ),
+                )
             cur.execute(
                 "select id, input from taskhub_tasks where type = 'review.human' and approval_content_hash is null"
             )
@@ -386,7 +505,12 @@ def record_audit_event(
         return
 
 
-def create_workflow_evidence(project: str, requirement: str, plan: dict[str, Any]) -> dict[str, Any]:
+def create_workflow_evidence(
+    project: str,
+    requirement: str,
+    plan: dict[str, Any],
+    pipeline_id: uuid.UUID | None = None,
+) -> dict[str, Any]:
     workflow_id = uuid.uuid4()
     created_at = now_utc()
     requirement_hash = canonical_hash({"project": project, "requirement": requirement})
@@ -427,8 +551,9 @@ def create_workflow_evidence(project: str, requirement: str, plan: dict[str, Any
             cur.execute(
                 """
                 insert into taskhub_workflows
-                    (id, project, requirement_hash, state, summary, risk_level, evidence_root_hash, created_at, updated_at)
-                values (%s, %s, %s, 'awaiting_human_approval', %s, %s, %s, %s, %s)
+                    (id, project, requirement_hash, state, summary, risk_level, evidence_root_hash,
+                     pipeline_id, active_role, context, created_at, updated_at)
+                values (%s, %s, %s, 'awaiting_plan_approval', %s, %s, %s, %s, 'supervisor', %s, %s, %s)
                 """,
                 (
                     workflow_id,
@@ -437,9 +562,20 @@ def create_workflow_evidence(project: str, requirement: str, plan: dict[str, Any
                     str(plan.get("summary") or ""),
                     str(plan.get("risk_level") or "medium"),
                     previous_hash,
+                    pipeline_id,
+                    Jsonb({"planner_source": plan.get("source"), "planner_model": plan.get("model")}),
                     created_at,
                     created_at,
                 ),
+            )
+            cur.execute(
+                """
+                insert into taskhub_workflow_transitions
+                    (id, workflow_id, from_state, to_state, action, actor, reason, role, iteration, payload, created_at)
+                values (%s, %s, null, 'awaiting_plan_approval', 'plan_ready', 'multi_role_planner',
+                        'five-role plan and evidence created', 'supervisor', 0, %s, %s)
+                """,
+                (uuid.uuid4(), workflow_id, Jsonb({"evidence_root_hash": previous_hash}), created_at),
             )
             for row in evidence_rows:
                 cur.execute(
@@ -628,10 +764,123 @@ def list_resource_leases(active_only: bool = True) -> list[dict[str, Any]]:
             return cur.fetchall()
 
 
+def transition_workflow(
+    cur,
+    workflow_id: uuid.UUID,
+    action: str,
+    actor: str,
+    reason: str,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    cur.execute("select * from taskhub_workflows where id = %s for update", (workflow_id,))
+    workflow = cur.fetchone()
+    if not workflow:
+        raise HTTPException(status_code=404, detail="workflow not found")
+    try:
+        resolved = resolve_workflow_transition(workflow["state"], action, workflow.get("resume_state"))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    iteration = workflow["iteration"] + (1 if resolved["increments_iteration"] else 0)
+    if iteration > workflow["max_iterations"]:
+        raise HTTPException(status_code=409, detail="workflow rework limit reached")
+    context = {**(workflow.get("context") or {})}
+    if payload:
+        outputs = {**(context.get("stage_outputs") or {})}
+        outputs[workflow.get("active_role") or workflow["state"]] = redact(payload)
+        context["stage_outputs"] = outputs
+    timestamp = now_utc()
+    cur.execute(
+        """
+        update taskhub_workflows
+        set state = %s, active_role = %s, resume_state = %s, iteration = %s,
+            context = %s, updated_at = %s
+        where id = %s
+        returning *
+        """,
+        (
+            resolved["next_state"],
+            resolved.get("current_role"),
+            resolved.get("next_resume_state"),
+            iteration,
+            Jsonb(context),
+            timestamp,
+            workflow_id,
+        ),
+    )
+    updated = cur.fetchone()
+    cur.execute(
+        """
+        insert into taskhub_workflow_transitions
+            (id, workflow_id, from_state, to_state, action, actor, reason, role, iteration, payload, created_at)
+        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            uuid.uuid4(), workflow_id, workflow["state"], resolved["next_state"], action,
+            actor, reason, workflow.get("active_role"), iteration, Jsonb(redact(payload or {})), timestamp,
+        ),
+    )
+    return updated
+
+
+def workflow_id_for_task(task: dict[str, Any]) -> uuid.UUID | None:
+    raw = (task.get("metadata") or {}).get("workflow_id")
+    try:
+        return uuid.UUID(str(raw)) if raw else None
+    except ValueError:
+        return None
+
+
+def reconcile_workflow_tasks(cur, task: dict[str, Any], actor: str) -> None:
+    workflow_id = workflow_id_for_task(task)
+    if not workflow_id or not (task.get("metadata") or {}).get("approval_source_task_id"):
+        return
+    cur.execute("select * from taskhub_workflows where id = %s", (workflow_id,))
+    workflow = cur.fetchone()
+    if not workflow or workflow["state"] != "implementation":
+        return
+    cur.execute(
+        """
+        select state, count(*) as count
+        from taskhub_tasks
+        where metadata->>'workflow_id' = %s and metadata ? 'approval_source_task_id'
+        group by state
+        """,
+        (str(workflow_id),),
+    )
+    counts = {row["state"]: row["count"] for row in cur.fetchall()}
+    if counts.get("failed") or counts.get("blocked") or counts.get("canceled"):
+        transition_workflow(
+            cur, workflow_id, "block", actor, "implementation task requires intervention", {"task_states": counts}
+        )
+    elif counts and sum(counts.values()) == counts.get("succeeded", 0):
+        transition_workflow(
+            cur, workflow_id, "implementation_done", actor, "all approved implementation tasks succeeded",
+            {"task_states": counts},
+        )
+
+
 @router.get("/workflows")
-def list_workflows(project: str | None = None, limit: int = Query(50, ge=1, le=200)) -> list[dict[str, Any]]:
-    where = "where project = %s" if project else ""
-    params: list[Any] = [project] if project else []
+def list_workflows(
+    project: str | None = None,
+    state: str | None = None,
+    pipeline_id: uuid.UUID | None = None,
+    limit: int = Query(50, ge=1, le=200),
+) -> list[dict[str, Any]]:
+    filters: list[str] = []
+    params: list[Any] = []
+    if project:
+        filters.append("project = %s")
+        params.append(project)
+    if state:
+        if state not in WORKFLOW_STATES:
+            raise HTTPException(status_code=400, detail="invalid workflow state")
+        filters.append("state = %s")
+        params.append(state)
+    if pipeline_id:
+        filters.append("pipeline_id = %s")
+        params.append(pipeline_id)
+    where = f"where {' and '.join(filters)}" if filters else ""
     params.append(limit)
     with connect() as conn:
         with conn.cursor() as cur:
@@ -652,7 +901,34 @@ def get_workflow(workflow_id: uuid.UUID) -> dict[str, Any]:
                 (workflow_id,),
             )
             evidence = cur.fetchall()
-    return {**workflow, "evidence": [{**row, "payload": redact(row.get("payload"))} for row in evidence]}
+            cur.execute(
+                "select * from taskhub_workflow_transitions where workflow_id = %s order by created_at",
+                (workflow_id,),
+            )
+            transitions = cur.fetchall()
+            cur.execute(
+                "select id, type, title, state, worker_id, target_worker_id, updated_at from taskhub_tasks where metadata->>'workflow_id' = %s order by created_at",
+                (str(workflow_id),),
+            )
+            tasks = cur.fetchall()
+    return {
+        **workflow,
+        "context": redact(workflow.get("context")),
+        "evidence": [{**row, "payload": redact(row.get("payload"))} for row in evidence],
+        "transitions": [{**row, "payload": redact(row.get("payload"))} for row in transitions],
+        "tasks": tasks,
+    }
+
+
+@router.post("/workflows/{workflow_id}/actions")
+def act_on_workflow(workflow_id: uuid.UUID, request: Request, payload: WorkflowAction) -> dict[str, Any]:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            workflow = transition_workflow(
+                cur, workflow_id, payload.action, request.state.actor, payload.reason, payload.output
+            )
+        conn.commit()
+    return {**workflow, "context": redact(workflow.get("context"))}
 
 
 def add_history(
@@ -1299,6 +1575,7 @@ def complete_task(task_id: uuid.UUID, request: TaskComplete) -> dict[str, Any]:
             row = cur.fetchone()
             release_resource_leases(cur, task_id)
             add_history(cur, task_id, task["state"], "succeeded", request.worker_id, "task completed", request.result)
+            reconcile_workflow_tasks(cur, task, request.worker_id)
         conn.commit()
     return serialize_task(row)
 
@@ -1323,6 +1600,7 @@ def fail_task(task_id: uuid.UUID, request: TaskFail) -> dict[str, Any]:
             row = cur.fetchone()
             release_resource_leases(cur, task_id)
             add_history(cur, task_id, task["state"], "failed", request.worker_id, "task failed", request.error)
+            reconcile_workflow_tasks(cur, task, request.worker_id)
         conn.commit()
     return serialize_task(row)
 
@@ -1354,6 +1632,12 @@ def retry_task(task_id: uuid.UUID, request: Request, payload: TaskAction) -> dic
             )
             row = cur.fetchone()
             add_history(cur, task_id, task["state"], "pending", request.state.actor, payload.reason)
+            workflow_id = workflow_id_for_task(task)
+            if workflow_id:
+                cur.execute("select state from taskhub_workflows where id = %s", (workflow_id,))
+                workflow = cur.fetchone()
+                if workflow and workflow["state"] == "blocked":
+                    transition_workflow(cur, workflow_id, "retry", request.state.actor, payload.reason)
         conn.commit()
     return serialize_task(row)
 
@@ -1378,6 +1662,11 @@ def block_task(task_id: uuid.UUID, request: Request, payload: TaskAction) -> dic
             )
             row = cur.fetchone()
             add_history(cur, task_id, task["state"], "blocked", request.state.actor, payload.reason)
+            workflow_id = workflow_id_for_task(task)
+            if workflow_id and task["type"] == "review.human":
+                transition_workflow(cur, workflow_id, "block", request.state.actor, payload.reason)
+            else:
+                reconcile_workflow_tasks(cur, task, request.state.actor)
         conn.commit()
     return serialize_task(row)
 
@@ -1453,6 +1742,21 @@ def approve_task(task_id: uuid.UUID, request: Request, payload: TaskApprove) -> 
             )
             row = cur.fetchone()
             add_history(cur, task_id, task["state"], "succeeded", request.state.actor, payload.reason, approval_result)
+            workflow_id = workflow_id_for_task(task)
+            if workflow_id:
+                transition_workflow(
+                    cur,
+                    workflow_id,
+                    "approve_plan",
+                    request.state.actor,
+                    payload.reason,
+                    {"approval_task_id": str(task_id), "approved_content_hash": approved_plan_hash},
+                )
+                if not downstream_rows:
+                    transition_workflow(
+                        cur, workflow_id, "implementation_done", request.state.actor,
+                        "approved plan contains no implementation tasks", {"task_states": {}},
+                    )
         conn.commit()
     return serialize_task(row)
 
@@ -1476,5 +1780,10 @@ def cancel_task(task_id: uuid.UUID, request: Request, payload: TaskAction) -> di
             )
             row = cur.fetchone()
             add_history(cur, task_id, task["state"], "canceled", request.state.actor, payload.reason)
+            workflow_id = workflow_id_for_task(task)
+            if workflow_id and task["type"] == "review.human":
+                transition_workflow(cur, workflow_id, "cancel", request.state.actor, payload.reason)
+            else:
+                reconcile_workflow_tasks(cur, task, request.state.actor)
         conn.commit()
     return serialize_task(row)

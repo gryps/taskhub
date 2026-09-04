@@ -652,6 +652,10 @@
             </form>
             <div class="section" id="pipelineList"></div>
           </div>
+          <div class="section">
+            <div class="toolbar"><h2>五角色工作流</h2><span class="muted" id="workflowStatus">等待刷新</span></div>
+            <div id="workflowList"></div>
+          </div>
           <div id="taskCreateSlot"></div>
           <div class="toolbar">
             <h2>任务跟踪</h2>
@@ -694,6 +698,10 @@
             <button class="secondary" data-quality-command="api.test">API test</button>
             <button class="secondary" data-quality-command="web.check">Web check</button>
             <button class="secondary" data-quality-command="executor.check">Executor check</button>
+          </div>
+          <div class="section">
+            <div class="toolbar"><h2>模型审查队列</h2><span class="muted">Reviewer</span></div>
+            <div id="reviewWorkflowQueue"></div>
           </div>
           <form class="form section" id="h5InspectForm">
             <div class="toolbar"><h2>Windows H5 图形验收</h2><span class="muted">192.168.31.34 / Edge</span></div>
@@ -769,12 +777,14 @@
         <div id="risk" class="hidden">
           <div class="toolbar"><h2>风险报告</h2><span class="muted" id="riskStatus">等待刷新</span></div>
           <div class="grid" id="riskStats"></div>
+          <div class="section" id="riskWorkflowQueue"></div>
           <div class="section" id="riskQueue"></div>
         </div>
 
         <div id="supervision" class="hidden">
           <div class="toolbar"><h2>监督裁决</h2><span class="muted" id="supervisionStatus">等待刷新</span></div>
           <div class="grid" id="supervisionStats"></div>
+          <div class="section" id="supervisionWorkflowQueue"></div>
           <div class="section" id="supervisionQueue"></div>
         </div>
 
@@ -1712,6 +1722,76 @@
         }
       };
 
+      const workflowStateLabel = (state) => ({
+        planning: "规划中",
+        awaiting_plan_approval: "待计划审批",
+        implementation: "实施中",
+        review: "待审查",
+        risk: "待风险评估",
+        awaiting_supervision: "待监督裁决",
+        paused: "已暂停",
+        blocked: "已阻塞",
+        completed: "已完成",
+        canceled: "已取消",
+      }[state] || state);
+
+      const workflowActions = (workflow) => {
+        if (workflow.state === "review") return [["审查通过", "review_pass", false], ["驳回实施", "review_reject", true]];
+        if (workflow.state === "risk") return [["风险通过", "risk_clear", false], ["风险阻塞", "risk_block", true]];
+        if (workflow.state === "awaiting_supervision") return [["批准完成", "approve_release", false], ["要求返工", "request_rework", true]];
+        if (workflow.state === "paused") return [["恢复", "resume", false], ["取消", "cancel", true]];
+        if (workflow.state === "blocked") return [["恢复处理", "retry", false], ["取消", "cancel", true]];
+        if (["planning", "awaiting_plan_approval", "implementation"].includes(workflow.state)) {
+          return [["暂停", "pause", false], ["取消", "cancel", true]];
+        }
+        return [];
+      };
+
+      const renderWorkflowTable = (container, workflows, actions = true, emptyText = "暂无工作流") => {
+        if (!workflows.length) {
+          container.innerHTML = `<div class="card muted">${escapeHtml(emptyText)}</div>`;
+          return;
+        }
+        container.innerHTML = `
+          <table>
+            <thead><tr><th>ID</th><th>阶段</th><th>当前角色</th><th>风险</th><th>返工</th><th>流水线</th>${actions ? "<th>操作</th>" : ""}</tr></thead>
+            <tbody>${workflows.map(workflow => `
+              <tr>
+                <td>${escapeHtml(shortId(workflow.id))}</td>
+                <td>${escapeHtml(workflowStateLabel(workflow.state))}</td>
+                <td>${escapeHtml(workflow.active_role || "-")}</td>
+                <td>${escapeHtml(workflow.risk_level || "-")}</td>
+                <td>${escapeHtml(`${workflow.iteration || 0}/${workflow.max_iterations || 3}`)}</td>
+                <td>${escapeHtml(workflow.pipeline_id ? shortId(workflow.pipeline_id) : "-")}</td>
+                ${actions ? `<td><div class="actions">${workflowActions(workflow).map(([label, action, danger]) => `
+                  <button class="${danger ? "danger" : "secondary"}" data-workflow-id="${escapeHtml(workflow.id)}" data-workflow-action="${escapeHtml(action)}">${escapeHtml(label)}</button>
+                `).join("")}</div></td>` : ""}
+              </tr>
+            `).join("")}</tbody>
+          </table>`;
+        for (const button of container.querySelectorAll("[data-workflow-action]")) {
+          button.addEventListener("click", () => actOnWorkflow(button.dataset.workflowId, button.dataset.workflowAction));
+        }
+      };
+
+      const actOnWorkflow = async (workflowId, action) => {
+        const reason = window.prompt("填写本次裁决或状态变更原因");
+        if (!reason?.trim()) return;
+        await api(`/taskhub/workflows/${workflowId}/actions`, {
+          method: "POST",
+          body: JSON.stringify({ action, reason: reason.trim(), output: { source: "web-console" } }),
+        });
+        await refresh();
+      };
+
+      const loadWorkflows = async () => {
+        const workflows = await api(`/taskhub/workflows?project=${project}&limit=100`);
+        const active = workflows.filter(item => !["completed", "canceled"].includes(item.state));
+        document.getElementById("workflowStatus").textContent = `${active.length} 条处理中 | 共 ${workflows.length} 条`;
+        renderWorkflowTable(document.getElementById("workflowList"), workflows);
+        return workflows;
+      };
+
       const loadPipelines = async () => {
         const [pipelines, leases, workers] = await Promise.all([
           api(`/taskhub/pipelines?project=${project}`),
@@ -1745,7 +1825,8 @@
         const state = document.getElementById("stateFilter").value;
         const pipelineId = document.getElementById("pipelineFilter").value;
         const url = `/taskhub/tasks?project=${project}&limit=100${state ? `&state=${state}` : ""}${pipelineId ? `&pipeline_id=${pipelineId}` : ""}`;
-        renderTasks(document.getElementById("taskTable"), await api(url));
+        const [tasks] = await Promise.all([api(url), loadWorkflows()]);
+        renderTasks(document.getElementById("taskTable"), tasks);
       };
 
       const loadTask = async (id) => {
@@ -1776,7 +1857,11 @@
       };
 
       const loadQuality = async () => {
-        const allRows = await api(`/taskhub/tasks?project=${project}&limit=100`);
+        const [allRows, workflows] = await Promise.all([
+          api(`/taskhub/tasks?project=${project}&limit=100`),
+          api(`/taskhub/workflows?project=${project}&state=review&limit=100`),
+        ]);
+        renderWorkflowTable(document.getElementById("reviewWorkflowQueue"), workflows, true, "当前没有待审查工作流");
         const rows = allRows.filter(task => ["test.run", "quality.env.check", "review.model", "review.human", "h5.inspect"].includes(task.type)).slice(0, 50);
         renderQualityTasks(rows);
         document.getElementById("qualityStatus").textContent = `最近 ${rows.length} 条`;
@@ -2019,7 +2104,10 @@
       };
 
       const loadRisk = async () => {
-        const allRows = await api(`/taskhub/tasks?project=${project}&limit=100`);
+        const [allRows, workflows] = await Promise.all([
+          api(`/taskhub/tasks?project=${project}&limit=100`),
+          api(`/taskhub/workflows?project=${project}&state=risk&limit=100`),
+        ]);
         const rows = allRows.filter(task => ["blocked", "failed"].includes(task.state));
         const blocked = rows.filter(task => task.state === "blocked").length;
         const failed = rows.filter(task => task.state === "failed").length;
@@ -2029,11 +2117,15 @@
           <div class="card"><div class="muted">失败</div><div class="metric">${failed}</div></div>
           <div class="card"><div class="muted">风险总数</div><div class="metric">${rows.length}</div></div>
         `;
+        renderWorkflowTable(document.getElementById("riskWorkflowQueue"), workflows, true, "当前没有待风险评估工作流");
         renderWorkQueue(document.getElementById("riskQueue"), rows, "当前没有阻塞或失败任务");
       };
 
       const loadSupervision = async () => {
-        const allRows = await api(`/taskhub/tasks?project=${project}&limit=100`);
+        const [allRows, workflows] = await Promise.all([
+          api(`/taskhub/tasks?project=${project}&limit=100`),
+          api(`/taskhub/workflows?project=${project}&limit=100`),
+        ]);
         const reviews = allRows.filter(task => task.type === "review.human");
         const queue = reviews.filter(task => ["pending", "running", "blocked"].includes(task.state));
         const decided = reviews.filter(task => ["succeeded", "failed", "canceled"].includes(task.state)).length;
@@ -2043,6 +2135,12 @@
           <div class="card"><div class="muted">已裁决</div><div class="metric">${decided}</div></div>
           <div class="card"><div class="muted">审批任务</div><div class="metric">${reviews.length}</div></div>
         `;
+        renderWorkflowTable(
+          document.getElementById("supervisionWorkflowQueue"),
+          workflows.filter(item => ["awaiting_plan_approval", "awaiting_supervision", "paused", "blocked"].includes(item.state)),
+          true,
+          "当前没有待监督裁决工作流",
+        );
         renderWorkQueue(document.getElementById("supervisionQueue"), queue, "当前没有待裁决任务");
       };
 

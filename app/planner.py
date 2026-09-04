@@ -1180,7 +1180,7 @@ def multi_plan(request: PlannerRequest) -> dict[str, Any]:
 
 def create_planner_tasks(request: PlannerRequest, plan: dict[str, Any], actor: str) -> dict[str, Any]:
     title = request.title or request.requirement[:40] or "新的项目需求"
-    evidence = create_workflow_evidence(request.project, request.requirement, plan)
+    evidence = create_workflow_evidence(request.project, request.requirement, plan, request.pipeline_id)
     common_metadata = {
         "source": "llm_planner",
         "planner_source": plan.get("source"),
