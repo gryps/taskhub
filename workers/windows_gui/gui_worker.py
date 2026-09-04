@@ -116,12 +116,12 @@ def run_listing_draft(task: dict[str, Any]) -> dict[str, Any]:
     request_path.write_text(json.dumps({
         "api_base_url": CONFIG["listing_api_base_url"], "agent_id": CONFIG["listing_agent_id"],
         "profile": str(LISTING_ROOT / "data" / "profile"), "artifact_dir": str(LISTING_ROOT / "data" / "artifacts"),
-        "browser_channel": CONFIG.get("listing_browser_channel", "edge"),
+        "browser_channel": CONFIG.get("listing_browser_channel", "msedge"),
+        "listing_task_id": str((task.get("input") or {}).get("listing_task_id")),
     }), encoding="utf-8")
     env = {**os.environ, "PYTHONPATH": str(release_root / "source" / "apps" / "executor" / "src")}
     output = _run([str(python), str(ROOT / "listing_bridge.py"), str(request_path)], ROOT, 3600, env)
     result = json.loads(output.splitlines()[-1])
-    result["listing_task_id"] = str((task.get("input") or {}).get("listing_task_id"))
     return result
 
 

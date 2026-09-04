@@ -1,0 +1,15 @@
+{
+  "controller_url": "http://192.168.31.31:8123",
+  "worker_token": "set-on-host-only",
+  "worker_id": "worker-31-34-gui",
+  "project": "douyin-listing-workbench",
+  "host": "0.0.0.0",
+  "port": 8125,
+  "allowed_hosts": ["192.168.31.24", "192.168.31.31", "127.0.0.1", "localhost"],
+  "market_root": "C:\\Users\\user\\apps\\douyin-market-automation",
+  "adb_path": "C:\\platform-tools\\adb.exe",
+  "listing_root": "%LOCALAPPDATA%\\Gryps\\Executor",
+  "listing_api_base_url": "https://replace-with-local-control-plane",
+  "listing_agent_id": "replace-after-admin-pairing",
+  "listing_browser_channel": "msedge"
+}
