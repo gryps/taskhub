@@ -26,6 +26,7 @@ from app.auth import (
 from app.douyin_graph import router as douyin_graph_router
 from app.graph import compiled_graph
 from app.monitoring import router as monitoring_router
+from app.notifications import notification_config, router as notification_router, run_notification_cycle_safely
 from app.planner import router as planner_router
 from app.taskhub import init_taskhub, record_audit_event, router as taskhub_router
 from app.workflow_executor import run_automation_cycle
@@ -37,6 +38,7 @@ app.include_router(taskhub_router)
 app.include_router(douyin_graph_router)
 app.include_router(planner_router)
 app.include_router(monitoring_router)
+app.include_router(notification_router)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -59,6 +61,7 @@ class LoginRequest(BaseModel):
 PUBLIC_PATHS = {"/", "/health", "/auth/status", "/auth/login"}
 WORKER_PATH_SUFFIXES = {"/claim", "/heartbeat", "/complete", "/fail"}
 workflow_automation_task: asyncio.Task[None] | None = None
+notification_task: asyncio.Task[None] | None = None
 
 
 def is_worker_endpoint(path: str) -> bool:
@@ -104,24 +107,34 @@ async def workflow_automation_loop() -> None:
         await asyncio.sleep(0 if worked else interval)
 
 
+async def notification_loop() -> None:
+    while True:
+        await asyncio.to_thread(run_notification_cycle_safely)
+        await asyncio.sleep(notification_config()["poll_seconds"])
+
+
 @app.on_event("startup")
 async def startup() -> None:
-    global workflow_automation_task
+    global notification_task, workflow_automation_task
     init_taskhub()
     if os.getenv("WORKFLOW_ROLE_AUTOMATION_ENABLED", "false").lower() in {"1", "true", "yes", "on"}:
         workflow_automation_task = asyncio.create_task(workflow_automation_loop())
+    notification_task = asyncio.create_task(notification_loop())
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
-    global workflow_automation_task
-    if workflow_automation_task:
-        workflow_automation_task.cancel()
+    global notification_task, workflow_automation_task
+    for task in (workflow_automation_task, notification_task):
+        if not task:
+            continue
+        task.cancel()
         try:
-            await workflow_automation_task
+            await task
         except asyncio.CancelledError:
             pass
-        workflow_automation_task = None
+    workflow_automation_task = None
+    notification_task = None
 
 
 @app.get("/")
@@ -147,6 +160,7 @@ def system_status() -> dict[str, str | bool | int]:
         "code_apply_enabled": os.getenv("CODE_APPLY_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
         "workflow_role_automation_enabled": os.getenv("WORKFLOW_ROLE_AUTOMATION_ENABLED", "false").lower()
         in {"1", "true", "yes", "on"},
+        "notification_enabled": notification_config()["enabled"],
     }
 
 

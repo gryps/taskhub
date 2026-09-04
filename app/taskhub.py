@@ -415,6 +415,27 @@ def init_taskhub() -> None:
                 )
                 """
             )
+            cur.execute(
+                """
+                create table if not exists taskhub_alert_deliveries (
+                    id uuid primary key,
+                    fingerprint text not null,
+                    channel text not null,
+                    severity text not null,
+                    alert jsonb not null default '{}'::jsonb,
+                    status text not null check (status in ('pending', 'delivered', 'failed')),
+                    attempt_count integer not null default 0,
+                    last_error text,
+                    response_status integer,
+                    next_retry_at timestamptz not null,
+                    attempted_at timestamptz,
+                    delivered_at timestamptz,
+                    created_at timestamptz not null,
+                    updated_at timestamptz not null,
+                    unique (fingerprint, channel)
+                )
+                """
+            )
             cur.execute("create index if not exists idx_taskhub_audit_created on taskhub_audit_events (created_at desc)")
             cur.execute("create index if not exists idx_taskhub_workflows_project on taskhub_workflows (project, created_at desc)")
             cur.execute("create index if not exists idx_taskhub_evidence_workflow on taskhub_role_evidence (workflow_id, ordinal)")
@@ -422,6 +443,10 @@ def init_taskhub() -> None:
             cur.execute(
                 "create index if not exists idx_taskhub_role_runs_queue "
                 "on taskhub_workflow_role_runs (status, next_retry_at, started_at)"
+            )
+            cur.execute(
+                "create index if not exists idx_taskhub_alert_deliveries_queue "
+                "on taskhub_alert_deliveries (status, next_retry_at, created_at)"
             )
             cur.execute(
                 """

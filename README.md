@@ -55,6 +55,24 @@ thresholds are configured with `TASKHUB_ALERT_PENDING_SECONDS` (default `1800`),
 (default `120`), and `WORKFLOW_ALERT_HISTORY_SECONDS` sets the successful-call
 lookback window (default `86400`).
 
+## Alert Notifications
+
+System Settings can deliver unacknowledged alerts through a generic webhook,
+WeCom bot, or DingTalk bot. Notifications are disabled by default. Webhook URLs
+are stored in the protected environment file and returned to the browser only as
+a mask. Delivery uses a direct HTTP client and does not inherit the OpenAI proxy.
+
+- `TASKHUB_NOTIFICATION_ENABLED` enables delivery.
+- `TASKHUB_NOTIFICATION_CHANNEL` is `generic`, `wecom`, or `dingtalk`.
+- `TASKHUB_NOTIFICATION_MIN_SEVERITY` is `critical`, `warning`, or `info`.
+- `TASKHUB_NOTIFICATION_POLL_SECONDS` defaults to `30`.
+- `TASKHUB_NOTIFICATION_RETRY_SECONDS` defaults to `120`.
+- `TASKHUB_NOTIFICATION_MAX_ATTEMPTS` defaults to `3`.
+- `TASKHUB_PUBLIC_URL` optionally adds a control-center link to messages.
+
+Successful delivery is unique per alert fingerprint and channel. Failed attempts
+are persisted and retried; acknowledging an alert suppresses any pending delivery.
+
 ## Provider Recovery
 
 Transient provider failures start a configurable cooldown. After the cooldown,

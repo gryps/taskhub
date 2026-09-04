@@ -823,6 +823,47 @@
           <div class="toolbar"><h2>系统设置</h2><span class="muted" id="systemStatus">等待刷新</span></div>
           <div class="grid" id="systemSecurity"></div>
           <div id="systemProxySlot"></div>
+          <form class="form section" id="notificationConfigForm">
+            <div class="toolbar">
+              <h2>告警通知</h2>
+              <div class="proxy-toolbar">
+                <span class="muted" id="notificationStatus">未检查</span>
+                <label class="toggle"><input name="enabled" type="checkbox" />启用</label>
+                <label class="toggle"><input name="restart" type="checkbox" checked />保存后重启</label>
+              </div>
+            </div>
+            <label>通知通道
+              <select name="channel">
+                <option value="generic">通用 Webhook</option>
+                <option value="wecom">企业微信</option>
+                <option value="dingtalk">钉钉</option>
+              </select>
+            </label>
+            <label>Webhook 地址
+              <input name="webhookUrl" type="password" autocomplete="off" placeholder="留空则保持现有地址" />
+            </label>
+            <label>最低告警级别
+              <select name="minimumSeverity">
+                <option value="critical">仅严重</option>
+                <option value="warning">严重和警告</option>
+                <option value="info">全部</option>
+              </select>
+            </label>
+            <div class="grid">
+              <label>检查间隔（秒）<input name="pollSeconds" type="number" min="10" max="3600" value="30" /></label>
+              <label>重试间隔（秒）<input name="retrySeconds" type="number" min="10" max="86400" value="120" /></label>
+              <label>最大尝试次数<input name="maxAttempts" type="number" min="1" max="20" value="3" /></label>
+            </div>
+            <div class="actions">
+              <button class="primary" type="submit">保存通知</button>
+              <button class="secondary" type="button" id="notificationTest">发送测试</button>
+            </div>
+          </form>
+          <pre class="section" id="notificationConfigResult">通知配置结果</pre>
+          <div class="section">
+            <div class="toolbar"><h2>最近通知</h2><span class="muted" id="notificationDeliveryStatus">等待刷新</span></div>
+            <div id="notificationDeliveries"></div>
+          </div>
           <div id="systemWorkerSlot"></div>
         </div>
 
@@ -896,6 +937,8 @@
       let currentAccountProviderConfig = null;
       let proxyConfigDirty = false;
       let proxyConfigSaving = false;
+      let notificationConfigDirty = false;
+      let notificationConfigSaving = false;
       let cachedPipelines = [];
       let cachedWorkers = [];
 
@@ -1657,6 +1700,71 @@
         }
       };
 
+      const updateNotificationConfigForm = (payload, force = false) => {
+        if (!force && notificationConfigDirty) return;
+        const config = payload?.config || {};
+        const form = document.getElementById("notificationConfigForm");
+        form.querySelector('[name="enabled"]').checked = Boolean(config.enabled);
+        form.querySelector('[name="channel"]').value = config.channel || "generic";
+        form.querySelector('[name="webhookUrl"]').value = config.webhook_url_mask || "";
+        form.querySelector('[name="minimumSeverity"]').value = config.minimum_severity || "critical";
+        form.querySelector('[name="pollSeconds"]').value = config.poll_seconds || 30;
+        form.querySelector('[name="retrySeconds"]').value = config.retry_seconds || 120;
+        form.querySelector('[name="maxAttempts"]').value = config.max_attempts || 3;
+        document.getElementById("notificationStatus").textContent = config.ready
+          ? `${config.channel} 已启用`
+          : (config.enabled ? "缺少 Webhook 地址" : "已关闭");
+      };
+
+      const renderNotificationDeliveries = (payload) => {
+        const rows = payload?.deliveries || [];
+        document.getElementById("notificationDeliveryStatus").textContent = `${rows.length} 条记录`;
+        document.getElementById("notificationDeliveries").innerHTML = rows.length ? `
+          <table>
+            <thead><tr><th>时间</th><th>通道</th><th>级别</th><th>状态</th><th>尝试</th><th>HTTP</th><th>错误</th></tr></thead>
+            <tbody>${rows.map(item => `
+              <tr><td>${escapeHtml(formatDate(item.created_at))}</td><td>${escapeHtml(item.channel)}</td>
+              <td>${escapeHtml(item.severity)}</td><td>${statusBadge(item.status)}</td>
+              <td>${escapeHtml(item.attempt_count)}</td><td>${escapeHtml(item.response_status || "-")}</td>
+              <td>${escapeHtml(item.last_error || "")}</td></tr>
+            `).join("")}</tbody>
+          </table>` : '<div class="card muted">暂无通知记录</div>';
+      };
+
+      const saveNotificationConfig = async (event) => {
+        event.preventDefault();
+        const form = event.target;
+        notificationConfigSaving = true;
+        document.getElementById("notificationConfigResult").textContent = "正在保存通知配置 ...";
+        try {
+          const result = await api("/taskhub/operations/notifications/config", {
+            method: "POST",
+            body: JSON.stringify({
+              enabled: form.querySelector('[name="enabled"]').checked,
+              channel: form.querySelector('[name="channel"]').value,
+              webhook_url: form.querySelector('[name="webhookUrl"]').value || null,
+              minimum_severity: form.querySelector('[name="minimumSeverity"]').value,
+              poll_seconds: Number(form.querySelector('[name="pollSeconds"]').value),
+              retry_seconds: Number(form.querySelector('[name="retrySeconds"]').value),
+              max_attempts: Number(form.querySelector('[name="maxAttempts"]').value),
+              restart: form.querySelector('[name="restart"]').checked,
+            }),
+          });
+          document.getElementById("notificationConfigResult").textContent = show(result);
+          notificationConfigDirty = false;
+          if (result.restart?.scheduled) await new Promise(resolve => setTimeout(resolve, 2500));
+          updateNotificationConfigForm(await api("/taskhub/operations/notifications/config"), true);
+        } finally {
+          notificationConfigSaving = false;
+        }
+      };
+
+      const testNotification = async () => {
+        document.getElementById("notificationConfigResult").textContent = "正在发送测试通知 ...";
+        const result = await api("/taskhub/operations/notifications/test", { method: "POST", body: "{}" });
+        document.getElementById("notificationConfigResult").textContent = show(result);
+      };
+
       const renderRoleModelFields = (provider, roleModels) => {
         const defaults = providerDefaults[provider] || providerDefaults.gpt_api;
         const labels = defaults.roleLabels || {};
@@ -2250,12 +2358,16 @@
       };
 
       const loadSystem = async () => {
-        const [health, security, configCheck] = await Promise.all([
+        const [health, security, configCheck, notificationConfig, notificationDeliveries] = await Promise.all([
           api("/health"),
           api("/system/status"),
           api("/planner/config-check"),
+          api("/taskhub/operations/notifications/config"),
+          api("/taskhub/operations/notifications/deliveries"),
         ]);
         updateProxyConfigForm(configCheck);
+        updateNotificationConfigForm(notificationConfig);
+        renderNotificationDeliveries(notificationDeliveries);
         await loadWorkers();
         document.getElementById("systemStatus").textContent = `控制中心 ${health.status} | Postgres ${health.postgres} | Redis ${health.redis}`;
         const securityItems = [
@@ -2264,6 +2376,7 @@
           ["CSRF 防护", security.csrf_enforced ? "已启用" : "未启用", security.csrf_enforced],
           ["节点认证", security.worker_auth_configured ? "已配置" : "未配置", security.worker_auth_configured],
           ["角色自动执行", security.workflow_role_automation_enabled ? "已启用" : "未启用", security.workflow_role_automation_enabled],
+          ["主动通知", security.notification_enabled ? "已启用" : "已关闭", true],
           ["代码应用", security.code_apply_enabled ? "已开放" : "仅校验", !security.code_apply_enabled],
           ["会话时长", `${Math.round(security.session_ttl_seconds / 3600)} 小时`, true],
         ];
@@ -2445,6 +2558,11 @@
         if (!proxyConfigSaving) proxyConfigDirty = true;
       });
       document.querySelector('#proxyConfigForm [name="enabled"]').addEventListener("change", syncProxyFields);
+      document.getElementById("notificationConfigForm").addEventListener("submit", saveNotificationConfig);
+      document.getElementById("notificationConfigForm").addEventListener("input", () => {
+        if (!notificationConfigSaving) notificationConfigDirty = true;
+      });
+      document.getElementById("notificationTest").addEventListener("click", testNotification);
       document.getElementById("stateFilter").addEventListener("change", loadTasks);
       document.getElementById("pipelineFilter").addEventListener("change", loadTasks);
       document.getElementById("pipelineForm").addEventListener("submit", createPipeline);
