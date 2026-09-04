@@ -35,6 +35,9 @@ overrides empty to use each account's Codex default model.
 
 - ChatGPT Plus, ChatGPT Pro, GPT API, and OpenAI-compatible OpenAI calls must use
   `OPENAI_PROXY_URL`. The controller fails closed when the proxy is absent.
+- DeepSeek and MiniMax use explicit direct HTTP clients with `trust_env=false`,
+  so process-level proxy variables cannot redirect those providers.
+- Controller-to-worker LAN traffic remains direct through `NO_PROXY`.
 
 Post-implementation workflow roles are disabled by default. Enable the controller-side
 review, risk, and supervision runners with `WORKFLOW_ROLE_AUTOMATION_ENABLED=true`.
@@ -42,9 +45,15 @@ review, risk, and supervision runners with `WORKFLOW_ROLE_AUTOMATION_ENABLED=tru
 `WORKFLOW_ROLE_MAX_ATTEMPTS` control polling and retries. Review and risk verdicts
 advance or block the workflow automatically; supervision produces a recommendation
 and leaves the final release action to a human operator.
-- DeepSeek and MiniMax use explicit direct HTTP clients with `trust_env=false`,
-  so process-level proxy variables cannot redirect those providers.
-- Controller-to-worker LAN traffic remains direct through `NO_PROXY`.
+
+The overview aggregates task heartbeat loss, long pending work, failed/blocked tasks,
+stale workflows, role-model retry failures, provider degradation, and quota exhaustion.
+Alert acknowledgement is persisted but does not change task or workflow state. Runtime
+thresholds are configured with `TASKHUB_ALERT_PENDING_SECONDS` (default `1800`),
+`WORKFLOW_ALERT_STALE_SECONDS` (default `1800`), and `TASKHUB_ALERT_MAX_RETRIES`
+(default `3`). `WORKFLOW_ROLE_SLOW_SECONDS` sets the slow model-call threshold
+(default `120`), and `WORKFLOW_ALERT_HISTORY_SECONDS` sets the successful-call
+lookback window (default `86400`).
 
 ## Provider Recovery
 

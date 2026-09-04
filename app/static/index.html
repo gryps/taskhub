@@ -399,6 +399,30 @@
         font-weight: 650;
       }
 
+      .alert-list { display: grid; gap: 8px; }
+
+      .alert-row {
+        display: grid;
+        grid-template-columns: 88px minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-left-width: 4px;
+        border-radius: 6px;
+        padding: 10px 12px;
+        background: var(--panel);
+      }
+
+      .alert-row.critical { border-left-color: var(--red); }
+      .alert-row.warning { border-left-color: var(--orange); }
+      .alert-row.info { border-left-color: var(--blue); }
+      .alert-row.acknowledged { opacity: 0.58; }
+      .alert-severity { font-size: 12px; font-weight: 700; text-transform: uppercase; }
+      .alert-row.critical .alert-severity { color: var(--red); }
+      .alert-row.warning .alert-severity { color: var(--orange); }
+      .alert-row.info .alert-severity { color: var(--blue); }
+      .alert-body { min-width: 0; overflow-wrap: anywhere; }
+
       .hidden {
         display: none;
       }
@@ -524,6 +548,10 @@
         <div id="overview">
           <div class="toolbar"><h2>总览</h2><span class="muted" id="healthText">加载中</span></div>
           <div class="grid" id="stats"></div>
+          <div class="section">
+            <div class="toolbar"><h2>运行告警</h2><span class="muted" id="alertSummary">加载中</span></div>
+            <div id="operationalAlerts"></div>
+          </div>
           <div class="section">
             <div class="toolbar"><h2>最近任务</h2></div>
             <div id="recentTasks"></div>
@@ -947,6 +975,7 @@
         "'": "&#39;",
       }[char]));
       const formatDate = (value) => value ? new Date(value).toLocaleString() : "";
+      const severityLabel = { critical: "严重", warning: "警告", info: "提示" };
       const providerDefaults = {
         gpt_api: {
           baseUrl: "https://api.openai.com/v1",
@@ -1448,11 +1477,12 @@
       };
 
       const loadOverview = async () => {
-        const [health, workers, stats, recent] = await Promise.all([
+        const [health, workers, stats, recent, alertPayload] = await Promise.all([
           api("/health"),
           api("/workers"),
           api(`/taskhub/stats?project=${project}`),
           api(`/taskhub/tasks?project=${project}&limit=10`),
+          api("/taskhub/operations/alerts"),
         ]);
         document.getElementById("healthText").textContent = `控制中心 ${health.status} | Postgres ${health.postgres} | Redis ${health.redis}（仅健康检查） | 实施节点 ${workers.length}`;
         const states = stats.states || {};
@@ -1469,6 +1499,54 @@
           });
         }
         renderTasks(document.getElementById("recentTasks"), recent);
+        renderOperationalAlerts(alertPayload);
+      };
+
+      const renderOperationalAlerts = (payload) => {
+        const alerts = payload.alerts || [];
+        const summary = payload.summary || {};
+        document.getElementById("alertSummary").textContent = `严重 ${summary.critical || 0} | 警告 ${summary.warning || 0} | 已确认 ${summary.acknowledged || 0}`;
+        const container = document.getElementById("operationalAlerts");
+        if (!alerts.length) {
+          container.innerHTML = '<div class="card result-pass">当前没有运行异常</div>';
+          return;
+        }
+        container.innerHTML = `<div class="alert-list">${alerts.map(item => `
+          <div class="alert-row ${escapeHtml(item.severity)} ${item.acknowledged ? "acknowledged" : ""}">
+            <div class="alert-severity">${escapeHtml(severityLabel[item.severity] || item.severity)}</div>
+            <div class="alert-body">
+              <strong>${escapeHtml(item.title)}</strong>
+              <div>${escapeHtml(item.message)}</div>
+              <div class="muted">${escapeHtml(item.code)} | ${escapeHtml(item.entity_type)} ${escapeHtml(shortId(item.entity_id))} | ${escapeHtml(formatDate(item.detected_at))}${item.acknowledged ? ` | ${escapeHtml(item.acknowledged_by)} 已确认` : ""}</div>
+            </div>
+            <div class="actions">
+              ${item.entity_type === "task" ? `<button class="secondary" data-alert-task="${escapeHtml(item.entity_id)}">查看</button>` : ""}
+              ${item.entity_type === "workflow" ? `<button class="secondary" data-alert-workflow="${escapeHtml(item.entity_id)}">查看</button>` : ""}
+              ${item.acknowledged ? "" : `<button class="secondary" data-alert-ack="${escapeHtml(item.fingerprint)}">确认</button>`}
+            </div>
+          </div>
+        `).join("")}</div>`;
+        for (const button of container.querySelectorAll("[data-alert-ack]")) {
+          button.addEventListener("click", async () => {
+            await api("/taskhub/operations/alerts/acknowledge", {
+              method: "POST",
+              body: JSON.stringify({ fingerprint: button.dataset.alertAck }),
+            });
+            await loadOverview();
+          });
+        }
+        for (const button of container.querySelectorAll("[data-alert-task]")) {
+          button.addEventListener("click", async () => {
+            setView("tasks");
+            await loadTask(button.dataset.alertTask);
+          });
+        }
+        for (const button of container.querySelectorAll("[data-alert-workflow]")) {
+          button.addEventListener("click", async () => {
+            setView("tasks");
+            await loadWorkflowDetail(button.dataset.alertWorkflow, "taskDetail");
+          });
+        }
       };
 
       const loadPlanner = async () => {

@@ -25,6 +25,7 @@ from app.auth import (
 )
 from app.douyin_graph import router as douyin_graph_router
 from app.graph import compiled_graph
+from app.monitoring import router as monitoring_router
 from app.planner import router as planner_router
 from app.taskhub import init_taskhub, record_audit_event, router as taskhub_router
 from app.workflow_executor import run_automation_cycle
@@ -35,6 +36,7 @@ app = FastAPI(title="Gryps LangGraph Control", version="0.2.0")
 app.include_router(taskhub_router)
 app.include_router(douyin_graph_router)
 app.include_router(planner_router)
+app.include_router(monitoring_router)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

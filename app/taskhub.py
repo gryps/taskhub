@@ -406,6 +406,15 @@ def init_taskhub() -> None:
                 )
                 """
             )
+            cur.execute(
+                """
+                create table if not exists taskhub_alert_acknowledgements (
+                    fingerprint text primary key,
+                    acknowledged_by text not null,
+                    acknowledged_at timestamptz not null
+                )
+                """
+            )
             cur.execute("create index if not exists idx_taskhub_audit_created on taskhub_audit_events (created_at desc)")
             cur.execute("create index if not exists idx_taskhub_workflows_project on taskhub_workflows (project, created_at desc)")
             cur.execute("create index if not exists idx_taskhub_evidence_workflow on taskhub_role_evidence (workflow_id, ordinal)")
