@@ -382,10 +382,38 @@ def init_taskhub() -> None:
                 )
                 """
             )
+            cur.execute(
+                """
+                create table if not exists taskhub_workflow_role_runs (
+                    id uuid primary key,
+                    workflow_id uuid not null references taskhub_workflows(id) on delete cascade,
+                    entry_transition_id uuid not null references taskhub_workflow_transitions(id) on delete cascade,
+                    state text not null,
+                    role text not null,
+                    iteration integer not null,
+                    status text not null,
+                    attempt_count integer not null default 1,
+                    provider text,
+                    model text,
+                    verdict text,
+                    summary text,
+                    output jsonb not null default '{}'::jsonb,
+                    error jsonb not null default '{}'::jsonb,
+                    started_at timestamptz not null,
+                    completed_at timestamptz,
+                    next_retry_at timestamptz,
+                    unique (workflow_id, entry_transition_id)
+                )
+                """
+            )
             cur.execute("create index if not exists idx_taskhub_audit_created on taskhub_audit_events (created_at desc)")
             cur.execute("create index if not exists idx_taskhub_workflows_project on taskhub_workflows (project, created_at desc)")
             cur.execute("create index if not exists idx_taskhub_evidence_workflow on taskhub_role_evidence (workflow_id, ordinal)")
             cur.execute("create index if not exists idx_taskhub_workflow_transitions on taskhub_workflow_transitions (workflow_id, created_at)")
+            cur.execute(
+                "create index if not exists idx_taskhub_role_runs_queue "
+                "on taskhub_workflow_role_runs (status, next_retry_at, started_at)"
+            )
             cur.execute(
                 """
                 update taskhub_workflows workflow
@@ -870,21 +898,52 @@ def list_workflows(
     filters: list[str] = []
     params: list[Any] = []
     if project:
-        filters.append("project = %s")
+        filters.append("workflow.project = %s")
         params.append(project)
     if state:
         if state not in WORKFLOW_STATES:
             raise HTTPException(status_code=400, detail="invalid workflow state")
-        filters.append("state = %s")
+        filters.append("workflow.state = %s")
         params.append(state)
     if pipeline_id:
-        filters.append("pipeline_id = %s")
+        filters.append("workflow.pipeline_id = %s")
         params.append(pipeline_id)
     where = f"where {' and '.join(filters)}" if filters else ""
     params.append(limit)
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"select * from taskhub_workflows {where} order by created_at desc limit %s", params)
+            cur.execute(
+                f"""
+                select workflow.*,
+                       role_run.status as role_run_status,
+                       role_run.verdict as role_run_verdict,
+                       role_run.summary as role_run_summary,
+                       role_run.provider as role_run_provider,
+                       role_run.model as role_run_model,
+                       role_run.completed_at as role_run_completed_at
+                from taskhub_workflows workflow
+                left join lateral (
+                    select transition.id
+                    from taskhub_workflow_transitions transition
+                    where transition.workflow_id = workflow.id
+                      and transition.to_state = workflow.state
+                    order by transition.created_at desc
+                    limit 1
+                ) current_transition on true
+                left join lateral (
+                    select run.*
+                    from taskhub_workflow_role_runs run
+                    where run.workflow_id = workflow.id
+                      and run.entry_transition_id = current_transition.id
+                    order by run.started_at desc
+                    limit 1
+                ) role_run on true
+                {where}
+                order by workflow.created_at desc
+                limit %s
+                """,
+                params,
+            )
             return cur.fetchall()
 
 
@@ -907,6 +966,11 @@ def get_workflow(workflow_id: uuid.UUID) -> dict[str, Any]:
             )
             transitions = cur.fetchall()
             cur.execute(
+                "select * from taskhub_workflow_role_runs where workflow_id = %s order by started_at",
+                (workflow_id,),
+            )
+            role_runs = cur.fetchall()
+            cur.execute(
                 "select id, type, title, state, worker_id, target_worker_id, updated_at from taskhub_tasks where metadata->>'workflow_id' = %s order by created_at",
                 (str(workflow_id),),
             )
@@ -916,6 +980,10 @@ def get_workflow(workflow_id: uuid.UUID) -> dict[str, Any]:
         "context": redact(workflow.get("context")),
         "evidence": [{**row, "payload": redact(row.get("payload"))} for row in evidence],
         "transitions": [{**row, "payload": redact(row.get("payload"))} for row in transitions],
+        "role_runs": [
+            {**row, "output": redact(row.get("output")), "error": redact(row.get("error"))}
+            for row in role_runs
+        ],
         "tasks": tasks,
     }
 

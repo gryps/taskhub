@@ -35,6 +35,13 @@ overrides empty to use each account's Codex default model.
 
 - ChatGPT Plus, ChatGPT Pro, GPT API, and OpenAI-compatible OpenAI calls must use
   `OPENAI_PROXY_URL`. The controller fails closed when the proxy is absent.
+
+Post-implementation workflow roles are disabled by default. Enable the controller-side
+review, risk, and supervision runners with `WORKFLOW_ROLE_AUTOMATION_ENABLED=true`.
+`WORKFLOW_ROLE_POLL_SECONDS`, `WORKFLOW_ROLE_RETRY_SECONDS`, and
+`WORKFLOW_ROLE_MAX_ATTEMPTS` control polling and retries. Review and risk verdicts
+advance or block the workflow automatically; supervision produces a recommendation
+and leaves the final release action to a human operator.
 - DeepSeek and MiniMax use explicit direct HTTP clients with `trust_env=false`,
   so process-level proxy variables cannot redirect those providers.
 - Controller-to-worker LAN traffic remains direct through `NO_PROXY`.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ from app.douyin_graph import router as douyin_graph_router
 from app.graph import compiled_graph
 from app.planner import router as planner_router
 from app.taskhub import init_taskhub, record_audit_event, router as taskhub_router
+from app.workflow_executor import run_automation_cycle
 
 load_dotenv()
 
@@ -54,6 +56,7 @@ class LoginRequest(BaseModel):
 
 PUBLIC_PATHS = {"/", "/health", "/auth/status", "/auth/login"}
 WORKER_PATH_SUFFIXES = {"/claim", "/heartbeat", "/complete", "/fail"}
+workflow_automation_task: asyncio.Task[None] | None = None
 
 
 def is_worker_endpoint(path: str) -> bool:
@@ -92,9 +95,31 @@ async def authentication_and_audit(request: Request, call_next):
     return response
 
 
+async def workflow_automation_loop() -> None:
+    interval = max(2, int(os.getenv("WORKFLOW_ROLE_POLL_SECONDS", "10")))
+    while True:
+        worked = await asyncio.to_thread(run_automation_cycle)
+        await asyncio.sleep(0 if worked else interval)
+
+
 @app.on_event("startup")
-def startup() -> None:
+async def startup() -> None:
+    global workflow_automation_task
     init_taskhub()
+    if os.getenv("WORKFLOW_ROLE_AUTOMATION_ENABLED", "false").lower() in {"1", "true", "yes", "on"}:
+        workflow_automation_task = asyncio.create_task(workflow_automation_loop())
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    global workflow_automation_task
+    if workflow_automation_task:
+        workflow_automation_task.cancel()
+        try:
+            await workflow_automation_task
+        except asyncio.CancelledError:
+            pass
+        workflow_automation_task = None
 
 
 @app.get("/")
@@ -118,6 +143,8 @@ def system_status() -> dict[str, str | bool | int]:
         "cookie_secure": os.getenv("AUTH_COOKIE_SECURE", "false").lower() in {"1", "true", "yes", "on"},
         "session_ttl_seconds": int(os.getenv("AUTH_SESSION_TTL", str(12 * 60 * 60))),
         "code_apply_enabled": os.getenv("CODE_APPLY_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
+        "workflow_role_automation_enabled": os.getenv("WORKFLOW_ROLE_AUTOMATION_ENABLED", "false").lower()
+        in {"1", "true", "yes", "on"},
     }
 
 

@@ -756,11 +756,18 @@ def call_account_provider(
     provider: str,
     request: PlannerRequest,
     prior_outputs: list[dict[str, Any]],
+    messages: list[dict[str, str]] | None = None,
+    output_schema: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
-    messages = role_prompt(role, request, prior_outputs)
-    prompt = "\n\n".join(f"{item['role'].upper()}:\n{item['content']}" for item in messages)
+    resolved_messages = messages or role_prompt(role, request, prior_outputs)
+    prompt = "\n\n".join(f"{item['role'].upper()}:\n{item['content']}" for item in resolved_messages)
     model = provider_model_for_role(provider, role)
-    content, attempt = run_account(provider, prompt, None if model == "account_default" else model)
+    content, attempt = run_account(
+        provider,
+        prompt,
+        None if model == "account_default" else model,
+        output_schema=output_schema,
+    )
     attempt.update({"role": role["role"], "provider": provider})
     if content is None:
         reason = str(attempt.get("reason") or "runner_error")
@@ -776,7 +783,13 @@ def call_account_provider(
     return raw_plan, attempt
 
 
-def call_api_provider(provider: str, role: dict[str, Any], request: PlannerRequest, prior_outputs: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+def call_api_provider(
+    provider: str,
+    role: dict[str, Any],
+    request: PlannerRequest,
+    prior_outputs: list[dict[str, Any]],
+    messages: list[dict[str, str]] | None = None,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     config = provider_config(provider)
     api_key = os.getenv(api_env_key(provider, "API_KEY"), "")
     if not api_key:
@@ -789,7 +802,7 @@ def call_api_provider(provider: str, role: dict[str, Any], request: PlannerReque
             response = client.post(
                 f"{base_url}/chat/completions",
                 headers={"authorization": f"Bearer {api_key}", "content-type": "application/json"},
-                json=chat_completion_payload(model, role_prompt(role, request, prior_outputs)),
+                json=chat_completion_payload(model, messages or role_prompt(role, request, prior_outputs)),
             )
         if response.status_code >= 400:
             reason, message = classify_http_error(response.status_code, response.text[:1000])
@@ -1079,6 +1092,75 @@ def run_role(role_name: str, request: PlannerRequest, prior_outputs: list[dict[s
         "risk_level": "medium",
         "tasks": fallback_tasks(request, reason) if role_name == "planner" else [],
         "notes": [f"{role['label']}需要人工或后续账号 provider 接入。"],
+        "attempts": attempts,
+    }
+
+
+def run_structured_role(
+    role_name: str,
+    request: PlannerRequest,
+    messages: list[dict[str, str]],
+    output_schema: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run one configured role without applying planner-task normalization."""
+    role = role_config(role_name)
+    attempts: list[dict[str, Any]] = []
+    for provider in role["provider_order"]:
+        allowed, gate = before_attempt(provider)
+        if not allowed:
+            attempts.append(
+                {
+                    "role": role_name,
+                    "provider": provider,
+                    "status": "skipped",
+                    "reason": "cooldown",
+                    "provider_health": gate,
+                    "alert": alert(
+                        role_name,
+                        provider,
+                        "fallback_active",
+                        f"{provider} 暂时不可用，将在 {gate.get('retry_at') or '稍后'} 重新探测。",
+                        "info",
+                    ),
+                }
+            )
+            continue
+        definition = PROVIDER_DEFINITIONS.get(provider, {"kind": "api"})
+        if definition["kind"] == "account":
+            output, attempt = call_account_provider(role, provider, request, [], messages, output_schema)
+        else:
+            output, attempt = call_api_provider(provider, role, request, [], messages)
+        attempts.append(attempt)
+        if output is not None:
+            health = record_success(provider)
+            attempt["provider_health"] = health
+            if health["event"] == "recovered_to_preferred":
+                attempt["alert"] = alert(
+                    role_name,
+                    provider,
+                    "provider_recovered",
+                    f"{provider} 已恢复，当前请求已回切到该优先 Provider。",
+                    "info",
+                )
+            return {
+                **output,
+                "role": role_name,
+                "label": role["label"],
+                "provider": provider,
+                "model": output.get("model") or role["model"],
+                "status": "succeeded",
+                "attempts": attempts,
+            }
+        attempt["provider_health"] = record_failure(provider, str(attempt.get("reason") or "provider_error"))
+
+    reason = "; ".join(f"{item['provider']}:{item.get('reason', 'failed')}" for item in attempts) or "no provider"
+    return {
+        "role": role_name,
+        "label": role["label"],
+        "provider": "fallback",
+        "model": role["model"],
+        "status": "failed",
+        "reason": reason,
         "attempts": attempts,
     }
 

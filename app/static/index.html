@@ -702,6 +702,7 @@
           <div class="section">
             <div class="toolbar"><h2>模型审查队列</h2><span class="muted">Reviewer</span></div>
             <div id="reviewWorkflowQueue"></div>
+            <pre class="section" id="reviewWorkflowDetail">选择工作流查看模型审查结果</pre>
           </div>
           <form class="form section" id="h5InspectForm">
             <div class="toolbar"><h2>Windows H5 图形验收</h2><span class="muted">192.168.31.34 / Edge</span></div>
@@ -778,6 +779,7 @@
           <div class="toolbar"><h2>风险报告</h2><span class="muted" id="riskStatus">等待刷新</span></div>
           <div class="grid" id="riskStats"></div>
           <div class="section" id="riskWorkflowQueue"></div>
+          <pre class="section" id="riskWorkflowDetail">选择工作流查看风险模型结果</pre>
           <div class="section" id="riskQueue"></div>
         </div>
 
@@ -785,6 +787,7 @@
           <div class="toolbar"><h2>监督裁决</h2><span class="muted" id="supervisionStatus">等待刷新</span></div>
           <div class="grid" id="supervisionStats"></div>
           <div class="section" id="supervisionWorkflowQueue"></div>
+          <pre class="section" id="supervisionWorkflowDetail">选择工作流查看监督模型建议</pre>
           <div class="section" id="supervisionQueue"></div>
         </div>
 
@@ -1747,19 +1750,39 @@
         return [];
       };
 
-      const renderWorkflowTable = (container, workflows, actions = true, emptyText = "暂无工作流") => {
+      const roleRunLabel = (workflow) => {
+        if (!workflow.role_run_status) return "等待模型";
+        if (workflow.role_run_status === "running") return "模型运行中";
+        if (workflow.role_run_status === "failed") return "模型失败";
+        return workflow.role_run_verdict ? `模型: ${workflow.role_run_verdict}` : workflow.role_run_status;
+      };
+
+      const loadWorkflowDetail = async (workflowId, targetId) => {
+        const workflow = await api(`/taskhub/workflows/${workflowId}`);
+        const target = document.getElementById(targetId);
+        if (target) target.textContent = show({
+          id: workflow.id,
+          state: workflow.state,
+          iteration: workflow.iteration,
+          role_runs: workflow.role_runs,
+          stage_outputs: workflow.context?.stage_outputs || {},
+        });
+      };
+
+      const renderWorkflowTable = (container, workflows, actions = true, emptyText = "暂无工作流", detailTarget = "") => {
         if (!workflows.length) {
           container.innerHTML = `<div class="card muted">${escapeHtml(emptyText)}</div>`;
           return;
         }
         container.innerHTML = `
           <table>
-            <thead><tr><th>ID</th><th>阶段</th><th>当前角色</th><th>风险</th><th>返工</th><th>流水线</th>${actions ? "<th>操作</th>" : ""}</tr></thead>
+            <thead><tr><th>ID</th><th>阶段</th><th>当前角色</th><th>模型裁决</th><th>风险</th><th>返工</th><th>流水线</th>${actions ? "<th>操作</th>" : ""}</tr></thead>
             <tbody>${workflows.map(workflow => `
               <tr>
                 <td>${escapeHtml(shortId(workflow.id))}</td>
                 <td>${escapeHtml(workflowStateLabel(workflow.state))}</td>
                 <td>${escapeHtml(workflow.active_role || "-")}</td>
+                <td title="${escapeHtml(workflow.role_run_summary || "")}">${escapeHtml(roleRunLabel(workflow))}${detailTarget && workflow.role_run_status ? ` <button class="secondary" data-workflow-view="${escapeHtml(workflow.id)}">查看</button>` : ""}</td>
                 <td>${escapeHtml(workflow.risk_level || "-")}</td>
                 <td>${escapeHtml(`${workflow.iteration || 0}/${workflow.max_iterations || 3}`)}</td>
                 <td>${escapeHtml(workflow.pipeline_id ? shortId(workflow.pipeline_id) : "-")}</td>
@@ -1771,6 +1794,9 @@
           </table>`;
         for (const button of container.querySelectorAll("[data-workflow-action]")) {
           button.addEventListener("click", () => actOnWorkflow(button.dataset.workflowId, button.dataset.workflowAction));
+        }
+        for (const button of container.querySelectorAll("[data-workflow-view]")) {
+          button.addEventListener("click", () => loadWorkflowDetail(button.dataset.workflowView, detailTarget));
         }
       };
 
@@ -1861,7 +1887,7 @@
           api(`/taskhub/tasks?project=${project}&limit=100`),
           api(`/taskhub/workflows?project=${project}&state=review&limit=100`),
         ]);
-        renderWorkflowTable(document.getElementById("reviewWorkflowQueue"), workflows, true, "当前没有待审查工作流");
+        renderWorkflowTable(document.getElementById("reviewWorkflowQueue"), workflows, true, "当前没有待审查工作流", "reviewWorkflowDetail");
         const rows = allRows.filter(task => ["test.run", "quality.env.check", "review.model", "review.human", "h5.inspect"].includes(task.type)).slice(0, 50);
         renderQualityTasks(rows);
         document.getElementById("qualityStatus").textContent = `最近 ${rows.length} 条`;
@@ -2117,7 +2143,7 @@
           <div class="card"><div class="muted">失败</div><div class="metric">${failed}</div></div>
           <div class="card"><div class="muted">风险总数</div><div class="metric">${rows.length}</div></div>
         `;
-        renderWorkflowTable(document.getElementById("riskWorkflowQueue"), workflows, true, "当前没有待风险评估工作流");
+        renderWorkflowTable(document.getElementById("riskWorkflowQueue"), workflows, true, "当前没有待风险评估工作流", "riskWorkflowDetail");
         renderWorkQueue(document.getElementById("riskQueue"), rows, "当前没有阻塞或失败任务");
       };
 
@@ -2140,6 +2166,7 @@
           workflows.filter(item => ["awaiting_plan_approval", "awaiting_supervision", "paused", "blocked"].includes(item.state)),
           true,
           "当前没有待监督裁决工作流",
+          "supervisionWorkflowDetail",
         );
         renderWorkQueue(document.getElementById("supervisionQueue"), queue, "当前没有待裁决任务");
       };
@@ -2158,6 +2185,7 @@
           ["签名会话", security.signed_sessions_configured ? "已启用" : "未配置", security.signed_sessions_configured],
           ["CSRF 防护", security.csrf_enforced ? "已启用" : "未启用", security.csrf_enforced],
           ["节点认证", security.worker_auth_configured ? "已配置" : "未配置", security.worker_auth_configured],
+          ["角色自动执行", security.workflow_role_automation_enabled ? "已启用" : "未启用", security.workflow_role_automation_enabled],
           ["代码应用", security.code_apply_enabled ? "已开放" : "仅校验", !security.code_apply_enabled],
           ["会话时长", `${Math.round(security.session_ttl_seconds / 3600)} 小时`, true],
         ];

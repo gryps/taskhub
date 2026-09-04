@@ -189,6 +189,7 @@ def run_account(
     provider: str,
     prompt: str,
     model: str | None = None,
+    output_schema: dict[str, Any] | None = None,
 ) -> tuple[str | None, dict[str, Any]]:
     status = account_status(provider, force=True)
     if not status["configured"]:
@@ -207,7 +208,7 @@ def run_account(
         with tempfile.TemporaryDirectory(prefix=f"codex-{provider}-") as temp_dir:
             schema_path = Path(temp_dir) / "schema.json"
             output_path = Path(temp_dir) / "last-message.json"
-            schema_path.write_text(json.dumps(PLAN_SCHEMA), encoding="utf-8")
+            schema_path.write_text(json.dumps(output_schema or PLAN_SCHEMA), encoding="utf-8")
             command = [
                 codex_binary(),
                 "exec",
