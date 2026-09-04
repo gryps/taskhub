@@ -26,6 +26,7 @@ from app.auth import (
 from app.advanced import init_advanced, router as advanced_router, run_advanced_cycle
 from app.douyin_graph import router as douyin_graph_router
 from app.graph import compiled_graph
+from app.integration import init_integration, router as integration_router, run_integration_cycle
 from app.monitoring import router as monitoring_router
 from app.notifications import notification_config, router as notification_router, run_notification_cycle_safely
 from app.operations import operations_policy, router as operations_router, run_operations_cycle_safely
@@ -44,6 +45,7 @@ app.include_router(monitoring_router)
 app.include_router(notification_router)
 app.include_router(operations_router)
 app.include_router(advanced_router)
+app.include_router(integration_router)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -69,10 +71,13 @@ workflow_automation_task: asyncio.Task[None] | None = None
 notification_task: asyncio.Task[None] | None = None
 operations_task: asyncio.Task[None] | None = None
 advanced_task: asyncio.Task[None] | None = None
+integration_task: asyncio.Task[None] | None = None
 
 
 def is_worker_endpoint(path: str) -> bool:
-    return path.startswith("/taskhub/") and any(path.endswith(suffix) for suffix in WORKER_PATH_SUFFIXES)
+    return (
+        path.startswith("/taskhub/") and any(path.endswith(suffix) for suffix in WORKER_PATH_SUFFIXES)
+    ) or path.startswith("/taskhub/integration/artifacts/")
 
 
 @app.middleware("http")
@@ -133,22 +138,31 @@ async def advanced_loop() -> None:
         await asyncio.sleep(1 if worked else interval)
 
 
+async def integration_loop() -> None:
+    interval = max(30, int(os.getenv("TASKHUB_INTEGRATION_POLL_SECONDS", "60")))
+    while True:
+        worked = await asyncio.to_thread(run_integration_cycle)
+        await asyncio.sleep(1 if worked else interval)
+
+
 @app.on_event("startup")
 async def startup() -> None:
-    global advanced_task, notification_task, operations_task, workflow_automation_task
+    global advanced_task, integration_task, notification_task, operations_task, workflow_automation_task
     init_taskhub()
     init_advanced()
+    init_integration()
     if os.getenv("WORKFLOW_ROLE_AUTOMATION_ENABLED", "false").lower() in {"1", "true", "yes", "on"}:
         workflow_automation_task = asyncio.create_task(workflow_automation_loop())
     notification_task = asyncio.create_task(notification_loop())
     operations_task = asyncio.create_task(operations_loop())
     advanced_task = asyncio.create_task(advanced_loop())
+    integration_task = asyncio.create_task(integration_loop())
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
-    global advanced_task, notification_task, operations_task, workflow_automation_task
-    for task in (workflow_automation_task, notification_task, operations_task, advanced_task):
+    global advanced_task, integration_task, notification_task, operations_task, workflow_automation_task
+    for task in (workflow_automation_task, notification_task, operations_task, advanced_task, integration_task):
         if not task:
             continue
         task.cancel()
@@ -160,6 +174,7 @@ async def shutdown() -> None:
     notification_task = None
     operations_task = None
     advanced_task = None
+    integration_task = None
 
 
 @app.get("/")

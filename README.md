@@ -151,6 +151,20 @@ release, credentials, and production code application always require a human.
 See `docs/ADVANCED_STAGE_COMPLETION.md` for APIs, configuration, and acceptance
 criteria.
 
+## Integrated Project Operations
+
+The Project Governance page now includes a four-step one-click onboarding wizard.
+It validates the Git authority and implementation nodes, then creates the project,
+A/B pipelines, isolated workspaces, source synchronization, budget, and governance
+policy in one idempotent transaction. The same page launches the first five-role
+workflow, shows centralized artifacts, model usage, devices, and governed actions,
+and pairs the Windows listing executor without returning its secret to TaskHub.
+
+See `docs/INTEGRATION_STAGE_COMPLETION.md` for the completed eight-task scope and
+security boundaries. Linux workers can publish files with
+`scripts/publish_artifact.py`; the Windows GUI worker publishes task artifacts
+automatically.
+
 ## Run
 
 ```bash

@@ -38,10 +38,11 @@ def task_title(prefix: str, title: str, max_length: int = 96) -> str:
 def invoke_requirement_flow(request: RequirementInvoke) -> dict[str, Any]:
     text = requirement_text(request)
     title = request.title or (text[:40] if text else "新的项目需求")
+    snapshot = capture_project_snapshot()
     common_metadata = {
         "source": "douyin_stage1_requirement_flow",
-        "project_repo": "192.168.31.17:/home/gryps/.openclaw/workspace/douyin-listing-workbench",
-        "git_snapshot": capture_project_snapshot(),
+        "project_repo": f"{snapshot.get('source_host', '')}:{snapshot.get('repo_root', '')}",
+        "git_snapshot": snapshot,
         **request.metadata,
     }
 

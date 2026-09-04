@@ -423,6 +423,38 @@
       .alert-row.info .alert-severity { color: var(--blue); }
       .alert-body { min-width: 0; overflow-wrap: anywhere; }
 
+      .wizard-steps {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      .wizard-step {
+        border-top: 3px solid var(--line);
+        padding: 8px 4px 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .wizard-step.active { border-color: var(--blue); color: var(--text); font-weight: 650; }
+      .wizard-step.done { border-color: var(--green); color: var(--green); }
+      .wizard-page { display: none; }
+      .wizard-page.active { display: grid; gap: 12px; }
+      .check-list { display: grid; gap: 8px; }
+      .check-row {
+        display: grid;
+        grid-template-columns: 24px minmax(120px, 0.4fr) minmax(0, 1fr);
+        gap: 8px;
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+        padding: 8px 0;
+      }
+      .check-mark { font-weight: 800; }
+      .check-mark.ok { color: var(--green); }
+      .check-mark.error { color: var(--red); }
+      .compact-table { max-width: 100%; overflow-x: auto; }
+
       .hidden {
         display: none;
       }
@@ -480,6 +512,9 @@
         .command-grid {
           grid-template-columns: 1fr;
         }
+        .wizard-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .check-row { grid-template-columns: 24px minmax(0, 1fr); }
+        .check-row .muted { grid-column: 2; }
         .content {
           padding: 14px;
           overflow: hidden;
@@ -498,7 +533,11 @@
         #codeTable,
         #riskQueue,
         #supervisionQueue,
-        #workerList {
+        #workerList,
+        #deviceTable,
+        #artifactTable,
+        #usageReport,
+        #governanceExecutionTable {
           max-width: 100%;
           overflow-x: auto;
         }
@@ -508,7 +547,11 @@
         #codeTable table,
         #riskQueue table,
         #supervisionQueue table,
-        #workerList table {
+        #workerList table,
+        #deviceTable table,
+        #artifactTable table,
+        #usageReport table,
+        #governanceExecutionTable table {
           min-width: 620px;
         }
       }
@@ -821,10 +864,117 @@
         </div>
 
         <div id="advanced" class="hidden">
-          <div class="toolbar"><h2>项目治理</h2><span class="muted" id="advancedStatus">等待刷新</span></div>
+          <div class="toolbar">
+            <h2>项目治理</h2>
+            <select id="activeProjectSelect" aria-label="当前项目"></select>
+            <span class="muted" id="advancedStatus">等待刷新</span>
+          </div>
           <div class="grid" id="advancedCards"></div>
+          <section class="section panel" id="onboardingWizard">
+            <div class="toolbar"><h2>一键接入新项目</h2><span class="muted" id="onboardingStatus">填写项目位置即可</span></div>
+            <div class="wizard-steps">
+              <div class="wizard-step active" data-wizard-indicator="0">1 项目位置</div>
+              <div class="wizard-step" data-wizard-indicator="1">2 生产线</div>
+              <div class="wizard-step" data-wizard-indicator="2">3 运行策略</div>
+              <div class="wizard-step" data-wizard-indicator="3">4 检查并接入</div>
+            </div>
+            <form class="form" id="onboardingForm">
+              <div class="wizard-page active" data-wizard-page="0">
+                <div class="grid">
+                  <label>项目名称<input name="name" value="抖音电商工作台" required /></label>
+                  <label>项目标识<input name="slug" value="douyin-listing-workbench" pattern="[a-z0-9][a-z0-9._-]+" required /></label>
+                  <label>Git 所在电脑<input name="sourceHost" value="192.168.31.17" required /></label>
+                  <label>Git 目录<input name="sourceRoot" value="/home/gryps/.openclaw/workspace/douyin-listing-workbench" required /></label>
+                  <label>SSH 用户<input name="sourceUser" value="gryps" required /></label>
+                  <label>SSH 端口<input name="sourcePort" type="number" value="22" min="1" max="65535" required /></label>
+                </div>
+              </div>
+              <div class="wizard-page" data-wizard-page="1">
+                <div class="grid">
+                  <label>A 线名称<input name="lineAName" value="电商开发 A 线" required /></label>
+                  <label>A 线节点<select name="lineAWorker" id="onboardWorkerA" required></select></label>
+                  <label>A 线工作区<input name="lineAPath" value="/home/gryps/apps/douyin-listing-workbench-a" required /></label>
+                  <label>A 线分支<input name="lineABranch" value="taskhub/implementation-31-31-01" required /></label>
+                  <label>B 线名称<input name="lineBName" value="电商开发 B 线" required /></label>
+                  <label>B 线节点<select name="lineBWorker" id="onboardWorkerB" required></select></label>
+                  <label>B 线工作区<input name="lineBPath" value="/home/gryps/apps/douyin-listing-workbench-b" required /></label>
+                  <label>B 线分支<input name="lineBBranch" value="taskhub/implementation-31-31-02" required /></label>
+                </div>
+              </div>
+              <div class="wizard-page" data-wizard-page="2">
+                <div class="grid">
+                  <label>默认分支<input name="defaultBranch" value="main" required /></label>
+                  <label>Git 自动同步间隔（分钟）<input name="syncMinutes" type="number" value="5" min="1" max="1440" required /></label>
+                  <label>模型月预算（USD）<input name="monthlyBudget" type="number" value="0" min="0" step="0.01" /></label>
+                  <label class="toggle"><input name="syncEnabled" type="checkbox" checked />自动读取 Git 状态</label>
+                  <label class="toggle"><input name="autonomyEnabled" type="checkbox" />启用低风险自动恢复</label>
+                </div>
+                <div class="muted">发布、上线、凭据变更和生产代码应用始终保留人工审批。</div>
+              </div>
+              <div class="wizard-page" data-wizard-page="3">
+                <div id="onboardingChecks" class="check-list"><div class="muted">点击“检查配置”后显示 Git 和节点检查结果。</div></div>
+              </div>
+              <div class="actions">
+                <button class="secondary hidden" type="button" id="onboardPrevious">上一步</button>
+                <button class="secondary" type="button" id="onboardNext">下一步</button>
+                <button class="secondary hidden" type="button" id="onboardPreflight">检查配置</button>
+                <button class="primary hidden" type="submit" id="onboardApply" disabled>一键接入</button>
+              </div>
+            </form>
+          </section>
+          <section class="section panel">
+            <div class="toolbar"><h2>开始首个完整需求</h2><span class="muted">自动进入五角色工作流</span></div>
+            <form class="form" id="firstWorkflowForm">
+              <label>要完成的需求<textarea name="requirement" required placeholder="直接描述业务目标、范围和验收要求"></textarea></label>
+              <label>选择生产线<select name="pipelineId" id="firstWorkflowPipeline"><option value="">由调度器选择</option></select></label>
+              <button class="primary" type="submit">创建完整工作流</button>
+            </form>
+            <pre class="section" id="firstWorkflowResult">等待创建</pre>
+          </section>
+          <div class="split section">
+            <section class="panel">
+              <div class="toolbar"><h2>Git 自动同步</h2><button class="secondary" id="sourceSyncNow" type="button">立即同步</button></div>
+              <div id="sourceSyncStatus" class="muted">等待刷新</div>
+            </section>
+            <section class="panel">
+              <div class="toolbar"><h2>模型用量与预算</h2><span class="muted" id="usageSummary">等待刷新</span></div>
+              <div id="usageReport" class="compact-table"></div>
+            </section>
+          </div>
+          <section class="section panel">
+            <div class="toolbar"><h2>制品交换中心</h2><span class="muted" id="artifactStatus">任务截图、报告和输出文件</span></div>
+            <div id="artifactTable" class="compact-table"></div>
+          </section>
+          <section class="section panel">
+            <div class="toolbar"><h2>节点与设备</h2><button class="secondary" type="button" id="deviceRefresh">检测设备</button></div>
+            <div id="deviceTable" class="compact-table"></div>
+            <form class="form section" id="devicePairForm">
+              <div class="toolbar"><h2>配对 Windows 上架执行器</h2><span class="muted">密钥加密保存在 Windows 当前用户下</span></div>
+              <div class="grid">
+                <label>Windows 节点<select name="workerUrl" id="pairWorkerUrl" required></select></label>
+                <label>上架平台 API 地址<input name="apiUrl" type="url" required /></label>
+                <label>Agent ID<input name="agentId" required /></label>
+                <label>Device Secret<input name="deviceSecret" type="password" minlength="32" autocomplete="new-password" required /></label>
+                <label>执行器目录<input name="listingRoot" value="C:\Users\user\migration-backups\192.168.31.21-full\full-executor\Executor" required /></label>
+              </div>
+              <button class="primary" type="submit">安全配对</button>
+            </form>
+            <pre class="section" id="devicePairResult">尚未配对</pre>
+          </section>
+          <section class="section panel">
+            <div class="toolbar"><h2>自治动作执行记录</h2><span class="muted">仅执行治理策略允许的低风险动作</span></div>
+            <form class="form" id="governanceExecuteForm">
+              <div class="grid">
+                <label>动作<select name="action"><option value="refresh_context">刷新 Git 上下文</option><option value="retry_task">重试失败任务</option><option value="requeue_expired_lease">回收超时任务</option><option value="run_quality_evaluation">运行质量评估</option></select></label>
+                <label>对象 ID<input name="entityId" value="project" required /></label>
+              </div>
+              <button class="secondary" type="submit">按治理策略执行</button>
+            </form>
+            <pre class="section" id="governanceExecuteResult">等待执行</pre>
+            <div id="governanceExecutionTable" class="compact-table"></div>
+          </section>
           <form class="form section" id="projectRegistryForm">
-            <div class="toolbar"><h2>项目与代码权威源</h2><span class="muted">只登记，不从控制中心执行远程命令</span></div>
+            <div class="toolbar"><h2>项目与代码权威源（高级编辑）</h2><span class="muted">通常使用上方一键接入即可</span></div>
             <div class="grid">
               <label>项目标识<input name="slug" value="douyin-listing-workbench" required /></label>
               <label>项目名称<input name="name" value="抖音电商工作台" required /></label>
@@ -1034,7 +1184,9 @@
     </main>
 
     <script>
-      const project = "douyin-listing-workbench";
+      let project = "douyin-listing-workbench";
+      let onboardingStep = 0;
+      let onboardingReady = false;
       let selectedTaskId = null;
       let selectedTaskApprovalHash = "";
       let selectedQualityTaskId = null;
@@ -2038,6 +2190,7 @@
           document.getElementById("plannerPipelineSelect"),
           document.getElementById("qualityPipelineSelect"),
           document.getElementById("codePipelineSelect"),
+          document.getElementById("firstWorkflowPipeline"),
         ]) {
           const selected = select.value;
           const emptyLabel = select.id === "pipelineFilter" ? "全部流水线" : "不绑定流水线";
@@ -2054,6 +2207,16 @@
           const emptyLabel = select.id === "pipelineWorkerSelect" ? "按任务类型调度" : "使用流水线默认节点";
           select.innerHTML = `<option value="">${emptyLabel}</option>${workerOptions}`;
           if ([...select.options].some(option => option.value === selected)) select.value = selected;
+        }
+        const implementationWorkers = cachedWorkers.filter(item => item.worker_id && String(item.task_types).includes("code.change"));
+        const onboardOptions = (implementationWorkers.length ? implementationWorkers : cachedWorkers.filter(item => item.worker_id))
+          .map(item => `<option value="${escapeHtml(item.worker_id)}">${escapeHtml(item.worker_id)} (${escapeHtml(item.status)})</option>`).join("");
+        for (const [index, id] of ["onboardWorkerA", "onboardWorkerB"].entries()) {
+          const select = document.getElementById(id);
+          const selected = select.value;
+          select.innerHTML = onboardOptions;
+          if ([...select.options].some(option => option.value === selected)) select.value = selected;
+          else if (select.options[index]) select.selectedIndex = index;
         }
       };
 
@@ -2538,6 +2701,89 @@
         renderWorkQueue(document.getElementById("supervisionQueue"), queue, "当前没有待裁决任务");
       };
 
+      const onboardingPayload = () => {
+        const form = new FormData(document.getElementById("onboardingForm"));
+        const slug = String(form.get("slug") || "").trim();
+        return {
+          slug, name: form.get("name"), source_host: form.get("sourceHost"), source_root: form.get("sourceRoot"),
+          default_branch: form.get("defaultBranch"), source_ssh_user: form.get("sourceUser"),
+          source_ssh_port: Number(form.get("sourcePort")), sync_enabled: form.get("syncEnabled") === "on",
+          sync_interval_seconds: Number(form.get("syncMinutes")) * 60,
+          monthly_budget_usd: Number(form.get("monthlyBudget") || 0),
+          autonomy_enabled: form.get("autonomyEnabled") === "on",
+          workspaces: [
+            {name: form.get("lineAName"), worker_id: form.get("lineAWorker"), workspace_id: `${slug}-a`, workspace_path: form.get("lineAPath"), branch: form.get("lineABranch")},
+            {name: form.get("lineBName"), worker_id: form.get("lineBWorker"), workspace_id: `${slug}-b`, workspace_path: form.get("lineBPath"), branch: form.get("lineBBranch")},
+          ],
+        };
+      };
+
+      const setOnboardingStep = (next) => {
+        onboardingStep = Math.max(0, Math.min(3, next));
+        document.querySelectorAll("[data-wizard-page]").forEach(item => item.classList.toggle("active", Number(item.dataset.wizardPage) === onboardingStep));
+        document.querySelectorAll("[data-wizard-indicator]").forEach(item => {
+          const index = Number(item.dataset.wizardIndicator);
+          item.classList.toggle("active", index === onboardingStep);
+          item.classList.toggle("done", index < onboardingStep);
+        });
+        document.getElementById("onboardPrevious").classList.toggle("hidden", onboardingStep === 0);
+        document.getElementById("onboardNext").classList.toggle("hidden", onboardingStep === 3);
+        document.getElementById("onboardPreflight").classList.toggle("hidden", onboardingStep !== 3);
+        document.getElementById("onboardApply").classList.toggle("hidden", onboardingStep !== 3);
+      };
+
+      const renderOnboardingSteps = (steps) => {
+        document.getElementById("onboardingChecks").innerHTML = steps.map(item => `
+          <div class="check-row">
+            <span class="check-mark ${escapeHtml(item.status)}">${item.status === "ok" ? "OK" : "!"}</span>
+            <strong>${escapeHtml(item.label)}</strong><span class="muted">${escapeHtml(item.detail)}</span>
+          </div>`).join("");
+      };
+
+      const preflightOnboarding = async () => {
+        const status = document.getElementById("onboardingStatus");
+        status.textContent = "正在检查 Git 和节点";
+        onboardingReady = false;
+        document.getElementById("onboardApply").disabled = true;
+        try {
+          const result = await api("/taskhub/integration/onboarding/preflight", {method: "POST", body: JSON.stringify(onboardingPayload())});
+          renderOnboardingSteps(result.steps || []);
+          onboardingReady = result.ready;
+          document.getElementById("onboardApply").disabled = !result.ready;
+          status.textContent = result.ready ? "检查通过，可以接入" : "存在未通过项目";
+        } catch (error) {
+          status.textContent = `检查失败：${error.message}`;
+        }
+      };
+
+      const applyOnboarding = async (event) => {
+        event.preventDefault();
+        if (!onboardingReady) return;
+        const status = document.getElementById("onboardingStatus");
+        status.textContent = "正在创建项目、生产线和策略";
+        const result = await api("/taskhub/integration/onboarding/apply", {method: "POST", body: JSON.stringify(onboardingPayload())});
+        renderOnboardingSteps(result.steps || []);
+        project = result.project;
+        status.textContent = "接入完成，可以提交首个需求";
+        await loadPipelines();
+        await loadAdvanced();
+      };
+
+      const renderIntegration = (sync, usage, artifacts, devices, executions) => {
+        document.getElementById("sourceSyncStatus").innerHTML = sync.status === "ok"
+          ? `<span class="result-pass">正常</span> · 最近 ${escapeHtml(formatDate(sync.last_synced_at))} · 下次 ${escapeHtml(formatDate(sync.next_sync_at))}`
+          : `<span class="result-fail">${escapeHtml(sync.status || "未配置")}</span> ${escapeHtml(sync.last_error || "")}`;
+        document.getElementById("usageSummary").textContent = `${usage.total_calls || 0} 次 · ${usage.total_tokens || 0} tokens · $${Number(usage.spent_usd || 0).toFixed(4)}`;
+        document.getElementById("usageReport").innerHTML = usage.groups?.length ? `<table><thead><tr><th>角色</th><th>Provider / Model</th><th>调用</th><th>Token</th><th>费用</th><th>失败</th></tr></thead><tbody>${usage.groups.map(item => `<tr><td>${escapeHtml(item.role)}</td><td>${escapeHtml(item.provider)} / ${escapeHtml(item.model || "默认")}</td><td>${item.calls}</td><td>${Number(item.prompt_tokens || 0) + Number(item.completion_tokens || 0)}</td><td>$${Number(item.estimated_cost_usd || 0).toFixed(4)}</td><td>${item.failed_calls}</td></tr>`).join("")}</tbody></table><div class="muted section">${escapeHtml(usage.quota_note || "")}</div>` : '<div class="muted">首个模型调用后生成报表。</div>';
+        document.getElementById("artifactTable").innerHTML = artifacts.length ? `<table><thead><tr><th>文件</th><th>节点</th><th>大小</th><th>SHA-256</th><th>时间</th><th></th></tr></thead><tbody>${artifacts.map(item => `<tr><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.worker_id)}</td><td>${Math.ceil(Number(item.size_bytes) / 1024)} KB</td><td><code>${escapeHtml(String(item.sha256).slice(0, 12))}</code></td><td>${escapeHtml(formatDate(item.created_at))}</td><td><a href="/taskhub/integration/artifacts/${encodeURIComponent(item.id)}/download">下载</a></td></tr>`).join("")}</tbody></table>` : '<div class="muted">节点完成带文件的任务后，制品会自动汇集到这里。</div>';
+        document.getElementById("deviceTable").innerHTML = devices.length ? `<table><thead><tr><th>节点</th><th>平台</th><th>状态</th><th>能力</th><th>ADB</th><th>上架执行器</th></tr></thead><tbody>${devices.map(item => `<tr><td>${escapeHtml(item.worker_id)}</td><td>${escapeHtml(item.platform)}</td><td>${statusBadge(item.status)}</td><td>${escapeHtml((item.task_types || []).join(", "))}</td><td>${item.capabilities?.adb_ready ? "已连接" : "-"}</td><td>${item.listing_paired ? `已配对 ${escapeHtml(item.listing_agent_mask || "")}` : "未配对"}</td></tr>`).join("")}</tbody></table>` : '<div class="muted">尚未发现节点。</div>';
+        const pairSelect = document.getElementById("pairWorkerUrl");
+        const prior = pairSelect.value;
+        pairSelect.innerHTML = devices.filter(item => String(item.platform).toLowerCase().includes("windows")).map(item => `<option value="${escapeHtml(item.url)}">${escapeHtml(item.worker_id)} · ${escapeHtml(item.url)}</option>`).join("");
+        if ([...pairSelect.options].some(option => option.value === prior)) pairSelect.value = prior;
+        document.getElementById("governanceExecutionTable").innerHTML = executions.length ? `<table><thead><tr><th>动作</th><th>对象</th><th>判定</th><th>执行状态</th><th>时间</th></tr></thead><tbody>${executions.map(item => `<tr><td>${escapeHtml(item.action)}</td><td>${escapeHtml(item.entity_id)}</td><td>${escapeHtml(item.decision)}</td><td>${escapeHtml(item.status)}</td><td>${escapeHtml(formatDate(item.created_at))}</td></tr>`).join("")}</tbody></table>` : '<div class="muted">暂无自治动作执行记录。</div>';
+      };
+
       const renderAdvanced = (dashboard, projects, scheduler, quality, context) => {
         const registered = projects.find(item => item.slug === project);
         document.getElementById("advancedStatus").textContent = registered ? "项目治理已启用" : "项目尚未登记";
@@ -2565,12 +2811,21 @@
       };
 
       const loadAdvanced = async () => {
-        const [dashboard, projects, scheduler, quality] = await Promise.all([
+        const [dashboard, projects, scheduler, quality, sync, usage, artifacts, devices, executions] = await Promise.all([
           api(`/taskhub/advanced/dashboard?project=${project}`),
           api("/taskhub/advanced/projects"),
           api(`/taskhub/advanced/scheduler?project=${project}`),
           api(`/taskhub/advanced/quality?project=${project}`),
+          api(`/taskhub/integration/projects/${encodeURIComponent(project)}/sync`),
+          api(`/taskhub/advanced/usage?project=${encodeURIComponent(project)}&days=30`),
+          api(`/taskhub/integration/artifacts?project=${encodeURIComponent(project)}&limit=50`),
+          api("/taskhub/integration/devices?refresh=true"),
+          api(`/taskhub/integration/governance/executions?project=${encodeURIComponent(project)}&limit=30`),
         ]);
+        const projectSelect = document.getElementById("activeProjectSelect");
+        const projectOptions = projects.map(item => `<option value="${escapeHtml(item.slug)}">${escapeHtml(item.name)} · ${escapeHtml(item.slug)}</option>`).join("");
+        projectSelect.innerHTML = projectOptions || `<option value="${escapeHtml(project)}">${escapeHtml(project)}</option>`;
+        if ([...projectSelect.options].some(option => option.value === project)) projectSelect.value = project;
         let context = null;
         if (dashboard.project_registered) context = await api(`/taskhub/advanced/projects/${project}/context-pack`);
         const select = document.getElementById("advancedPipelineSelect");
@@ -2580,6 +2835,7 @@
           .map(item => `<option value="${item.id}">${escapeHtml(item.name)} / ${escapeHtml(item.workspace_id)}</option>`).join("");
         if ([...select.options].some(option => option.value === selected)) select.value = selected;
         renderAdvanced(dashboard, projects, scheduler, quality, context);
+        renderIntegration(sync, usage, artifacts, devices, executions);
       };
 
       const submitProjectRegistry = async (event) => {
@@ -2633,6 +2889,58 @@
           allowed_actions: ["retry_task", "requeue_expired_lease", "run_quality_evaluation", "refresh_context"],
           require_human_release: true, require_human_publish: true,
         })}); await loadAdvanced();
+      };
+
+      const launchFirstWorkflow = async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.target);
+        const output = document.getElementById("firstWorkflowResult");
+        output.textContent = "正在调用规划角色并创建工作流";
+        try {
+          const result = await api(`/taskhub/integration/projects/${encodeURIComponent(project)}/first-workflow`, {
+            method: "POST", body: JSON.stringify({
+              requirement: form.get("requirement"), pipeline_id: form.get("pipelineId") || null, priority: 70,
+            }),
+          });
+          output.textContent = show({workflow: result.workflow, created: result.created, next: result.next});
+          await loadPipelines();
+        } catch (error) {
+          output.textContent = `创建失败：${error.message}`;
+        }
+      };
+
+      const pairDevice = async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.target);
+        const output = document.getElementById("devicePairResult");
+        output.textContent = "正在安全下发配对信息";
+        try {
+          const result = await api("/taskhub/integration/devices/listing/pair", {method: "POST", body: JSON.stringify({
+            worker_url: form.get("workerUrl"), listing_api_base_url: form.get("apiUrl"),
+            listing_agent_id: form.get("agentId"), device_secret: form.get("deviceSecret"), listing_root: form.get("listingRoot"),
+          })});
+          event.target.querySelector('[name="deviceSecret"]').value = "";
+          output.textContent = show(result);
+          await loadAdvanced();
+        } catch (error) {
+          output.textContent = `配对失败：${error.message}`;
+        }
+      };
+
+      const executeGovernance = async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.target);
+        const output = document.getElementById("governanceExecuteResult");
+        try {
+          const result = await api("/taskhub/integration/governance/execute", {method: "POST", body: JSON.stringify({
+            project, action: form.get("action"), entity_id: form.get("entityId"), risk_level: "low",
+            reason: "管理员从项目治理页面执行",
+          })});
+          output.textContent = show(result);
+          await loadAdvanced();
+        } catch (error) {
+          output.textContent = `执行失败：${error.message}`;
+        }
       };
 
       const loadSystem = async () => {
@@ -2859,6 +3167,31 @@
       document.getElementById("memoryForm").addEventListener("submit", submitMemory);
       document.getElementById("budgetForm").addEventListener("submit", submitBudget);
       document.getElementById("governanceForm").addEventListener("submit", submitGovernance);
+      document.getElementById("onboardingForm").addEventListener("submit", applyOnboarding);
+      document.getElementById("onboardingForm").addEventListener("input", () => {
+        onboardingReady = false;
+        document.getElementById("onboardApply").disabled = true;
+      });
+      document.getElementById("onboardNext").addEventListener("click", () => setOnboardingStep(onboardingStep + 1));
+      document.getElementById("onboardPrevious").addEventListener("click", () => setOnboardingStep(onboardingStep - 1));
+      document.getElementById("onboardPreflight").addEventListener("click", preflightOnboarding);
+      document.getElementById("firstWorkflowForm").addEventListener("submit", launchFirstWorkflow);
+      document.getElementById("sourceSyncNow").addEventListener("click", async () => {
+        const target = document.getElementById("sourceSyncStatus");
+        target.textContent = "正在读取权威源 Git 状态";
+        try { await api(`/taskhub/integration/projects/${encodeURIComponent(project)}/sync`, {method: "POST", body: "{}"}); await loadAdvanced(); }
+        catch (error) { target.textContent = `同步失败：${error.message}`; }
+      });
+      document.getElementById("deviceRefresh").addEventListener("click", loadAdvanced);
+      document.getElementById("devicePairForm").addEventListener("submit", pairDevice);
+      document.getElementById("governanceExecuteForm").addEventListener("submit", executeGovernance);
+      document.getElementById("activeProjectSelect").addEventListener("change", async (event) => {
+        project = event.target.value;
+        const projectInput = document.querySelector('#createForm [name="project"]');
+        if (projectInput) projectInput.value = project;
+        await loadPipelines();
+        await loadAdvanced();
+      });
       document.getElementById("marketCollectionForm").addEventListener("submit", async (event) => {
         event.preventDefault(); const form = new FormData(event.target);
         await createWindowsAutomationTask("market.price.collect", {keyword: form.get("keyword"), count: Number(form.get("count")), max_scroll: Number(form.get("maxScroll"))}, `采集商品价格：${form.get("keyword")}`);

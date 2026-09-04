@@ -503,6 +503,13 @@ def usage_summary(project: str, days: int = Query(30, ge=1, le=366)) -> dict[str
                 from taskhub_model_usage where project=%s and created_at >= now()-(%s || ' days')::interval
                 group by provider,model,role order by calls desc""", (project, days))
             rows = cur.fetchall()
+            cur.execute(
+                """select date_trunc('day',created_at)::date as usage_day,count(*) as calls,
+                sum(prompt_tokens) prompt_tokens,sum(completion_tokens) completion_tokens,
+                sum(estimated_cost_usd)::float estimated_cost_usd
+                from taskhub_model_usage where project=%s and created_at >= now()-(%s || ' days')::interval
+                group by 1 order by 1""", (project, days))
+            daily = cur.fetchall()
             cur.execute("select * from taskhub_project_budgets where project=%s", (project,))
             budget = cur.fetchone()
             cur.execute(
@@ -512,7 +519,11 @@ def usage_summary(project: str, days: int = Query(30, ge=1, le=366)) -> dict[str
             month_spent = float(cur.fetchone()["spent"] or 0)
     spent = sum(float(row["estimated_cost_usd"] or 0) for row in rows)
     limit = float((budget or {}).get("monthly_budget_usd") or 0)
-    return {"project": project, "days": days, "groups": rows, "spent_usd": spent, "month_spent_usd": month_spent, "budget": budget,
+    return {"project": project, "days": days, "groups": rows, "daily": daily,
+            "total_calls": sum(int(row["calls"] or 0) for row in rows),
+            "total_tokens": sum(int(row["prompt_tokens"] or 0) + int(row["completion_tokens"] or 0) for row in rows),
+            "spent_usd": spent, "month_spent_usd": month_spent, "budget": budget,
+            "quota_note": "Plus/Pro CLI 仅记录调用成功、失败和本地可见 token；账号官方剩余额度不可由 CLI 完整读取。",
             "budget_status": "unlimited" if not limit else ("exceeded" if month_spent >= limit else "warning" if month_spent >= limit * float(budget["warning_ratio"]) else "ok")}
 
 

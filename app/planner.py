@@ -1327,12 +1327,13 @@ def multi_plan(request: PlannerRequest) -> dict[str, Any]:
 def create_planner_tasks(request: PlannerRequest, plan: dict[str, Any], actor: str) -> dict[str, Any]:
     title = request.title or request.requirement[:40] or "新的项目需求"
     evidence = create_workflow_evidence(request.project, request.requirement, plan, request.pipeline_id)
+    snapshot = capture_project_snapshot()
     common_metadata = {
         "source": "llm_planner",
         "planner_source": plan.get("source"),
         "planner_model": plan.get("model"),
-        "project_repo": "192.168.31.17:/home/gryps/.openclaw/workspace/douyin-listing-workbench",
-        "git_snapshot": capture_project_snapshot(),
+        "project_repo": f"{snapshot.get('source_host', '')}:{snapshot.get('repo_root', '')}",
+        "git_snapshot": snapshot,
         "workflow_id": evidence["workflow_id"],
         "evidence_root_hash": evidence["evidence_root_hash"],
         **request.metadata,
