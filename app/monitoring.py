@@ -101,7 +101,7 @@ def collect_database_alerts(timestamp: datetime | None = None) -> list[dict[str,
                 """
                 select id, project, state, summary, active_role, updated_at
                 from taskhub_workflows
-                where state not in ('released', 'canceled') and updated_at < %s
+                where state not in ('completed', 'canceled') and updated_at < %s
                 order by updated_at
                 limit 200
                 """,
@@ -219,7 +219,7 @@ def collect_database_alerts(timestamp: datetime | None = None) -> list[dict[str,
                 ))
 
     for item in provider_health():
-        if item["status"] not in {"degraded", "cooldown", "probing"}:
+        if item["status"] not in {"degraded", "cooldown", "probing", "recovering"}:
             continue
         severity = "critical" if item.get("reason") == "quota_exceeded" else "warning"
         alerts.append(make_alert(

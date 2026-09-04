@@ -37,6 +37,13 @@ def _cooldown_seconds(reason: str) -> int:
         return 60
 
 
+def _recovery_successes() -> int:
+    try:
+        return max(1, min(10, int(os.getenv("PROVIDER_RECOVERY_SUCCESSES", "2"))))
+    except ValueError:
+        return 2
+
+
 def before_attempt(provider: str, now: float | None = None) -> tuple[bool, dict[str, Any]]:
     timestamp = time.time() if now is None else now
     with _LOCK:
@@ -53,6 +60,7 @@ def before_attempt(provider: str, now: float | None = None) -> tuple[bool, dict[
             }
         state["status"] = "probing"
         state["last_probe_at"] = timestamp
+        state["retry_at"] = timestamp + max(5, int(os.getenv("PROVIDER_PROBE_LOCK_SECONDS", "30")))
         return True, {
             "status": "probing",
             "event": "recovery_probe",
@@ -64,14 +72,17 @@ def record_failure(provider: str, reason: str, now: float | None = None) -> dict
     timestamp = time.time() if now is None else now
     if reason not in TRANSIENT_REASONS:
         return {"status": "healthy", "event": "not_degraded", "reason": reason}
-    retry_at = timestamp + _cooldown_seconds(reason)
     with _LOCK:
         previous = _STATE.get(provider, {})
+        failure_count = int(previous.get("failure_count", 0)) + 1
+        backoff_factor = min(8, 2 ** max(0, failure_count - 1))
+        retry_at = timestamp + (_cooldown_seconds(reason) * backoff_factor)
         state = {
             "provider": provider,
             "status": "degraded",
             "reason": reason,
-            "failure_count": int(previous.get("failure_count", 0)) + 1,
+            "failure_count": failure_count,
+            "recovery_success_count": 0,
             "failed_at": timestamp,
             "retry_at": retry_at,
         }
@@ -89,17 +100,26 @@ def record_success(provider: str, now: float | None = None) -> dict[str, Any]:
     timestamp = time.time() if now is None else now
     with _LOCK:
         previous = _STATE.get(provider)
-        recovered = bool(previous and previous.get("status") in {"degraded", "probing"})
+        recovering = bool(previous and previous.get("status") in {"degraded", "probing", "recovering"})
+        success_count = int(previous.get("recovery_success_count", 0)) + 1 if recovering else 0
+        required = _recovery_successes()
+        recovered = recovering and success_count >= required
+        status = "healthy" if not recovering or recovered else "recovering"
         _STATE[provider] = {
             "provider": provider,
-            "status": "healthy",
+            "status": status,
             "reason": "ok",
-            "failure_count": 0,
+            "failure_count": 0 if recovered or not recovering else int(previous.get("failure_count", 0)),
+            "recovery_success_count": 0 if recovered else success_count,
+            "recovery_successes_required": required,
+            "retry_at": timestamp if status == "recovering" else None,
             "recovered_at": timestamp if recovered else previous.get("recovered_at") if previous else None,
         }
     return {
-        "status": "healthy",
-        "event": "recovered_to_preferred" if recovered else "success",
+        "status": status,
+        "event": "recovered_to_preferred" if recovered else "recovery_confirming" if recovering else "success",
+        "recovery_success_count": success_count,
+        "recovery_successes_required": required,
         "recovered_at": _iso(timestamp) if recovered else None,
     }
 
@@ -114,6 +134,8 @@ def provider_health() -> list[dict[str, Any]]:
                     "status": state.get("status", "healthy"),
                     "reason": state.get("reason", "ok"),
                     "failure_count": state.get("failure_count", 0),
+                    "recovery_success_count": state.get("recovery_success_count", 0),
+                    "recovery_successes_required": state.get("recovery_successes_required", _recovery_successes()),
                     "failed_at": _iso(state.get("failed_at")),
                     "retry_at": _iso(state.get("retry_at")),
                     "recovered_at": _iso(state.get("recovered_at")),

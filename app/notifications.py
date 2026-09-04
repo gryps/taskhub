@@ -15,6 +15,7 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
 from app.monitoring import collect_database_alerts
+from app.operations import escalate_alerts
 from app.planner import env_file_status, read_env_file, schedule_control_restart, write_env_file
 from app.taskhub import connect, now_utc, redact
 
@@ -134,7 +135,7 @@ def send_webhook(channel: str, webhook_url: str, alert: dict[str, Any], test: bo
 def queue_active_alerts(config: dict[str, Any]) -> int:
     threshold = SEVERITY_RANK[config["minimum_severity"]]
     alerts = [
-        alert for alert in collect_database_alerts()
+        alert for alert in escalate_alerts(collect_database_alerts())
         if not alert["acknowledged"] and SEVERITY_RANK[alert["severity"]] <= threshold
     ]
     queued = 0
@@ -167,7 +168,7 @@ def deliver_due_alerts(config: dict[str, Any]) -> dict[str, int]:
                 select delivery.*
                 from taskhub_alert_deliveries delivery
                 left join taskhub_alert_acknowledgements ack
-                  on ack.fingerprint = delivery.fingerprint
+                  on ack.fingerprint = coalesce(delivery.alert->>'source_fingerprint', delivery.fingerprint)
                 where delivery.channel = %s
                   and delivery.status in ('pending', 'failed')
                   and delivery.attempt_count < %s

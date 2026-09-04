@@ -556,7 +556,7 @@ def providers() -> dict[str, Any]:
         "selected": selected or None,
         "providers": [provider_config(provider) for provider in ["chatgpt_plus_account", "chatgpt_pro_account", "gpt_api", "deepseek_api", "minimax_api"]],
         "fallback": "plus -> pro -> api",
-        "recovery_policy": "retry preferred provider after cooldown and fail back immediately on success",
+        "recovery_policy": "probe preferred provider after cooldown; confirm consecutive successes before stable failback",
     }
 
 

@@ -13,6 +13,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
+from app.contracts import handoff_contract, validate_task_input, validate_task_result
 from app.workflow_graph import WORKFLOW_STATES, resolve_workflow_transition
 
 
@@ -55,10 +56,12 @@ APPROVAL_DOWNSTREAM_TYPES = {
     "requirement.split",
     "test.run",
     "h5.inspect",
+    "market.price.collect",
+    "commerce.listing.draft",
 }
 IMPLEMENTATION_TASK_TYPES = {"code.change", "code.diff.preview", "code.change.apply"}
 QUALITY_TASK_TYPES = {"test.run", "quality.env.check", "review.model"}
-GUI_TASK_TYPES = {"h5.inspect"}
+GUI_TASK_TYPES = {"h5.inspect", "market.price.collect", "commerce.listing.draft"}
 
 
 class TaskCreate(BaseModel):
@@ -436,6 +439,42 @@ def init_taskhub() -> None:
                 )
                 """
             )
+            cur.execute(
+                """
+                create table if not exists taskhub_task_handoffs (
+                    id uuid primary key,
+                    task_id uuid not null unique references taskhub_tasks(id) on delete cascade,
+                    workflow_id uuid,
+                    contract_version text not null,
+                    producer text not null,
+                    consumer text not null,
+                    status text not null check (status in ('pending', 'validated', 'rejected')),
+                    contract jsonb not null default '{}'::jsonb,
+                    payload jsonb not null default '{}'::jsonb,
+                    payload_hash text,
+                    validation_errors jsonb not null default '[]'::jsonb,
+                    created_at timestamptz not null,
+                    updated_at timestamptz not null
+                )
+                """
+            )
+            cur.execute(
+                """
+                create table if not exists taskhub_remediation_actions (
+                    id uuid primary key,
+                    fingerprint text not null,
+                    alert_code text not null,
+                    entity_type text not null,
+                    entity_id text not null,
+                    action text not null,
+                    mode text not null,
+                    status text not null check (status in ('proposed', 'executed', 'skipped', 'failed')),
+                    detail jsonb not null default '{}'::jsonb,
+                    created_at timestamptz not null,
+                    completed_at timestamptz
+                )
+                """
+            )
             cur.execute("create index if not exists idx_taskhub_audit_created on taskhub_audit_events (created_at desc)")
             cur.execute("create index if not exists idx_taskhub_workflows_project on taskhub_workflows (project, created_at desc)")
             cur.execute("create index if not exists idx_taskhub_evidence_workflow on taskhub_role_evidence (workflow_id, ordinal)")
@@ -447,6 +486,10 @@ def init_taskhub() -> None:
             cur.execute(
                 "create index if not exists idx_taskhub_alert_deliveries_queue "
                 "on taskhub_alert_deliveries (status, next_retry_at, created_at)"
+            )
+            cur.execute(
+                "create index if not exists idx_taskhub_remediation_recent "
+                "on taskhub_remediation_actions (fingerprint, action, created_at desc)"
             )
             cur.execute(
                 """
@@ -1009,6 +1052,11 @@ def get_workflow(workflow_id: uuid.UUID) -> dict[str, Any]:
                 (str(workflow_id),),
             )
             tasks = cur.fetchall()
+            cur.execute(
+                "select * from taskhub_task_handoffs where workflow_id = %s order by created_at",
+                (workflow_id,),
+            )
+            handoffs = cur.fetchall()
     return {
         **workflow,
         "context": redact(workflow.get("context")),
@@ -1019,6 +1067,7 @@ def get_workflow(workflow_id: uuid.UUID) -> dict[str, Any]:
             for row in role_runs
         ],
         "tasks": tasks,
+        "handoffs": handoffs,
     }
 
 
@@ -1090,7 +1139,12 @@ def create_task(request: Request, payload: TaskCreate) -> dict[str, Any]:
 def insert_task(cur, request: TaskCreate, actor: str, reason: str) -> dict[str, Any]:
     task_id = uuid.uuid4()
     created_at = now_utc()
+    try:
+        validate_task_input(request.type, request.input)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     approval_hash = canonical_hash(request.input.get("approval_plan", [])) if request.type == "review.human" else None
+    contract = handoff_contract(request.type, request.input, request.metadata)
     workspace_id = request.workspace_id.strip() if request.workspace_id else None
     target_worker_id = request.target_worker_id.strip() if request.target_worker_id else None
     pipeline_worker_id = None
@@ -1154,6 +1208,24 @@ def insert_task(cur, request: TaskCreate, actor: str, reason: str) -> dict[str, 
             raise HTTPException(status_code=409, detail="idempotency conflict")
         return row
     add_history(cur, task_id, None, "pending", actor, reason, {"title": request.title})
+    workflow_id = request.metadata.get("workflow_id")
+    try:
+        workflow_uuid = uuid.UUID(str(workflow_id)) if workflow_id else None
+    except ValueError:
+        workflow_uuid = None
+    cur.execute(
+        """
+        insert into taskhub_task_handoffs
+            (id, task_id, workflow_id, contract_version, producer, consumer, status,
+             contract, payload, created_at, updated_at)
+        values (%s, %s, %s, %s, %s, %s, 'pending', %s, '{}'::jsonb, %s, %s)
+        on conflict (task_id) do nothing
+        """,
+        (
+            uuid.uuid4(), task_id, workflow_uuid, contract["version"], contract["producer"],
+            contract["consumer"], Jsonb(contract), created_at, created_at,
+        ),
+    )
     for dependency_id in request.depends_on:
         add_task_dependency(cur, task_id, dependency_id)
     return row
@@ -1664,6 +1736,29 @@ def complete_task(task_id: uuid.UUID, request: TaskComplete) -> dict[str, Any]:
             task = load_task_for_update(cur, task_id)
             assert_transition(task["state"], "succeeded")
             assert_lease_owner(task, request.worker_id, request.lease_token)
+            validation = validate_task_result(task["type"], request.result)
+            if validation["strict"] and not validation["valid"]:
+                contract_error = {"code": "HANDOFF_CONTRACT_REJECTED", "errors": validation["errors"]}
+                cur.execute(
+                    """
+                    update taskhub_tasks set state = 'failed', error = %s, lease_token = null,
+                        lease_expires_at = null, updated_at = %s where id = %s
+                    """,
+                    (Jsonb(contract_error), completed_at, task_id),
+                )
+                cur.execute(
+                    """
+                    update taskhub_task_handoffs set status = 'rejected', payload = %s,
+                        payload_hash = %s, validation_errors = %s, updated_at = %s where task_id = %s
+                    """,
+                    (Jsonb(redact(request.result)), canonical_hash(request.result),
+                     Jsonb(validation["errors"]), completed_at, task_id),
+                )
+                release_resource_leases(cur, task_id)
+                add_history(cur, task_id, "running", "failed", request.worker_id, "handoff contract rejected", contract_error)
+                reconcile_workflow_tasks(cur, task, request.worker_id)
+                conn.commit()
+                raise HTTPException(status_code=422, detail={"message": "task result violates handoff contract", **validation})
             cur.execute(
                 """
                 update taskhub_tasks
@@ -1675,6 +1770,13 @@ def complete_task(task_id: uuid.UUID, request: TaskComplete) -> dict[str, Any]:
                 (Jsonb(redact(request.result)), completed_at, completed_at, task_id),
             )
             row = cur.fetchone()
+            cur.execute(
+                """
+                update taskhub_task_handoffs set status = 'validated', payload = %s,
+                    payload_hash = %s, validation_errors = '[]'::jsonb, updated_at = %s where task_id = %s
+                """,
+                (Jsonb(redact(request.result)), canonical_hash(request.result), completed_at, task_id),
+            )
             release_resource_leases(cur, task_id)
             add_history(cur, task_id, task["state"], "succeeded", request.worker_id, "task completed", request.result)
             reconcile_workflow_tasks(cur, task, request.worker_id)

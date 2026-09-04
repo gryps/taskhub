@@ -75,18 +75,36 @@ are persisted and retried; acknowledging an alert suppresses any pending deliver
 
 ## Provider Recovery
 
-Transient provider failures start a configurable cooldown. After the cooldown,
-the preferred provider is probed again; a successful probe returns the current
-request to that preferred provider. The default is:
+Transient provider failures start an exponential cooldown. After the cooldown,
+the preferred provider is probed again. A successful probe serves the current
+request, while stable failback requires consecutive successful probes to avoid
+route flapping. The defaults are:
 
 ```bash
 PROVIDER_COOLDOWN_SECONDS=60
+PROVIDER_RECOVERY_SUCCESSES=2
+PROVIDER_PROBE_LOCK_SECONDS=30
 ```
+
+## Escalation And Recovery
+
+The operations policy escalates unacknowledged alerts and records every safe
+recovery proposal. It defaults to disabled `dry_run`; active mode only executes
+allowlisted actions. Expired leases can be requeued, while failed tasks and role
+runs require explicit `auto_retry` or `auto_retry_roles` opt-in. Every proposal,
+execution, skip, and failure is persisted in `taskhub_remediation_actions`.
+
+Task handoffs use `taskhub.handoff/v1`. Inputs and outputs for Windows price
+collection and listing-draft tasks are strictly validated and stored with a
+payload hash. Listing automation only saves a draft or waits for category input;
+final publication remains a human action.
 
 ## Execution Nodes
 
 - `192.168.31.24:8124`: Linux quality worker using an independent Git worktree.
 - `192.168.31.34:8125`: Windows GUI worker for headed Edge/Playwright H5 checks.
+  It also runs `market.price.collect` when the migrated ADB collector is present,
+  and advertises `commerce.listing.draft` only after the listing executor is paired.
 - `192.168.31.31:8126`: Linux implementation worker using a separate WSL
   distribution and an independent Git branch copied from the `.17` authority.
 - `192.168.31.31:8127`: second Linux implementation worker colocated with the

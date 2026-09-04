@@ -823,6 +823,31 @@
           <div class="toolbar"><h2>系统设置</h2><span class="muted" id="systemStatus">等待刷新</span></div>
           <div class="grid" id="systemSecurity"></div>
           <div id="systemProxySlot"></div>
+          <form class="form section" id="operationsPolicyForm">
+            <div class="toolbar">
+              <h2>告警升级与自动恢复</h2>
+              <div class="proxy-toolbar">
+                <span class="muted" id="operationsPolicyStatus">未检查</span>
+                <label class="toggle"><input name="enabled" type="checkbox" />启用恢复</label>
+                <label class="toggle"><input name="restart" type="checkbox" checked />保存后重启</label>
+              </div>
+            </div>
+            <div class="grid">
+              <label>执行模式<select name="mode"><option value="dry_run">只演练</option><option value="active">执行白名单动作</option></select></label>
+              <label>策略间隔（秒）<input name="pollSeconds" type="number" min="10" max="3600" value="30" /></label>
+              <label>首次升级（秒）<input name="warningSeconds" type="number" min="60" max="604800" value="1800" /></label>
+              <label>严重升级（秒）<input name="criticalSeconds" type="number" min="120" max="604800" value="3600" /></label>
+              <label>动作冷却（秒）<input name="cooldownSeconds" type="number" min="60" max="86400" value="900" /></label>
+              <label>任务重试上限<input name="maxTaskRetries" type="number" min="1" max="20" value="3" /></label>
+            </div>
+            <div class="actions"><button class="primary" type="submit">保存恢复策略</button><button class="secondary" type="button" id="operationsRun">立即演练/执行</button></div>
+          </form>
+          <pre class="section" id="operationsPolicyResult">恢复策略结果</pre>
+          <div class="section">
+            <div class="toolbar"><h2>生产能力验证</h2><span class="muted" id="readinessStatus">等待刷新</span></div>
+            <div class="grid" id="readinessCards"></div>
+            <div id="remediationActions"></div>
+          </div>
           <form class="form section" id="notificationConfigForm">
             <div class="toolbar">
               <h2>告警通知</h2>
@@ -864,6 +889,22 @@
             <div class="toolbar"><h2>最近通知</h2><span class="muted" id="notificationDeliveryStatus">等待刷新</span></div>
             <div id="notificationDeliveries"></div>
           </div>
+          <div class="section">
+            <div class="toolbar"><h2>Windows 图形自动化</h2><span class="muted" id="windowsAutomationStatus">等待节点</span></div>
+            <form class="form" id="marketCollectionForm">
+              <div class="grid">
+                <label>采价关键词<input name="keyword" value="绒花发簪" required /></label>
+                <label>商品数量<input name="count" type="number" min="1" max="100" value="10" required /></label>
+                <label>最大翻页<input name="maxScroll" type="number" min="1" max="100" value="30" required /></label>
+              </div>
+              <button class="primary" type="submit">创建采价任务</button>
+            </form>
+            <form class="form section" id="listingDraftForm">
+              <label>上架平台任务 ID<input name="listingTaskId" required /></label>
+              <button class="primary" type="submit">创建上架草稿任务</button>
+            </form>
+            <pre class="section" id="windowsAutomationResult">任务结果</pre>
+          </div>
           <div id="systemWorkerSlot"></div>
         </div>
 
@@ -886,6 +927,8 @@
                 <option value="code.change.apply">code.change.apply</option>
                 <option value="test.run">test.run</option>
                 <option value="h5.inspect">h5.inspect</option>
+                <option value="market.price.collect">market.price.collect</option>
+                <option value="commerce.listing.draft">commerce.listing.draft</option>
                 <option value="review.model">review.model</option>
                 <option value="review.human">review.human</option>
               </select>
@@ -939,6 +982,8 @@
       let proxyConfigSaving = false;
       let notificationConfigDirty = false;
       let notificationConfigSaving = false;
+      let operationsPolicyDirty = false;
+      let operationsPolicySaving = false;
       let cachedPipelines = [];
       let cachedWorkers = [];
 
@@ -1765,6 +1810,76 @@
         document.getElementById("notificationConfigResult").textContent = show(result);
       };
 
+      const updateOperationsPolicyForm = (payload, force = false) => {
+        if (!force && operationsPolicyDirty) return;
+        const policy = payload?.policy || {};
+        const form = document.getElementById("operationsPolicyForm");
+        form.querySelector('[name="enabled"]').checked = Boolean(policy.enabled);
+        form.querySelector('[name="mode"]').value = policy.mode || "dry_run";
+        form.querySelector('[name="pollSeconds"]').value = policy.poll_seconds || 30;
+        form.querySelector('[name="warningSeconds"]').value = policy.warning_escalation_seconds || 1800;
+        form.querySelector('[name="criticalSeconds"]').value = policy.critical_escalation_seconds || 3600;
+        form.querySelector('[name="cooldownSeconds"]').value = policy.cooldown_seconds || 900;
+        form.querySelector('[name="maxTaskRetries"]').value = policy.max_task_retries || 3;
+        document.getElementById("operationsPolicyStatus").textContent = policy.enabled
+          ? `已启用 / ${policy.mode === "active" ? "执行" : "演练"}` : "已关闭 / 仍记录演练建议";
+      };
+
+      const renderOperations = (readiness, actionPayload) => {
+        const state = readiness?.workers || {};
+        const items = [
+          ["双实施流水线", state.dual_pipeline_ready], ["质量验收", state.quality_ready],
+          ["Windows 采价", state.market_collection_ready], ["上架草稿", state.listing_draft_ready],
+        ];
+        document.getElementById("readinessCards").innerHTML = items.map(([label, ready]) => `
+          <div class="card"><div class="muted">${label}</div><div class="metric ${ready ? "result-pass" : "result-fail"}">${ready ? "就绪" : "未就绪"}</div></div>
+        `).join("");
+        document.getElementById("readinessStatus").textContent = readiness?.normal_load_test?.passed
+          ? `双线 ${readiness.normal_load_test.tasks} 任务模拟通过；失联隔离通过` : "验证未通过";
+        document.getElementById("windowsAutomationStatus").textContent = `采价 ${state.market_collection_ready ? "就绪" : "未就绪"} | 上架草稿 ${state.listing_draft_ready ? "就绪" : "未配对"}`;
+        const rows = actionPayload?.actions || [];
+        document.getElementById("remediationActions").innerHTML = rows.length ? `<table>
+          <thead><tr><th>时间</th><th>告警</th><th>动作</th><th>模式</th><th>状态</th></tr></thead>
+          <tbody>${rows.map(item => `<tr><td>${escapeHtml(formatDate(item.created_at))}</td><td>${escapeHtml(item.alert_code)}</td><td>${escapeHtml(item.action)}</td><td>${escapeHtml(item.mode)}</td><td>${statusBadge(item.status)}</td></tr>`).join("")}</tbody>
+        </table>` : '<div class="card muted">暂无恢复动作</div>';
+      };
+
+      const saveOperationsPolicy = async (event) => {
+        event.preventDefault();
+        const form = event.target;
+        operationsPolicySaving = true;
+        try {
+          const result = await api("/taskhub/operations/policy/config", {method: "POST", body: JSON.stringify({
+            enabled: form.querySelector('[name="enabled"]').checked,
+            mode: form.querySelector('[name="mode"]').value,
+            poll_seconds: Number(form.querySelector('[name="pollSeconds"]').value),
+            warning_escalation_seconds: Number(form.querySelector('[name="warningSeconds"]').value),
+            critical_escalation_seconds: Number(form.querySelector('[name="criticalSeconds"]').value),
+            cooldown_seconds: Number(form.querySelector('[name="cooldownSeconds"]').value),
+            max_task_retries: Number(form.querySelector('[name="maxTaskRetries"]').value),
+            restart: form.querySelector('[name="restart"]').checked,
+          })});
+          document.getElementById("operationsPolicyResult").textContent = show(result);
+          operationsPolicyDirty = false;
+          updateOperationsPolicyForm(result, true);
+        } finally { operationsPolicySaving = false; }
+      };
+
+      const runOperationsNow = async () => {
+        document.getElementById("operationsPolicyResult").textContent = "正在执行策略循环 ...";
+        document.getElementById("operationsPolicyResult").textContent = show(await api("/taskhub/operations/policy/run", {method: "POST", body: "{}"}));
+        await loadSystem();
+      };
+
+      const createWindowsAutomationTask = async (type, input, title) => {
+        const result = await api("/taskhub/tasks", {method: "POST", body: JSON.stringify({
+          project, type, title, priority: 70, input,
+          metadata: {source: "web-console", handoff_from: "operator", handoff_to: "worker-31-34-gui"},
+          target_worker_id: "worker-31-34-gui", resource_keys: ["gui:windows-31-34"],
+        })});
+        document.getElementById("windowsAutomationResult").textContent = show(result);
+      };
+
       const renderRoleModelFields = (provider, roleModels) => {
         const defaults = providerDefaults[provider] || providerDefaults.gpt_api;
         const labels = defaults.roleLabels || {};
@@ -2358,16 +2473,21 @@
       };
 
       const loadSystem = async () => {
-        const [health, security, configCheck, notificationConfig, notificationDeliveries] = await Promise.all([
+        const [health, security, configCheck, notificationConfig, notificationDeliveries, policy, readiness, actions] = await Promise.all([
           api("/health"),
           api("/system/status"),
           api("/planner/config-check"),
           api("/taskhub/operations/notifications/config"),
           api("/taskhub/operations/notifications/deliveries"),
+          api("/taskhub/operations/policy/config"),
+          api("/taskhub/operations/readiness"),
+          api("/taskhub/operations/policy/actions"),
         ]);
         updateProxyConfigForm(configCheck);
         updateNotificationConfigForm(notificationConfig);
         renderNotificationDeliveries(notificationDeliveries);
+        updateOperationsPolicyForm(policy);
+        renderOperations(readiness, actions);
         await loadWorkers();
         document.getElementById("systemStatus").textContent = `控制中心 ${health.status} | Postgres ${health.postgres} | Redis ${health.redis}`;
         const securityItems = [
@@ -2377,6 +2497,7 @@
           ["节点认证", security.worker_auth_configured ? "已配置" : "未配置", security.worker_auth_configured],
           ["角色自动执行", security.workflow_role_automation_enabled ? "已启用" : "未启用", security.workflow_role_automation_enabled],
           ["主动通知", security.notification_enabled ? "已启用" : "已关闭", true],
+          ["自动恢复", security.remediation_enabled ? security.remediation_mode : "已关闭", true],
           ["代码应用", security.code_apply_enabled ? "已开放" : "仅校验", !security.code_apply_enabled],
           ["会话时长", `${Math.round(security.session_ttl_seconds / 3600)} 小时`, true],
         ];
@@ -2563,6 +2684,19 @@
         if (!notificationConfigSaving) notificationConfigDirty = true;
       });
       document.getElementById("notificationTest").addEventListener("click", testNotification);
+      document.getElementById("operationsPolicyForm").addEventListener("submit", saveOperationsPolicy);
+      document.getElementById("operationsPolicyForm").addEventListener("input", () => {
+        if (!operationsPolicySaving) operationsPolicyDirty = true;
+      });
+      document.getElementById("operationsRun").addEventListener("click", runOperationsNow);
+      document.getElementById("marketCollectionForm").addEventListener("submit", async (event) => {
+        event.preventDefault(); const form = new FormData(event.target);
+        await createWindowsAutomationTask("market.price.collect", {keyword: form.get("keyword"), count: Number(form.get("count")), max_scroll: Number(form.get("maxScroll"))}, `采集商品价格：${form.get("keyword")}`);
+      });
+      document.getElementById("listingDraftForm").addEventListener("submit", async (event) => {
+        event.preventDefault(); const form = new FormData(event.target);
+        await createWindowsAutomationTask("commerce.listing.draft", {listing_task_id: form.get("listingTaskId")}, `执行上架草稿：${form.get("listingTaskId")}`);
+      });
       document.getElementById("stateFilter").addEventListener("change", loadTasks);
       document.getElementById("pipelineFilter").addEventListener("change", loadTasks);
       document.getElementById("pipelineForm").addEventListener("submit", createPipeline);

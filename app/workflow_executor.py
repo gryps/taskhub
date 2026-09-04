@@ -205,10 +205,15 @@ def claim_next_role_run() -> dict[str, Any] | None:
                 return None
             cur.execute(
                 """
-                select id, type, title, state, input, metadata, result, error, worker_id, updated_at
-                from taskhub_tasks
-                where metadata->>'workflow_id' = %s
-                order by created_at
+                select task.id, task.type, task.title, task.state, task.input, task.metadata,
+                       task.result, task.error, task.worker_id, task.updated_at,
+                       handoff.status as handoff_status, handoff.contract as handoff_contract,
+                       handoff.payload_hash as handoff_payload_hash,
+                       handoff.validation_errors as handoff_validation_errors
+                from taskhub_tasks task
+                left join taskhub_task_handoffs handoff on handoff.task_id = task.id
+                where task.metadata->>'workflow_id' = %s
+                order by task.created_at
                 """,
                 (str(workflow["id"]),),
             )
