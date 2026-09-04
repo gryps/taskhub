@@ -455,6 +455,51 @@
       .check-mark.error { color: var(--red); }
       .compact-table { max-width: 100%; overflow-x: auto; }
 
+      #advanced > section.panel,
+      #advanced > .split > section.panel,
+      #advanced > .governance-data-grid > section.panel,
+      #advanced > details.panel {
+        padding: 16px;
+      }
+
+      #advanced .panel h2,
+      #advanced details h2 {
+        font-size: 16px;
+      }
+
+      #advanced .form {
+        max-width: none;
+      }
+
+      #advanced > .toolbar {
+        display: grid;
+        grid-template-columns: auto minmax(240px, 1fr) auto;
+      }
+
+      #advanced > .toolbar h2 {
+        white-space: nowrap;
+      }
+
+      #advancedCards {
+        grid-template-columns: repeat(3, minmax(160px, 1fr));
+      }
+
+      #governanceExecuteForm .grid {
+        grid-template-columns: repeat(2, minmax(180px, 1fr));
+      }
+
+      .advanced-settings > summary {
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 650;
+        list-style-position: inside;
+      }
+
+      .advanced-settings[open] > summary {
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
       .hidden {
         display: none;
       }
@@ -513,6 +558,11 @@
           grid-template-columns: 1fr;
         }
         .wizard-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        #advanced > .toolbar,
+        #advancedCards,
+        #governanceExecuteForm .grid {
+          grid-template-columns: 1fr;
+        }
         .check-row { grid-template-columns: 24px minmax(0, 1fr); }
         .check-row .muted { grid-column: 2; }
         .content {
@@ -948,18 +998,6 @@
           <section class="section panel">
             <div class="toolbar"><h2>节点与设备</h2><button class="secondary" type="button" id="deviceRefresh">检测设备</button></div>
             <div id="deviceTable" class="compact-table"></div>
-            <form class="form section" id="devicePairForm">
-              <div class="toolbar"><h2>配对 Windows 上架执行器</h2><span class="muted">密钥加密保存在 Windows 当前用户下</span></div>
-              <div class="grid">
-                <label>Windows 节点<select name="workerUrl" id="pairWorkerUrl" required></select></label>
-                <label>上架平台 API 地址<input name="apiUrl" type="url" required /></label>
-                <label>Agent ID<input name="agentId" required /></label>
-                <label>Device Secret<input name="deviceSecret" type="password" minlength="32" autocomplete="new-password" required /></label>
-                <label>执行器目录<input name="listingRoot" value="C:\Users\user\migration-backups\192.168.31.21-full\full-executor\Executor" required /></label>
-              </div>
-              <button class="primary" type="submit">安全配对</button>
-            </form>
-            <pre class="section" id="devicePairResult">尚未配对</pre>
           </section>
           <section class="section panel">
             <div class="toolbar"><h2>自治动作执行记录</h2><span class="muted">仅执行治理策略允许的低风险动作</span></div>
@@ -973,6 +1011,8 @@
             <pre class="section" id="governanceExecuteResult">等待执行</pre>
             <div id="governanceExecutionTable" class="compact-table"></div>
           </section>
+          <details class="section panel advanced-settings">
+            <summary>高级治理配置</summary>
           <form class="form section" id="projectRegistryForm">
             <div class="toolbar"><h2>项目与代码权威源（高级编辑）</h2><span class="muted">通常使用上方一键接入即可</span></div>
             <div class="grid">
@@ -1033,6 +1073,7 @@
           </div>
           <div class="section"><div class="toolbar"><h2>动态调度与质量评估</h2></div><div id="advancedDetails"></div></div>
           <pre class="section" id="advancedResult">高级阶段运行数据</pre>
+          </details>
         </div>
 
         <div id="system" class="hidden">
@@ -1105,22 +1146,6 @@
             <div class="toolbar"><h2>最近通知</h2><span class="muted" id="notificationDeliveryStatus">等待刷新</span></div>
             <div id="notificationDeliveries"></div>
           </div>
-          <div class="section">
-            <div class="toolbar"><h2>Windows 图形自动化</h2><span class="muted" id="windowsAutomationStatus">等待节点</span></div>
-            <form class="form" id="marketCollectionForm">
-              <div class="grid">
-                <label>采价关键词<input name="keyword" value="绒花发簪" required /></label>
-                <label>商品数量<input name="count" type="number" min="1" max="100" value="10" required /></label>
-                <label>最大翻页<input name="maxScroll" type="number" min="1" max="100" value="30" required /></label>
-              </div>
-              <button class="primary" type="submit">创建采价任务</button>
-            </form>
-            <form class="form section" id="listingDraftForm">
-              <label>上架平台任务 ID<input name="listingTaskId" required /></label>
-              <button class="primary" type="submit">创建上架草稿任务</button>
-            </form>
-            <pre class="section" id="windowsAutomationResult">任务结果</pre>
-          </div>
           <div id="systemWorkerSlot"></div>
         </div>
 
@@ -1143,8 +1168,6 @@
                 <option value="code.change.apply">code.change.apply</option>
                 <option value="test.run">test.run</option>
                 <option value="h5.inspect">h5.inspect</option>
-                <option value="market.price.collect">market.price.collect</option>
-                <option value="commerce.listing.draft">commerce.listing.draft</option>
                 <option value="review.model">review.model</option>
                 <option value="review.human">review.human</option>
               </select>
@@ -2047,14 +2070,12 @@
         const state = readiness?.workers || {};
         const items = [
           ["双实施流水线", state.dual_pipeline_ready], ["质量验收", state.quality_ready],
-          ["Windows 采价", state.market_collection_ready], ["上架草稿", state.listing_draft_ready],
         ];
         document.getElementById("readinessCards").innerHTML = items.map(([label, ready]) => `
           <div class="card"><div class="muted">${label}</div><div class="metric ${ready ? "result-pass" : "result-fail"}">${ready ? "就绪" : "未就绪"}</div></div>
         `).join("");
         document.getElementById("readinessStatus").textContent = readiness?.normal_load_test?.passed
           ? `双线 ${readiness.normal_load_test.tasks} 任务模拟通过；失联隔离通过` : "验证未通过";
-        document.getElementById("windowsAutomationStatus").textContent = `采价 ${state.market_collection_ready ? "就绪" : "未就绪"} | 上架草稿 ${state.listing_draft_ready ? "就绪" : "未配对"}`;
         const rows = actionPayload?.actions || [];
         document.getElementById("remediationActions").innerHTML = rows.length ? `<table>
           <thead><tr><th>时间</th><th>告警</th><th>动作</th><th>模式</th><th>状态</th></tr></thead>
@@ -2087,15 +2108,6 @@
         document.getElementById("operationsPolicyResult").textContent = "正在执行策略循环 ...";
         document.getElementById("operationsPolicyResult").textContent = show(await api("/taskhub/operations/policy/run", {method: "POST", body: "{}"}));
         await loadSystem();
-      };
-
-      const createWindowsAutomationTask = async (type, input, title) => {
-        const result = await api("/taskhub/tasks", {method: "POST", body: JSON.stringify({
-          project, type, title, priority: 70, input,
-          metadata: {source: "web-console", handoff_from: "operator", handoff_to: "worker-31-34-gui"},
-          target_worker_id: "worker-31-34-gui", resource_keys: ["gui:windows-31-34"],
-        })});
-        document.getElementById("windowsAutomationResult").textContent = show(result);
       };
 
       const renderRoleModelFields = (provider, roleModels) => {
@@ -2776,11 +2788,7 @@
         document.getElementById("usageSummary").textContent = `${usage.total_calls || 0} 次 · ${usage.total_tokens || 0} tokens · $${Number(usage.spent_usd || 0).toFixed(4)}`;
         document.getElementById("usageReport").innerHTML = usage.groups?.length ? `<table><thead><tr><th>角色</th><th>Provider / Model</th><th>调用</th><th>Token</th><th>费用</th><th>失败</th></tr></thead><tbody>${usage.groups.map(item => `<tr><td>${escapeHtml(item.role)}</td><td>${escapeHtml(item.provider)} / ${escapeHtml(item.model || "默认")}</td><td>${item.calls}</td><td>${Number(item.prompt_tokens || 0) + Number(item.completion_tokens || 0)}</td><td>$${Number(item.estimated_cost_usd || 0).toFixed(4)}</td><td>${item.failed_calls}</td></tr>`).join("")}</tbody></table><div class="muted section">${escapeHtml(usage.quota_note || "")}</div>` : '<div class="muted">首个模型调用后生成报表。</div>';
         document.getElementById("artifactTable").innerHTML = artifacts.length ? `<table><thead><tr><th>文件</th><th>节点</th><th>大小</th><th>SHA-256</th><th>时间</th><th></th></tr></thead><tbody>${artifacts.map(item => `<tr><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.worker_id)}</td><td>${Math.ceil(Number(item.size_bytes) / 1024)} KB</td><td><code>${escapeHtml(String(item.sha256).slice(0, 12))}</code></td><td>${escapeHtml(formatDate(item.created_at))}</td><td><a href="/taskhub/integration/artifacts/${encodeURIComponent(item.id)}/download">下载</a></td></tr>`).join("")}</tbody></table>` : '<div class="muted">节点完成带文件的任务后，制品会自动汇集到这里。</div>';
-        document.getElementById("deviceTable").innerHTML = devices.length ? `<table><thead><tr><th>节点</th><th>平台</th><th>状态</th><th>能力</th><th>ADB</th><th>上架执行器</th></tr></thead><tbody>${devices.map(item => `<tr><td>${escapeHtml(item.worker_id)}</td><td>${escapeHtml(item.platform)}</td><td>${statusBadge(item.status)}</td><td>${escapeHtml((item.task_types || []).join(", "))}</td><td>${item.capabilities?.adb_ready ? "已连接" : "-"}</td><td>${item.listing_paired ? `已配对 ${escapeHtml(item.listing_agent_mask || "")}` : "未配对"}</td></tr>`).join("")}</tbody></table>` : '<div class="muted">尚未发现节点。</div>';
-        const pairSelect = document.getElementById("pairWorkerUrl");
-        const prior = pairSelect.value;
-        pairSelect.innerHTML = devices.filter(item => String(item.platform).toLowerCase().includes("windows")).map(item => `<option value="${escapeHtml(item.url)}">${escapeHtml(item.worker_id)} · ${escapeHtml(item.url)}</option>`).join("");
-        if ([...pairSelect.options].some(option => option.value === prior)) pairSelect.value = prior;
+        document.getElementById("deviceTable").innerHTML = devices.length ? `<table><thead><tr><th>节点</th><th>平台</th><th>状态</th><th>能力</th><th>最近检测</th></tr></thead><tbody>${devices.map(item => `<tr><td>${escapeHtml(item.worker_id)}</td><td>${escapeHtml(item.platform)}</td><td>${statusBadge(item.status)}</td><td>${escapeHtml((item.task_types || []).join(", "))}</td><td>${escapeHtml(formatDate(item.last_seen_at))}</td></tr>`).join("")}</tbody></table>` : '<div class="muted">尚未发现节点。</div>';
         document.getElementById("governanceExecutionTable").innerHTML = executions.length ? `<table><thead><tr><th>动作</th><th>对象</th><th>判定</th><th>执行状态</th><th>时间</th></tr></thead><tbody>${executions.map(item => `<tr><td>${escapeHtml(item.action)}</td><td>${escapeHtml(item.entity_id)}</td><td>${escapeHtml(item.decision)}</td><td>${escapeHtml(item.status)}</td><td>${escapeHtml(formatDate(item.created_at))}</td></tr>`).join("")}</tbody></table>` : '<div class="muted">暂无自治动作执行记录。</div>';
       };
 
@@ -2906,24 +2914,6 @@
           await loadPipelines();
         } catch (error) {
           output.textContent = `创建失败：${error.message}`;
-        }
-      };
-
-      const pairDevice = async (event) => {
-        event.preventDefault();
-        const form = new FormData(event.target);
-        const output = document.getElementById("devicePairResult");
-        output.textContent = "正在安全下发配对信息";
-        try {
-          const result = await api("/taskhub/integration/devices/listing/pair", {method: "POST", body: JSON.stringify({
-            worker_url: form.get("workerUrl"), listing_api_base_url: form.get("apiUrl"),
-            listing_agent_id: form.get("agentId"), device_secret: form.get("deviceSecret"), listing_root: form.get("listingRoot"),
-          })});
-          event.target.querySelector('[name="deviceSecret"]').value = "";
-          output.textContent = show(result);
-          await loadAdvanced();
-        } catch (error) {
-          output.textContent = `配对失败：${error.message}`;
         }
       };
 
@@ -3183,7 +3173,6 @@
         catch (error) { target.textContent = `同步失败：${error.message}`; }
       });
       document.getElementById("deviceRefresh").addEventListener("click", loadAdvanced);
-      document.getElementById("devicePairForm").addEventListener("submit", pairDevice);
       document.getElementById("governanceExecuteForm").addEventListener("submit", executeGovernance);
       document.getElementById("activeProjectSelect").addEventListener("change", async (event) => {
         project = event.target.value;
@@ -3191,14 +3180,6 @@
         if (projectInput) projectInput.value = project;
         await loadPipelines();
         await loadAdvanced();
-      });
-      document.getElementById("marketCollectionForm").addEventListener("submit", async (event) => {
-        event.preventDefault(); const form = new FormData(event.target);
-        await createWindowsAutomationTask("market.price.collect", {keyword: form.get("keyword"), count: Number(form.get("count")), max_scroll: Number(form.get("maxScroll"))}, `采集商品价格：${form.get("keyword")}`);
-      });
-      document.getElementById("listingDraftForm").addEventListener("submit", async (event) => {
-        event.preventDefault(); const form = new FormData(event.target);
-        await createWindowsAutomationTask("commerce.listing.draft", {listing_task_id: form.get("listingTaskId")}, `执行上架草稿：${form.get("listingTaskId")}`);
       });
       document.getElementById("stateFilter").addEventListener("change", loadTasks);
       document.getElementById("pipelineFilter").addEventListener("change", loadTasks);

@@ -56,12 +56,11 @@ APPROVAL_DOWNSTREAM_TYPES = {
     "requirement.split",
     "test.run",
     "h5.inspect",
-    "market.price.collect",
-    "commerce.listing.draft",
 }
 IMPLEMENTATION_TASK_TYPES = {"code.change", "code.diff.preview", "code.change.apply"}
 QUALITY_TASK_TYPES = {"test.run", "quality.env.check", "review.model"}
-GUI_TASK_TYPES = {"h5.inspect", "market.price.collect", "commerce.listing.draft"}
+GUI_TASK_TYPES = {"h5.inspect"}
+UNSCHEDULABLE_TASK_TYPES = {"market.price.collect", "commerce.listing.draft"}
 
 
 class TaskCreate(BaseModel):
@@ -1173,6 +1172,8 @@ def create_task(request: Request, payload: TaskCreate) -> dict[str, Any]:
 def insert_task(cur, request: TaskCreate, actor: str, reason: str) -> dict[str, Any]:
     task_id = uuid.uuid4()
     created_at = now_utc()
+    if request.type in UNSCHEDULABLE_TASK_TYPES:
+        raise HTTPException(status_code=400, detail="task type is outside TaskHub scope")
     try:
         validate_task_input(request.type, request.input)
     except ValueError as exc:
@@ -1624,11 +1625,14 @@ def acquire_resource_leases(
 
 @router.post("/claim")
 def claim_task(request: TaskClaim) -> dict[str, Any]:
-    type_filter = ""
-    params: list[Any] = [request.project]
+    type_filter = "and task.type <> all(%s)"
+    params: list[Any] = [request.project, list(UNSCHEDULABLE_TASK_TYPES)]
+    requested_types = [item for item in request.types if item not in UNSCHEDULABLE_TASK_TYPES]
     if request.types:
-        type_filter = "and task.type = any(%s)"
-        params.append(request.types)
+        if not requested_types:
+            return {"task": None}
+        type_filter += " and task.type = any(%s)"
+        params.append(requested_types)
 
     claimed_at = now_utc()
     lease_token = uuid.uuid4()

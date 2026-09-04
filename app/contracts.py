@@ -4,25 +4,8 @@ from typing import Any
 
 
 CONTRACT_VERSION = "taskhub.handoff/v1"
-STRICT_TASK_TYPES = {"market.price.collect", "commerce.listing.draft"}
-
-TASK_CONTRACTS: dict[str, dict[str, Any]] = {
-    "market.price.collect": {
-        "producer": "planner",
-        "consumer": "worker-31-34-gui",
-        "required_input": ["keyword", "count"],
-        "required_result": ["status", "task_id", "artifacts"],
-        "result_statuses": ["collected"],
-    },
-    "commerce.listing.draft": {
-        "producer": "planner",
-        "consumer": "worker-31-34-gui",
-        "required_input": ["listing_task_id"],
-        "required_result": ["status", "artifacts"],
-        "result_statuses": ["draft_saved", "waiting_category"],
-        "human_release_required": True,
-    },
-}
+STRICT_TASK_TYPES: set[str] = set()
+TASK_CONTRACTS: dict[str, dict[str, Any]] = {}
 
 
 def handoff_contract(task_type: str, task_input: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
@@ -47,12 +30,6 @@ def validate_task_input(task_type: str, task_input: dict[str, Any]) -> None:
     missing = [key for key in definition["required_input"] if task_input.get(key) is None or task_input.get(key) == ""]
     if missing:
         raise ValueError(f"{task_type} input is missing required fields: {', '.join(missing)}")
-    if task_type == "market.price.collect":
-        count = task_input.get("count")
-        if not isinstance(count, int) or isinstance(count, bool) or not 1 <= count <= 100:
-            raise ValueError("market.price.collect count must be an integer between 1 and 100")
-
-
 def validate_task_result(task_type: str, result: dict[str, Any]) -> dict[str, Any]:
     definition = TASK_CONTRACTS.get(task_type)
     if not definition:

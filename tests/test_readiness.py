@@ -21,12 +21,12 @@ class PipelineReadinessTests(unittest.TestCase):
             {"status": "ok", "worker_id": "worker-31-31-implementation-a", "task_types": "code.change"},
             {"status": "ok", "worker_id": "worker-31-31-implementation", "task_types": "code.change"},
             {"status": "ok", "worker_id": "worker-31-24-quality", "task_types": "test.run"},
-            {"status": "ok", "worker_id": "worker-31-34-gui", "task_types": "h5.inspect,market.price.collect"},
+            {"status": "ok", "worker_id": "worker-31-34-gui", "task_types": "h5.inspect"},
         ]
         result = assess_workers(workers)
         self.assertTrue(result["dual_pipeline_ready"])
-        self.assertTrue(result["market_collection_ready"])
-        self.assertFalse(result["listing_draft_ready"])
+        self.assertTrue(result["quality_ready"])
+        self.assertEqual(set(result), {"dual_pipeline_ready", "implementation_workers", "quality_ready"})
 
 
 if __name__ == "__main__":

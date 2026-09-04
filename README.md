@@ -94,17 +94,14 @@ allowlisted actions. Expired leases can be requeued, while failed tasks and role
 runs require explicit `auto_retry` or `auto_retry_roles` opt-in. Every proposal,
 execution, skip, and failure is persisted in `taskhub_remediation_actions`.
 
-Task handoffs use `taskhub.handoff/v1`. Inputs and outputs for Windows price
-collection and listing-draft tasks are strictly validated and stored with a
-payload hash. Listing automation only saves a draft or waits for category input;
-final publication remains a human action.
+Task handoffs use `taskhub.handoff/v1`. Handoff payloads and their hashes are
+stored for review and traceability.
 
 ## Execution Nodes
 
 - `192.168.31.24:8124`: Linux quality worker using an independent Git worktree.
 - `192.168.31.34:8125`: Windows GUI worker for headed Edge/Playwright H5 checks.
-  It also runs `market.price.collect` when the migrated ADB collector is present,
-  and advertises `commerce.listing.draft` only after the listing executor is paired.
+  It does not discover or invoke unrelated collection and listing applications.
 - `192.168.31.31:8126`: Linux implementation worker using a separate WSL
   distribution and an independent Git branch copied from the `.17` authority.
 - `192.168.31.31:8127`: second Linux implementation worker colocated with the
@@ -158,7 +155,7 @@ It validates the Git authority and implementation nodes, then creates the projec
 A/B pipelines, isolated workspaces, source synchronization, budget, and governance
 policy in one idempotent transaction. The same page launches the first five-role
 workflow, shows centralized artifacts, model usage, devices, and governed actions,
-and pairs the Windows listing executor without returning its secret to TaskHub.
+and reports generic worker health and capabilities.
 
 See `docs/INTEGRATION_STAGE_COMPLETION.md` for the completed eight-task scope and
 security boundaries. Linux workers can publish files with

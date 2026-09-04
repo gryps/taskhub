@@ -9,7 +9,6 @@ import subprocess
 import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.parse import urlsplit
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -72,14 +71,6 @@ class SyncConfigRequest(BaseModel):
     interval_seconds: int = Field(300, ge=60, le=86400)
 
 
-class DevicePairRequest(BaseModel):
-    worker_url: str = Field(..., min_length=8, max_length=300)
-    listing_api_base_url: str = Field(..., min_length=8, max_length=500)
-    listing_agent_id: str = Field(..., min_length=1, max_length=200)
-    device_secret: str = Field(..., min_length=32, max_length=2000)
-    listing_root: str | None = Field(default=None, max_length=500)
-
-
 class GovernanceExecuteRequest(BaseModel):
     project: str = Field(..., min_length=1, max_length=80)
     action: str
@@ -114,9 +105,10 @@ def init_integration() -> None:
                 worker_id text primary key, url text not null unique, platform text not null default '',
                 status text not null, task_types text[] not null default '{}'::text[],
                 capabilities jsonb not null default '{}'::jsonb, last_seen_at timestamptz,
-                listing_paired boolean not null default false, listing_agent_mask text,
                 updated_at timestamptz not null)"""
             )
+            cur.execute("alter table taskhub_devices drop column if exists listing_paired")
+            cur.execute("alter table taskhub_devices drop column if exists listing_agent_mask")
             cur.execute(
                 """create table if not exists taskhub_governance_executions (
                 id uuid primary key, project text not null, action text not null,
@@ -413,14 +405,20 @@ def list_devices(refresh: bool = True) -> list[dict[str, Any]]:
                     try:
                         health = _health(url)
                         worker_id = str(health.get("worker") or health.get("worker_id") or url)
-                        task_types = [item for item in str(health.get("task_types") or "").split(",") if item]
+                        task_types = [
+                            item for item in str(health.get("task_types") or "").split(",")
+                            if item and item not in {"market.price.collect", "commerce.listing.draft"}
+                        ]
+                        capabilities = redact(health)
+                        for key in ("adb_ready", "adb_status", "adb_serial", "adb_model", "market_ready", "listing_ready"):
+                            capabilities.pop(key, None)
                         cur.execute(
-                            """insert into taskhub_devices(worker_id,url,platform,status,task_types,capabilities,last_seen_at,listing_paired,updated_at)
-                            values(%s,%s,%s,'ok',%s,%s,%s,%s,%s) on conflict(worker_id) do update set url=excluded.url,
+                            """insert into taskhub_devices(worker_id,url,platform,status,task_types,capabilities,last_seen_at,updated_at)
+                            values(%s,%s,%s,'ok',%s,%s,%s,%s) on conflict(worker_id) do update set url=excluded.url,
                             platform=excluded.platform,status='ok',task_types=excluded.task_types,capabilities=excluded.capabilities,
-                            last_seen_at=excluded.last_seen_at,listing_paired=excluded.listing_paired,updated_at=excluded.updated_at""",
+                            last_seen_at=excluded.last_seen_at,updated_at=excluded.updated_at""",
                             (worker_id, url, str(health.get("platform") or health.get("hostname") or ""), task_types,
-                             Jsonb(redact(health)), timestamp, bool(health.get("listing_ready")), timestamp),
+                             Jsonb(capabilities), timestamp, timestamp),
                         )
                     except Exception as exc:
                         cur.execute("update taskhub_devices set status='offline',capabilities=%s,updated_at=%s where url=%s", (Jsonb({"error": type(exc).__name__}), timestamp, url))
@@ -429,38 +427,6 @@ def list_devices(refresh: bool = True) -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute("select * from taskhub_devices order by status,worker_id")
             return cur.fetchall()
-
-
-def _allowed_worker_url(value: str) -> str:
-    url = value.strip().rstrip("/")
-    if url not in _worker_urls():
-        raise HTTPException(status_code=400, detail="worker URL is not configured")
-    parsed = urlsplit(url)
-    if parsed.scheme != "http" or not parsed.hostname:
-        raise HTTPException(status_code=400, detail="worker URL must be a configured LAN HTTP endpoint")
-    return url
-
-
-@router.post("/devices/listing/pair")
-def pair_listing_device(request: Request, payload: DevicePairRequest) -> dict[str, Any]:
-    url = _allowed_worker_url(payload.worker_url)
-    response = httpx.post(
-        f"{url}/admin/listing/pair",
-        json={"listing_api_base_url": payload.listing_api_base_url, "listing_agent_id": payload.listing_agent_id,
-              "device_secret": payload.device_secret, "listing_root": payload.listing_root},
-        headers={"x-taskhub-worker-token": os.getenv("TASKHUB_WORKER_TOKEN", "")}, timeout=15, trust_env=False,
-    )
-    if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"device pairing failed: {response.text[:500]}")
-    result = response.json()
-    worker_id = str(result.get("worker") or "worker-31-34-gui")
-    mask = f"{payload.listing_agent_id[:4]}***{payload.listing_agent_id[-4:]}" if len(payload.listing_agent_id) > 8 else "***"
-    with connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute("update taskhub_devices set listing_paired=%s,listing_agent_mask=%s,updated_at=%s where worker_id=%s", (bool(result.get("listing_ready")), mask, now_utc(), worker_id))
-        conn.commit()
-    record_audit_event(request.state.actor, "integration.device.pair", 200, detail={"worker": worker_id, "agent": mask})
-    return {**result, "listing_agent_mask": mask}
 
 
 @router.put("/artifacts/{artifact_id}/content")

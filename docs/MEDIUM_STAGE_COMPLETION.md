@@ -21,7 +21,6 @@
 ## 4. 五角色交接协议
 
 - 每个新任务生成 `taskhub.handoff/v1` 契约记录。
-- Windows 采价和上架草稿启用严格输入/结果校验。
 - 产物、校验结果和 payload hash 持久化，并进入审查/风险模型上下文。
 
 ## 5. 双流水线验证
@@ -32,8 +31,5 @@
 
 ## 6. Windows 图形自动化
 
-- `.34` 纳管 `h5.inspect`、`market.price.collect` 和 `commerce.listing.draft`。
-- 采价调用迁移后的 ADB 工具，保留长任务心跳并返回任务 ID 与产物。
-- 上架调用不可变 Executor release，只允许 `draft_saved` / `waiting_category`。
-- 未配置设备密钥和 agent ID 时不声明上架能力、不领取任务。
-- 最终发布仍由人工裁决，不允许 TaskHub 自动点击发布。
+- `.34` 仅纳管通用的 `h5.inspect` 图形验收能力。
+- 业务采集、商品处理和上架程序与 TaskHub 隔离，不注册为节点能力，也不能被 TaskHub 调度。
