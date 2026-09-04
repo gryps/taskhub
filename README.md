@@ -55,6 +55,8 @@ PROVIDER_COOLDOWN_SECONDS=60
 - `192.168.31.34:8125`: Windows GUI worker for headed Edge/Playwright H5 checks.
 - `192.168.31.31:8126`: Linux implementation worker using a separate WSL
   distribution and an independent Git branch copied from the `.17` authority.
+- `192.168.31.31:8127`: second Linux implementation worker colocated with the
+  controller environment and using its own Git workspace and branch.
 
 Task dependencies are enforced by TaskHub. A task is claimable only after all
 parents succeed; failed, blocked, or canceled parents block pending descendants.
@@ -79,6 +81,11 @@ Default role routing follows the deployed hardware architecture:
 - H5 GUI inspection: `worker-31-34-gui`
 
 Override these IDs with `TASKHUB_IMPLEMENTATION_WORKER`, `TASKHUB_QUALITY_WORKER`, and `TASKHUB_GUI_WORKER` when nodes change.
+
+The production pipelines use explicit implementation workers:
+
+- `电商开发 A 线` -> `worker-31-31-implementation-a`, branch `taskhub/implementation-31-31-01`
+- `电商开发 B 线` -> `worker-31-31-implementation`, branch `taskhub/implementation-31-31-02`
 
 ## Run
 
