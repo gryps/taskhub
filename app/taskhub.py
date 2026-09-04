@@ -176,6 +176,40 @@ def default_target_worker(task_type: str) -> str | None:
     return None
 
 
+def worker_pool(task_type: str) -> list[str]:
+    if task_type in IMPLEMENTATION_TASK_TYPES:
+        value = os.getenv(
+            "TASKHUB_IMPLEMENTATION_WORKERS",
+            "worker-31-31-implementation-a,worker-31-31-implementation",
+        )
+    elif task_type in QUALITY_TASK_TYPES:
+        value = os.getenv("TASKHUB_QUALITY_WORKERS", "worker-31-24-quality")
+    elif task_type in GUI_TASK_TYPES:
+        value = os.getenv("TASKHUB_GUI_WORKERS", "worker-31-34-gui")
+    else:
+        return []
+    return list(dict.fromkeys(item.strip() for item in value.split(",") if item.strip()))
+
+
+def least_loaded_worker(cur, task_type: str) -> str | None:
+    candidates = worker_pool(task_type)
+    if not candidates:
+        return default_target_worker(task_type)
+    cur.execute(
+        """select candidate.worker_id,
+        count(task.id) filter (where task.state='running') running_count,
+        count(task.id) filter (where task.state='pending') pending_count
+        from unnest(%s::text[]) with ordinality candidate(worker_id, preference)
+        left join taskhub_tasks task on task.target_worker_id=candidate.worker_id
+          and task.state in ('pending','running')
+        group by candidate.worker_id,candidate.preference
+        order by running_count, pending_count, candidate.preference limit 1""",
+        (candidates,),
+    )
+    row = cur.fetchone()
+    return row["worker_id"] if row else default_target_worker(task_type)
+
+
 def redact(value: Any) -> Any:
     if isinstance(value, dict):
         result: dict[str, Any] = {}
@@ -1162,11 +1196,27 @@ def insert_task(cur, request: TaskCreate, actor: str, reason: str) -> dict[str, 
             raise HTTPException(status_code=409, detail=f"pipeline is {pipeline['state']}")
         workspace_id = workspace_id or pipeline["workspace_id"]
         pipeline_worker_id = pipeline["default_worker_id"]
+    cur.execute("select id,state from taskhub_projects where slug=%s", (request.project,))
+    registered_project = cur.fetchone()
+    if registered_project:
+        if registered_project["state"] != "active":
+            raise HTTPException(status_code=409, detail=f"project is {registered_project['state']}")
+        if workspace_id:
+            cur.execute(
+                """select id,pipeline_id from taskhub_project_workspaces
+                where project_id=%s and workspace_id=%s""",
+                (registered_project["id"], workspace_id),
+            )
+            registered_workspace = cur.fetchone()
+            if not registered_workspace:
+                raise HTTPException(status_code=409, detail="workspace is not registered for this project")
+            if request.pipeline_id and registered_workspace["pipeline_id"] != request.pipeline_id:
+                raise HTTPException(status_code=409, detail="workspace is bound to a different pipeline")
     if not target_worker_id:
         if request.type in IMPLEMENTATION_TASK_TYPES:
-            target_worker_id = pipeline_worker_id or default_target_worker(request.type)
+            target_worker_id = pipeline_worker_id or least_loaded_worker(cur, request.type)
         else:
-            target_worker_id = default_target_worker(request.type) or pipeline_worker_id
+            target_worker_id = pipeline_worker_id or least_loaded_worker(cur, request.type)
     resource_keys = normalize_resource_keys(request.resource_keys, workspace_id)
     cur.execute(
         """

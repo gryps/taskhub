@@ -139,6 +139,18 @@ The production pipelines use explicit implementation workers:
 - `电商开发 A 线` -> `worker-31-31-implementation-a`, branch `taskhub/implementation-31-31-01`
 - `电商开发 B 线` -> `worker-31-31-implementation`, branch `taskhub/implementation-31-31-02`
 
+## Advanced Project Governance
+
+The Project Governance page registers the `.17` local Git authority, binds each
+pipeline to an isolated worker workspace/branch, versions project context, stores
+long-term decisions and constraints, tracks model usage and budgets, evaluates
+completed workflows, and applies an audited low-risk autonomy policy. Dynamic
+routing is used only when a task has no explicit pipeline or worker. Publication,
+release, credentials, and production code application always require a human.
+
+See `docs/ADVANCED_STAGE_COMPLETION.md` for APIs, configuration, and acceptance
+criteria.
+
 ## Run
 
 ```bash

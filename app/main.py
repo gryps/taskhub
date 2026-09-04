@@ -23,6 +23,7 @@ from app.auth import (
     create_session,
     require_csrf,
 )
+from app.advanced import init_advanced, router as advanced_router, run_advanced_cycle
 from app.douyin_graph import router as douyin_graph_router
 from app.graph import compiled_graph
 from app.monitoring import router as monitoring_router
@@ -42,6 +43,7 @@ app.include_router(planner_router)
 app.include_router(monitoring_router)
 app.include_router(notification_router)
 app.include_router(operations_router)
+app.include_router(advanced_router)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -66,6 +68,7 @@ WORKER_PATH_SUFFIXES = {"/claim", "/heartbeat", "/complete", "/fail"}
 workflow_automation_task: asyncio.Task[None] | None = None
 notification_task: asyncio.Task[None] | None = None
 operations_task: asyncio.Task[None] | None = None
+advanced_task: asyncio.Task[None] | None = None
 
 
 def is_worker_endpoint(path: str) -> bool:
@@ -123,20 +126,29 @@ async def operations_loop() -> None:
         await asyncio.sleep(operations_policy()["poll_seconds"])
 
 
+async def advanced_loop() -> None:
+    interval = max(30, int(os.getenv("TASKHUB_ADVANCED_POLL_SECONDS", "60")))
+    while True:
+        worked = await asyncio.to_thread(run_advanced_cycle)
+        await asyncio.sleep(1 if worked else interval)
+
+
 @app.on_event("startup")
 async def startup() -> None:
-    global notification_task, operations_task, workflow_automation_task
+    global advanced_task, notification_task, operations_task, workflow_automation_task
     init_taskhub()
+    init_advanced()
     if os.getenv("WORKFLOW_ROLE_AUTOMATION_ENABLED", "false").lower() in {"1", "true", "yes", "on"}:
         workflow_automation_task = asyncio.create_task(workflow_automation_loop())
     notification_task = asyncio.create_task(notification_loop())
     operations_task = asyncio.create_task(operations_loop())
+    advanced_task = asyncio.create_task(advanced_loop())
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
-    global notification_task, operations_task, workflow_automation_task
-    for task in (workflow_automation_task, notification_task, operations_task):
+    global advanced_task, notification_task, operations_task, workflow_automation_task
+    for task in (workflow_automation_task, notification_task, operations_task, advanced_task):
         if not task:
             continue
         task.cancel()
@@ -147,6 +159,7 @@ async def shutdown() -> None:
     workflow_automation_task = None
     notification_task = None
     operations_task = None
+    advanced_task = None
 
 
 @app.get("/")

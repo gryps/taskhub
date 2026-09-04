@@ -114,6 +114,12 @@ def validate_stage_output(state: str, output: dict[str, Any]) -> dict[str, Any]:
 def stage_messages(claim: dict[str, Any]) -> list[dict[str, str]]:
     state = claim["state"]
     role = claim["role"]
+    try:
+        from app.advanced import context_for_prompt
+
+        project_context = context_for_prompt(str(claim["project"]))
+    except Exception:
+        project_context = ""
     snapshot = {
         "workflow": {
             "id": str(claim["workflow_id"]),
@@ -125,6 +131,7 @@ def stage_messages(claim: dict[str, Any]) -> list[dict[str, str]]:
             "context": redact(claim.get("context") or {}),
         },
         "tasks": redact(claim.get("tasks") or []),
+        "governed_project_context": project_context,
     }
     system = (
         "You are the post-implementation role in a LangGraph TaskHub workflow. "
@@ -309,6 +316,7 @@ def run_automation_cycle() -> bool:
             title=f"workflow {claim['workflow_id']} {claim['state']}",
             priority=80,
             pipeline_id=claim.get("pipeline_id"),
+            metadata={"workflow_id": str(claim["workflow_id"])},
         )
         raw_output = run_structured_role(
             claim["role"], request, stage_messages(claim), STAGE_OUTPUT_SCHEMAS[claim["state"]]

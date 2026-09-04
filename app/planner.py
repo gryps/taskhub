@@ -685,12 +685,19 @@ def role_prompt(role: dict[str, Any], request: PlannerRequest, prior_outputs: li
         "\"tasks\": [{\"type\": string, \"title\": string, \"priority\": number, "
         "\"input\": object, \"metadata\": object}], \"notes\": [string]}"
     )
+    try:
+        from app.advanced import context_for_prompt
+
+        project_context = context_for_prompt(request.project)
+    except Exception:
+        project_context = ""
     user = (
         f"Project: {request.project}\n"
         f"Title: {request.title or ''}\n"
         f"Priority: {request.priority}\n"
         f"Requirement:\n{request.requirement}\n\n"
         f"Prior role outputs:\n{prior}\n"
+        f"Governed project context:\n{project_context or 'not registered'}\n"
     )
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
@@ -817,6 +824,7 @@ def call_api_provider(
             "provider": provider,
             "status": "succeeded",
             "model": model,
+            "usage": payload.get("usage", {}),
         }
         return raw_plan, attempt
     except httpx.TimeoutException:
@@ -1029,6 +1037,19 @@ def normalize_plan(raw_plan: dict[str, Any], request: PlannerRequest) -> dict[st
 def run_role(role_name: str, request: PlannerRequest, prior_outputs: list[dict[str, Any]]) -> dict[str, Any]:
     role = role_config(role_name)
     attempts: list[dict[str, Any]] = []
+    try:
+        from app.advanced import model_budget_allows
+
+        budget_allowed, budget_reason = model_budget_allows(request.project)
+    except Exception:
+        budget_allowed, budget_reason = True, "budget unavailable"
+    if not budget_allowed:
+        return {
+            "role": role_name, "label": role["label"], "model": role["model"], "source": "budget_guard",
+            "status": "fallback", "summary": budget_reason, "risk_level": "medium",
+            "tasks": fallback_tasks(request, budget_reason) if role_name == "planner" else [],
+            "notes": ["模型硬预算已触发，需要人工调整预算。"], "attempts": [],
+        }
     for provider in role["provider_order"]:
         allowed, gate = before_attempt(provider)
         if not allowed:
@@ -1055,6 +1076,14 @@ def run_role(role_name: str, request: PlannerRequest, prior_outputs: list[dict[s
         else:
             raw_plan, attempt = call_api_provider(provider, role, request, prior_outputs)
         attempts.append(attempt)
+        try:
+            from app.advanced import record_model_usage
+
+            record_model_usage(request.project, request.metadata.get("workflow_id"), role_name, provider,
+                               str(attempt.get("model") or role["model"]), str(attempt.get("status") or "failed"),
+                               attempt.get("usage"))
+        except Exception:
+            pass
         if raw_plan is not None:
             health = record_success(provider)
             attempt["provider_health"] = health
@@ -1105,6 +1134,15 @@ def run_structured_role(
     """Run one configured role without applying planner-task normalization."""
     role = role_config(role_name)
     attempts: list[dict[str, Any]] = []
+    try:
+        from app.advanced import model_budget_allows
+
+        budget_allowed, budget_reason = model_budget_allows(request.project)
+    except Exception:
+        budget_allowed, budget_reason = True, "budget unavailable"
+    if not budget_allowed:
+        return {"role": role_name, "label": role["label"], "provider": "budget_guard",
+                "model": role["model"], "status": "failed", "reason": budget_reason, "attempts": []}
     for provider in role["provider_order"]:
         allowed, gate = before_attempt(provider)
         if not allowed:
@@ -1131,6 +1169,14 @@ def run_structured_role(
         else:
             output, attempt = call_api_provider(provider, role, request, [], messages)
         attempts.append(attempt)
+        try:
+            from app.advanced import record_model_usage
+
+            record_model_usage(request.project, request.metadata.get("workflow_id"), role_name, provider,
+                               str(attempt.get("model") or role["model"]), str(attempt.get("status") or "failed"),
+                               attempt.get("usage"))
+        except Exception:
+            pass
         if output is not None:
             health = record_success(provider)
             attempt["provider_health"] = health
@@ -1232,10 +1278,28 @@ def build_plan(request: PlannerRequest) -> dict[str, Any]:
 
     providers_to_try = [request.provider]
     errors: list[str] = []
+    try:
+        from app.advanced import model_budget_allows
+
+        budget_allowed, budget_reason = model_budget_allows(request.project)
+    except Exception:
+        budget_allowed, budget_reason = True, "budget unavailable"
+    if not budget_allowed:
+        plan = fallback_plan(request, budget_reason)
+        plan["provider_errors"] = [budget_reason]
+        return plan
     for provider in providers_to_try:
         try:
             role = role_config("planner")
             raw_plan, attempt = call_api_provider(provider, role, request, [])
+            try:
+                from app.advanced import record_model_usage
+
+                record_model_usage(request.project, request.metadata.get("workflow_id"), "planner", provider,
+                                   str(attempt.get("model") or role["model"]), str(attempt.get("status") or "failed"),
+                                   attempt.get("usage"))
+            except Exception:
+                pass
             if raw_plan is None:
                 errors.append(f"{provider}: {attempt.get('reason')}")
                 continue

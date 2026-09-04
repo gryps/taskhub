@@ -541,6 +541,7 @@
         <button data-view="quality">审查验收</button>
         <button data-view="risk">风险报告</button>
         <button data-view="supervision">监督裁决</button>
+        <button data-view="advanced">项目治理</button>
         <button data-view="planner">模型调度</button>
         <button data-view="system">系统设置</button>
       </nav>
@@ -817,6 +818,71 @@
           <div class="section" id="supervisionWorkflowQueue"></div>
           <pre class="section" id="supervisionWorkflowDetail">选择工作流查看监督模型建议</pre>
           <div class="section" id="supervisionQueue"></div>
+        </div>
+
+        <div id="advanced" class="hidden">
+          <div class="toolbar"><h2>项目治理</h2><span class="muted" id="advancedStatus">等待刷新</span></div>
+          <div class="grid" id="advancedCards"></div>
+          <form class="form section" id="projectRegistryForm">
+            <div class="toolbar"><h2>项目与代码权威源</h2><span class="muted">只登记，不从控制中心执行远程命令</span></div>
+            <div class="grid">
+              <label>项目标识<input name="slug" value="douyin-listing-workbench" required /></label>
+              <label>项目名称<input name="name" value="抖音电商工作台" required /></label>
+              <label>权威源主机<input name="sourceHost" value="192.168.31.17" required /></label>
+              <label>Git 根目录<input name="sourceRoot" value="/home/gryps/.openclaw/workspace/douyin-listing-workbench" required /></label>
+              <label>默认分支<input name="defaultBranch" value="main" required /></label>
+            </div>
+            <div class="actions"><button class="primary" type="submit">登记项目</button></div>
+          </form>
+          <div class="section" id="projectRegistryResult"></div>
+          <form class="form section" id="workspaceRegistryForm">
+            <div class="toolbar"><h2>独立实施工作区</h2><span class="muted">流水线、分支和节点一一绑定</span></div>
+            <div class="grid">
+              <label>流水线<select name="pipelineId" id="advancedPipelineSelect"><option value="">不绑定流水线</option></select></label>
+              <label>实施节点<input name="workerId" value="worker-31-31-implementation-a" required /></label>
+              <label>工作区标识<input name="workspaceId" required /></label>
+              <label>节点本地路径<input name="workspacePath" value="/home/gryps/apps/douyin-listing-workbench" required /></label>
+              <label>独立分支<input name="branch" required /></label>
+              <label>基线 Commit<input name="baselineCommit" maxlength="64" /></label>
+            </div>
+            <button class="primary" type="submit">绑定工作区</button>
+          </form>
+          <div class="split section">
+            <form class="form" id="contextSnapshotForm">
+              <h2>上下文基线</h2>
+              <label>分支<input name="branch" value="main" required /></label>
+              <label>Commit<input name="commit" minlength="7" required /></label>
+              <label>变更数量<input name="changeCount" type="number" min="0" value="0" /></label>
+              <label class="toggle"><input name="dirty" type="checkbox" />工作区有未提交变更</label>
+              <button class="primary" type="submit">保存版本快照</button>
+            </form>
+            <form class="form" id="memoryForm">
+              <h2>长期记忆</h2>
+              <label>类型<select name="kind"><option value="constraint">约束</option><option value="decision">决策</option><option value="lesson">经验</option><option value="summary">总结</option><option value="risk">风险</option></select></label>
+              <label>标题<input name="title" required /></label>
+              <label>内容<textarea name="content" required></textarea></label>
+              <label>重要度<input name="importance" type="number" min="1" max="100" value="70" /></label>
+              <button class="primary" type="submit">写入记忆</button>
+            </form>
+          </div>
+          <div class="split section">
+            <form class="form" id="budgetForm">
+              <h2>模型预算</h2>
+              <label>月预算（USD）<input name="monthlyBudget" type="number" min="0" step="0.01" value="0" /></label>
+              <label>告警比例<input name="warningRatio" type="number" min="0.1" max="1" step="0.05" value="0.8" /></label>
+              <label class="toggle"><input name="hardLimit" type="checkbox" />达到预算后停止模型调用</label>
+              <button class="primary" type="submit">保存预算</button>
+            </form>
+            <form class="form" id="governanceForm">
+              <h2>有限自治</h2>
+              <label class="toggle"><input name="autonomyEnabled" type="checkbox" />启用低风险自治</label>
+              <label>最高自治风险<select name="maxRisk"><option value="low">低</option><option value="medium">中</option></select></label>
+              <div class="muted">发布、上线、凭据变更和生产代码应用始终需要人工批准。</div>
+              <button class="primary" type="submit">保存治理策略</button>
+            </form>
+          </div>
+          <div class="section"><div class="toolbar"><h2>动态调度与质量评估</h2></div><div id="advancedDetails"></div></div>
+          <pre class="section" id="advancedResult">高级阶段运行数据</pre>
         </div>
 
         <div id="system" class="hidden">
@@ -2472,6 +2538,103 @@
         renderWorkQueue(document.getElementById("supervisionQueue"), queue, "当前没有待裁决任务");
       };
 
+      const renderAdvanced = (dashboard, projects, scheduler, quality, context) => {
+        const registered = projects.find(item => item.slug === project);
+        document.getElementById("advancedStatus").textContent = registered ? "项目治理已启用" : "项目尚未登记";
+        document.getElementById("advancedCards").innerHTML = [
+          ["项目登记", dashboard.project_registered ? "已完成" : "待登记"],
+          ["隔离工作区", dashboard.workspace_count],
+          ["长期记忆", dashboard.memory_count],
+          ["质量评估", dashboard.quality_evaluation_count],
+          ["模型费用", `$${Number(dashboard.usage?.spent_usd || 0).toFixed(4)}`],
+          ["自治状态", dashboard.governance?.autonomy_enabled ? "低风险启用" : "人工控制"],
+        ].map(([label, value]) => `<div class="card"><div class="muted">${escapeHtml(label)}</div><div class="metric">${escapeHtml(value)}</div></div>`).join("");
+        const workers = scheduler.workers || [];
+        document.getElementById("advancedDetails").innerHTML = `
+          <table><thead><tr><th>节点</th><th>运行</th><th>待处理</th><th>失败</th></tr></thead>
+          <tbody>${workers.map(item => `<tr><td>${escapeHtml(item.worker_id)}</td><td>${item.running}</td><td>${item.pending}</td><td>${item.failed}</td></tr>`).join("") || '<tr><td colspan="4" class="muted">暂无已路由任务</td></tr>'}</tbody></table>
+        `;
+        document.getElementById("projectRegistryResult").innerHTML = registered
+          ? `<div class="detail-grid">${detailItem("权威源", `${registered.source_host}:${registered.source_root}`)}${detailItem("上下文版本", registered.context_version || 0)}${detailItem("工作区", registered.workspace_count || 0)}</div>`
+          : '<div class="muted">登记后才能建立版本化上下文和长期记忆。</div>';
+        if (dashboard.usage?.budget_status) document.getElementById("advancedResult").textContent = show({
+          context_pack_hash: context?.pack_hash || "", scheduler_strategy: scheduler.strategy,
+          quality_evaluations: quality, budget_status: dashboard.usage.budget_status,
+          human_boundaries: ["release", "publish", "credential_change", "production_apply"],
+        });
+      };
+
+      const loadAdvanced = async () => {
+        const [dashboard, projects, scheduler, quality] = await Promise.all([
+          api(`/taskhub/advanced/dashboard?project=${project}`),
+          api("/taskhub/advanced/projects"),
+          api(`/taskhub/advanced/scheduler?project=${project}`),
+          api(`/taskhub/advanced/quality?project=${project}`),
+        ]);
+        let context = null;
+        if (dashboard.project_registered) context = await api(`/taskhub/advanced/projects/${project}/context-pack`);
+        const select = document.getElementById("advancedPipelineSelect");
+        const selected = select.value;
+        select.innerHTML = '<option value="">不绑定流水线</option>' + cachedPipelines
+          .filter(item => item.project === project)
+          .map(item => `<option value="${item.id}">${escapeHtml(item.name)} / ${escapeHtml(item.workspace_id)}</option>`).join("");
+        if ([...select.options].some(option => option.value === selected)) select.value = selected;
+        renderAdvanced(dashboard, projects, scheduler, quality, context);
+      };
+
+      const submitProjectRegistry = async (event) => {
+        event.preventDefault(); const form = new FormData(event.target);
+        await api("/taskhub/advanced/projects", {method: "POST", body: JSON.stringify({
+          slug: form.get("slug"), name: form.get("name"), source_host: form.get("sourceHost"),
+          source_root: form.get("sourceRoot"), default_branch: form.get("defaultBranch"),
+        })});
+        await loadAdvanced();
+      };
+
+      const submitContextSnapshot = async (event) => {
+        event.preventDefault(); const form = new FormData(event.target);
+        const result = await api(`/taskhub/advanced/projects/${project}/snapshots`, {method: "POST", body: JSON.stringify({
+          branch: form.get("branch"), commit: form.get("commit"), dirty: form.get("dirty") === "on",
+          change_count: Number(form.get("changeCount")), context: {source: "web-console"},
+        })});
+        document.getElementById("advancedResult").textContent = show(result); await loadAdvanced();
+      };
+
+      const submitWorkspaceRegistry = async (event) => {
+        event.preventDefault(); const form = new FormData(event.target);
+        const result = await api(`/taskhub/advanced/projects/${project}/workspaces`, {method: "POST", body: JSON.stringify({
+          pipeline_id: form.get("pipelineId") || null, worker_id: form.get("workerId"),
+          workspace_id: form.get("workspaceId"), workspace_path: form.get("workspacePath"),
+          branch: form.get("branch"), baseline_commit: form.get("baselineCommit") || null,
+        })}); document.getElementById("advancedResult").textContent = show(result); await loadAdvanced();
+      };
+
+      const submitMemory = async (event) => {
+        event.preventDefault(); const form = new FormData(event.target);
+        const result = await api(`/taskhub/advanced/projects/${project}/memories`, {method: "POST", body: JSON.stringify({
+          kind: form.get("kind"), title: form.get("title"), content: form.get("content"),
+          importance: Number(form.get("importance")), tags: [],
+        })});
+        document.getElementById("advancedResult").textContent = show(result); event.target.reset(); await loadAdvanced();
+      };
+
+      const submitBudget = async (event) => {
+        event.preventDefault(); const form = new FormData(event.target);
+        await api(`/taskhub/advanced/usage/${project}/budget`, {method: "PUT", body: JSON.stringify({
+          monthly_budget_usd: Number(form.get("monthlyBudget")), warning_ratio: Number(form.get("warningRatio")),
+          hard_limit: form.get("hardLimit") === "on",
+        })}); await loadAdvanced();
+      };
+
+      const submitGovernance = async (event) => {
+        event.preventDefault(); const form = new FormData(event.target);
+        await api(`/taskhub/advanced/governance/${project}`, {method: "PUT", body: JSON.stringify({
+          autonomy_enabled: form.get("autonomyEnabled") === "on", max_risk: form.get("maxRisk"),
+          allowed_actions: ["retry_task", "requeue_expired_lease", "run_quality_evaluation", "refresh_context"],
+          require_human_release: true, require_human_publish: true,
+        })}); await loadAdvanced();
+      };
+
       const loadSystem = async () => {
         const [health, security, configCheck, notificationConfig, notificationDeliveries, policy, readiness, actions] = await Promise.all([
           api("/health"),
@@ -2618,6 +2781,7 @@
           if (current === "code") await loadCode();
           if (current === "risk") await loadRisk();
           if (current === "supervision") await loadSupervision();
+          if (current === "advanced") { await loadPipelines(); await loadAdvanced(); }
           if (current === "system") await loadSystem();
         } catch (error) {
           alert(error.message);
@@ -2689,6 +2853,12 @@
         if (!operationsPolicySaving) operationsPolicyDirty = true;
       });
       document.getElementById("operationsRun").addEventListener("click", runOperationsNow);
+      document.getElementById("projectRegistryForm").addEventListener("submit", submitProjectRegistry);
+      document.getElementById("workspaceRegistryForm").addEventListener("submit", submitWorkspaceRegistry);
+      document.getElementById("contextSnapshotForm").addEventListener("submit", submitContextSnapshot);
+      document.getElementById("memoryForm").addEventListener("submit", submitMemory);
+      document.getElementById("budgetForm").addEventListener("submit", submitBudget);
+      document.getElementById("governanceForm").addEventListener("submit", submitGovernance);
       document.getElementById("marketCollectionForm").addEventListener("submit", async (event) => {
         event.preventDefault(); const form = new FormData(event.target);
         await createWindowsAutomationTask("market.price.collect", {keyword: form.get("keyword"), count: Number(form.get("count")), max_scroll: Number(form.get("maxScroll"))}, `采集商品价格：${form.get("keyword")}`);
