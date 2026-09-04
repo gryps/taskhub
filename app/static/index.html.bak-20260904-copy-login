@@ -1,0 +1,1791 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gryps LangGraph TaskHub</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --line: #d8dde5;
+        --text: #17202a;
+        --muted: #667085;
+        --blue: #2563eb;
+        --green: #16803c;
+        --red: #c43b3b;
+        --orange: #b65f00;
+        --gray: #6b7280;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      header {
+        height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 650;
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        min-height: calc(100vh - 56px);
+      }
+
+      nav {
+        border-right: 1px solid var(--line);
+        background: #eef1f5;
+        padding: 16px 10px;
+      }
+
+      nav button,
+      .button {
+        width: 100%;
+        min-height: 36px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text);
+        text-align: left;
+        padding: 8px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      nav button.active {
+        background: var(--panel);
+        border-color: var(--line);
+        font-weight: 650;
+      }
+
+      .content {
+        padding: 18px;
+        min-width: 0;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 20px;
+      }
+
+      .primary,
+      .secondary,
+      .danger {
+        min-height: 36px;
+        border-radius: 6px;
+        padding: 7px 12px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .primary {
+        border: 1px solid var(--blue);
+        background: var(--blue);
+        color: #fff;
+      }
+
+      .secondary {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--text);
+      }
+
+      .danger {
+        border: 1px solid var(--red);
+        background: #fff;
+        color: var(--red);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(140px, 1fr));
+        gap: 12px;
+      }
+
+      .panel,
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .card {
+        padding: 14px;
+      }
+
+      .metric {
+        font-size: 28px;
+        font-weight: 700;
+        margin-top: 8px;
+      }
+
+      .muted {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .section {
+        margin-top: 16px;
+      }
+
+      .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .detail-item {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px;
+        background: #fafbfc;
+        min-width: 0;
+      }
+
+      .detail-item strong {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+
+      .detail-item span {
+        word-break: break-word;
+      }
+
+      .approval-panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        background: #fafbfc;
+      }
+
+      .approval-plan {
+        display: grid;
+        gap: 8px;
+      }
+
+      .approval-plan-item {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px;
+        background: #fff;
+      }
+
+      .approval-plan-item strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .approval-reason {
+        margin-top: 10px;
+      }
+
+      .approval-plan-editor {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        min-height: 180px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--line);
+        padding: 10px;
+        text-align: left;
+        vertical-align: top;
+        font-size: 14px;
+      }
+
+      th {
+        background: #f0f3f7;
+        color: #344054;
+        font-weight: 650;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      tr[data-task],
+      tr[data-quality-task],
+      tr[data-code-task] {
+        cursor: pointer;
+      }
+
+      tr[data-task]:hover,
+      tr[data-task].selected,
+      tr[data-quality-task]:hover,
+      tr[data-quality-task].selected,
+      tr[data-code-task]:hover,
+      tr[data-code-task].selected {
+        background: #f7faff;
+      }
+
+      .status {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 3px 8px;
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      .pending { background: #eef2f7; color: var(--gray); }
+      .running { background: #e6efff; color: var(--blue); }
+      .succeeded { background: #e8f6ee; color: var(--green); }
+      .failed { background: #fdecec; color: var(--red); }
+      .blocked { background: #fff2df; color: var(--orange); }
+      .canceled { background: #f2f2f2; color: var(--gray); }
+
+      .form {
+        display: grid;
+        gap: 12px;
+        max-width: 900px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 9px 10px;
+        font: inherit;
+        background: #fff;
+      }
+
+      .proxy-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+
+      .toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-weight: 500;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+
+      .toggle input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        padding: 0;
+      }
+
+      .field-disabled {
+        opacity: 0.55;
+      }
+
+      input:disabled {
+        background: #f2f4f7;
+        cursor: not-allowed;
+      }
+
+      textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+
+      pre {
+        margin: 0;
+        max-height: 360px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #111827;
+        color: #f9fafb;
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 13px;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
+        gap: 14px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .command-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(140px, 1fr));
+        gap: 10px;
+      }
+
+      .result-pass {
+        color: var(--green);
+        font-weight: 650;
+      }
+
+      .result-fail {
+        color: var(--red);
+        font-weight: 650;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      .auth-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: grid;
+        place-items: center;
+        background: rgba(17, 24, 39, 0.72);
+        padding: 20px;
+      }
+
+      .auth-dialog {
+        width: min(420px, 100%);
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 20px;
+      }
+
+      .auth-overlay.hidden { display: none; }
+
+      @media (max-width: 860px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+        nav {
+          display: flex;
+          gap: 8px;
+          overflow-x: auto;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+        nav button {
+          min-width: 110px;
+          text-align: center;
+        }
+        .grid,
+        .split,
+        .command-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="auth-overlay hidden" id="authOverlay">
+      <form class="auth-dialog form" id="loginForm">
+        <h2>TaskHub 登录</h2>
+        <label>管理员令牌
+          <input name="token" type="password" autocomplete="current-password" required />
+        </label>
+        <button class="primary" type="submit">登录</button>
+        <div class="muted" id="loginStatus"></div>
+      </form>
+    </div>
+    <header>
+      <h1>Gryps LangGraph TaskHub</h1>
+      <div class="actions">
+        <button class="secondary" id="refresh">刷新</button>
+        <button class="secondary" id="logout">退出</button>
+      </div>
+    </header>
+    <main>
+      <nav>
+        <button data-view="overview" class="active">总览</button>
+        <button data-view="planner">主管</button>
+        <button data-view="tasks">任务</button>
+        <button data-view="quality">质量</button>
+        <button data-view="code">代码</button>
+        <button data-view="create">新建</button>
+        <button data-view="workers">实施</button>
+      </nav>
+      <section class="content">
+        <div id="overview">
+          <div class="toolbar"><h2>总览</h2><span class="muted" id="healthText">加载中</span></div>
+          <div class="grid" id="stats"></div>
+          <div class="section">
+            <div class="toolbar"><h2>最近任务</h2></div>
+            <div id="recentTasks"></div>
+          </div>
+        </div>
+
+        <div id="planner" class="hidden">
+          <div class="toolbar">
+            <h2>主管</h2>
+            <span class="muted" id="plannerStatus">等待刷新</span>
+          </div>
+          <div class="grid" id="plannerProviders"></div>
+          <pre class="section" id="providerTestResult">Provider 测试结果</pre>
+          <div class="section">
+            <div class="toolbar"><h2>配置检查</h2><button class="secondary" id="configCheckButton" type="button">检查</button></div>
+            <pre id="plannerConfigCheck">等待检查</pre>
+          </div>
+          <form class="form section" id="accountProviderForm">
+            <div class="toolbar"><h2>账号 Fallback</h2><span class="muted" id="accountProviderStatus">Plus > Pro > API</span></div>
+            <label>账号 Provider
+              <select name="provider" id="accountProviderSelect">
+                <option value="chatgpt_plus_account">ChatGPT Plus 账号</option>
+                <option value="chatgpt_pro_account">ChatGPT Pro 账号</option>
+              </select>
+            </label>
+            <div class="actions">
+              <button class="secondary" id="accountRefresh" type="button">刷新状态</button>
+              <button class="secondary" id="accountCopyLogin" type="button">复制登录命令</button>
+            </div>
+          </form>
+          <pre class="section" id="accountProviderResult">Codex CLI 账号状态</pre>
+          <form class="form section" id="providerConfigForm">
+            <div class="toolbar"><h2>Provider Key</h2><span class="muted" id="providerKeyMask">未选择</span></div>
+            <label>Provider
+              <select name="provider" id="providerConfigSelect">
+                <option value="gpt_api">GPT API</option>
+                <option value="deepseek_api">DeepSeek API</option>
+                <option value="minimax_api">MiniMax API</option>
+              </select>
+            </label>
+            <label>API Key
+              <input name="apiKey" type="password" autocomplete="off" placeholder="留空则保持原 key" />
+            </label>
+            <label>Base URL
+              <input name="baseUrl" placeholder="https://api.openai.com/v1" />
+            </label>
+            <label>默认 API Model
+              <input name="defaultModel" placeholder="provider 的真实 model id" />
+            </label>
+            <div class="section" id="roleModelFields"></div>
+            <div class="actions">
+              <button class="primary" type="submit">保存配置</button>
+            </div>
+          </form>
+          <pre class="section" id="providerConfigResult">Provider 配置结果</pre>
+          <form class="form section" id="proxyConfigForm">
+            <div class="toolbar">
+              <h2>网络代理</h2>
+              <div class="proxy-toolbar">
+                <span class="muted" id="proxyStatus">未检查</span>
+                <label class="toggle"><input name="enabled" type="checkbox" checked disabled />OpenAI 强制启用</label>
+                <label class="toggle"><input name="restart" type="checkbox" checked />保存后重启</label>
+              </div>
+            </div>
+            <label id="proxyUrlField">代理地址
+              <input name="proxyUrl" placeholder="http://192.168.31.200:7893" />
+            </label>
+            <label>NO_PROXY
+              <input name="noProxy" placeholder="127.0.0.1,localhost,192.168.31.0/24,192.168.31.24,192.168.31.31" />
+            </label>
+            <div class="actions">
+              <button class="primary" type="submit">保存代理</button>
+            </div>
+          </form>
+          <pre class="section" id="proxyConfigResult">Proxy 配置结果</pre>
+          <div class="section">
+            <div class="toolbar"><h2>角色模型</h2><span class="muted" id="plannerRoleStatus">等待刷新</span></div>
+            <div id="plannerRoles"></div>
+          </div>
+          <div class="section" id="plannerAlerts"></div>
+          <form class="form section" id="plannerForm">
+            <label>Provider
+              <select name="provider">
+                <option value="">多角色 fallback</option>
+                <option value="gpt_api">GPT API</option>
+                <option value="openai">OpenAI 兼容</option>
+                <option value="deepseek_api">DeepSeek API</option>
+                <option value="minimax_api">MiniMax API</option>
+              </select>
+            </label>
+            <label>标题
+              <input name="title" value="新的 LLM 规划需求" />
+            </label>
+            <label>优先级
+              <input name="priority" type="number" value="70" />
+            </label>
+            <label>需求
+              <textarea name="requirement" required placeholder="描述需要主管拆解的开发需求"></textarea>
+            </label>
+            <div class="actions">
+              <button class="primary" type="submit">生成多角色计划并进入审批</button>
+            </div>
+          </form>
+          <div class="section" id="plannerSummary"></div>
+          <pre class="section" id="plannerResult">等待提交</pre>
+        </div>
+
+        <div id="tasks" class="hidden">
+          <div class="toolbar">
+            <h2>任务列表</h2>
+            <select id="stateFilter">
+              <option value="">全部状态</option>
+              <option value="blocked">blocked</option>
+              <option value="failed">failed</option>
+              <option value="running">running</option>
+              <option value="pending">pending</option>
+              <option value="succeeded">succeeded</option>
+              <option value="canceled">canceled</option>
+            </select>
+          </div>
+          <div class="split">
+            <div id="taskTable"></div>
+            <div class="panel card">
+              <h2>任务详情</h2>
+              <div class="actions section" id="taskActions"></div>
+              <div class="section" id="taskSummary"></div>
+              <pre class="section" id="taskDetail">选择一个任务</pre>
+            </div>
+          </div>
+        </div>
+
+        <div id="quality" class="hidden">
+          <div class="toolbar">
+            <h2>质量命令</h2>
+            <span class="muted" id="qualityStatus">等待刷新</span>
+          </div>
+          <div class="command-grid">
+            <button class="secondary" id="qualityEnvCheck">环境检测</button>
+            <button class="secondary" data-quality-command="api.lint">API lint</button>
+            <button class="secondary" data-quality-command="api.typecheck">API typecheck</button>
+            <button class="secondary" data-quality-command="api.test">API test</button>
+            <button class="secondary" data-quality-command="web.check">Web check</button>
+            <button class="secondary" data-quality-command="executor.check">Executor check</button>
+          </div>
+          <div class="split section">
+            <div>
+              <div class="toolbar"><h2>最近质量任务</h2></div>
+              <div id="qualityTable"></div>
+            </div>
+            <div class="panel card">
+              <h2>运行结果</h2>
+              <div class="section" id="qualitySummary"></div>
+              <pre class="section" id="qualityDetail">选择一个质量任务</pre>
+            </div>
+          </div>
+        </div>
+
+        <div id="code" class="hidden">
+          <div class="toolbar">
+            <h2>代码变更</h2>
+            <span class="muted" id="codeStatus">等待刷新</span>
+          </div>
+          <form class="form" id="codeForm">
+            <label>变更需求
+              <textarea name="requirement" required placeholder="描述要改什么、验收标准和限制"></textarea>
+            </label>
+            <label>候选文件或目录
+              <input name="files" placeholder="可选，逗号分隔，例如 apps/api/app/services/shops.py, apps/web/src/" />
+            </label>
+            <div class="actions">
+              <button class="primary" type="submit">生成代码变更计划</button>
+              <button class="secondary" type="button" id="codeDiffPreview">当前 diff 预览</button>
+            </div>
+          </form>
+          <form class="form section" id="codeApplyForm">
+            <label>Unified diff
+              <textarea name="unifiedDiff" placeholder="粘贴 unified diff，初级阶段默认只做 dry-run 校验"></textarea>
+            </label>
+            <label>允许修改路径
+              <input name="allowedPaths" placeholder="必填，逗号分隔，例如 docs/langgraph/, apps/api/app/services/shops.py" />
+            </label>
+            <div class="actions">
+              <button class="secondary" type="submit">校验 diff dry-run</button>
+            </div>
+          </form>
+          <div class="split section">
+            <div>
+              <div class="toolbar"><h2>最近代码任务</h2></div>
+              <div id="codeTable"></div>
+            </div>
+            <div class="panel card">
+              <h2>变更计划</h2>
+              <div class="section" id="codeSummary"></div>
+              <pre class="section" id="codeDetail">选择一个代码任务</pre>
+            </div>
+          </div>
+        </div>
+
+        <div id="create" class="hidden">
+          <div class="toolbar"><h2>新建任务</h2></div>
+          <form class="form" id="createForm">
+            <label>项目
+              <input name="project" value="douyin-listing-workbench" />
+            </label>
+            <label>任务类型
+              <select name="type">
+                <option value="ops.note">ops.note</option>
+                <option value="echo">echo</option>
+                <option value="system_info">system_info</option>
+                <option value="requirement.split">requirement.split</option>
+                <option value="project.context.sync">project.context.sync</option>
+                <option value="project.git.status">project.git.status</option>
+                <option value="code.change">code.change</option>
+                <option value="code.diff.preview">code.diff.preview</option>
+                <option value="code.change.apply">code.change.apply</option>
+                <option value="test.run">test.run</option>
+                <option value="h5.inspect">h5.inspect</option>
+                <option value="review.model">review.model</option>
+                <option value="review.human">review.human</option>
+              </select>
+            </label>
+            <label>标题
+              <input name="title" required value="新的 LangGraph 任务" />
+            </label>
+            <label>优先级
+              <input name="priority" type="number" value="50" />
+            </label>
+            <label>输入内容
+              <textarea name="input" placeholder="输入需求、说明或备注"></textarea>
+            </label>
+            <div class="actions">
+              <button class="primary" type="submit">创建单个任务</button>
+              <button class="secondary" type="button" id="invokeGraph">交给 LangGraph 拆解</button>
+            </div>
+          </form>
+          <div class="section" id="createSummary"></div>
+          <pre class="section" id="createResult">等待提交</pre>
+        </div>
+
+        <div id="workers" class="hidden">
+          <div class="toolbar"><h2>实施节点状态</h2></div>
+          <div id="workerList"></div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const project = "douyin-listing-workbench";
+      let selectedTaskId = null;
+      let selectedTaskApprovalHash = "";
+      let selectedQualityTaskId = null;
+      let selectedCodeTaskId = null;
+      let providerConfigDirty = false;
+      let providerConfigSaving = false;
+      let accountProviderDirty = false;
+      let accountProviderSaving = false;
+      let currentAccountProviderConfig = null;
+      let proxyConfigDirty = false;
+      let proxyConfigSaving = false;
+
+      const redact = (value) => {
+        if (Array.isArray(value)) return value.map(redact);
+        if (value && typeof value === "object") {
+          return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+            return /KEY|TOKEN|SECRET|PASSWORD|COOKIE|AUTH|SESSION/i.test(key)
+              ? [key, "***REDACTED***"]
+              : [key, redact(item)];
+          }));
+        }
+        return value;
+      };
+
+      const cookieValue = (name) => document.cookie.split("; ")
+        .find(row => row.startsWith(`${name}=`))?.split("=").slice(1).join("=") || "";
+
+      const showLogin = () => document.getElementById("authOverlay").classList.remove("hidden");
+      const hideLogin = () => document.getElementById("authOverlay").classList.add("hidden");
+
+      const api = async (url, options = {}) => {
+        const headers = { "content-type": "application/json", ...(options.headers || {}) };
+        const csrf = cookieValue("langgraph_csrf");
+        if (csrf && !["GET", "HEAD"].includes(options.method || "GET")) headers["x-csrf-token"] = decodeURIComponent(csrf);
+        const response = await fetch(url, {
+          ...options,
+          headers,
+          credentials: "same-origin",
+        });
+        if (response.status === 401) showLogin();
+        if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+        return response.json();
+      };
+
+      const statusBadge = (state) => `<span class="status ${state}">${state}</span>`;
+      const shortId = (id) => id ? id.slice(0, 8) : "";
+      const show = (id) => JSON.stringify(redact(id), null, 2);
+      const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;",
+      }[char]));
+      const formatDate = (value) => value ? new Date(value).toLocaleString() : "";
+      const providerDefaults = {
+        gpt_api: {
+          baseUrl: "https://api.openai.com/v1",
+          model: "gpt-4.1-mini",
+          roleModels: { coder: "", supervisor: "", planner: "" },
+          roleLabels: { coder: "施工", supervisor: "监督", planner: "规划" },
+        },
+        deepseek_api: {
+          baseUrl: "https://api.deepseek.com/v1",
+          model: "deepseek-chat",
+          roleModels: { reviewer: "" },
+          roleLabels: { reviewer: "审查" },
+        },
+        minimax_api: {
+          baseUrl: "https://api.minimax.io/v1",
+          model: "MiniMax-M1",
+          roleModels: { risk: "" },
+          roleLabels: { risk: "风险" },
+        },
+      };
+
+      const detailItem = (label, value) => `
+        <div class="detail-item">
+          <strong>${escapeHtml(label)}</strong>
+          <span>${escapeHtml(value)}</span>
+        </div>
+      `;
+
+      const renderTaskSummary = (task) => `
+        <div class="detail-grid">
+          ${detailItem("ID", task.id)}
+          ${detailItem("状态", task.state)}
+          ${detailItem("类型", task.type)}
+          ${detailItem("实施节点", task.worker_id || "未领取")}
+          ${detailItem("优先级", task.priority)}
+          ${detailItem("更新时间", formatDate(task.updated_at))}
+        </div>
+      `;
+
+      const renderPlannerProviders = (payload) => {
+        const providers = payload.providers || [];
+        document.getElementById("plannerProviders").innerHTML = providers.map(provider => `
+          <div class="card">
+            <div class="muted">${escapeHtml(provider.label || provider.provider)}</div>
+            <div class="metric">${provider.configured ? "OK" : "--"}</div>
+            <div class="muted">${escapeHtml(provider.model || "")}</div>
+            <div class="muted">${escapeHtml(provider.kind || "api")} | ${escapeHtml(provider.status || "")} | quota ${escapeHtml(provider.quota_status || "unknown")}</div>
+            ${provider.kind === "account" ? `<div class="muted">Codex CLI 自动探测 | ${escapeHtml(provider.cli_version || "未安装")}</div>` : ''}
+            <div class="actions section">
+              <button class="secondary" data-provider-test="${escapeHtml(provider.provider)}">测试</button>
+            </div>
+          </div>
+        `).join("");
+        for (const button of document.querySelectorAll("[data-provider-test]")) {
+          button.addEventListener("click", () => testProvider(button.dataset.providerTest));
+        }
+        document.getElementById("plannerStatus").textContent = `fallback: ${payload.fallback || "rule"}`;
+      };
+
+      const renderPlannerRoles = (payload) => {
+        const roles = payload.roles || [];
+        const alerts = payload.alerts || [];
+        document.getElementById("plannerRoleStatus").textContent = `执行顺序: ${(payload.execution_order || []).join(" > ")}`;
+        document.getElementById("plannerRoles").innerHTML = `
+          <table>
+            <thead><tr><th>优先级</th><th>角色</th><th>模型 Label</th><th>Fallback</th><th>实际模型</th><th>状态</th></tr></thead>
+            <tbody>
+              ${roles.map(role => {
+                const providers = role.providers || [];
+                const names = providers.map(provider => provider.label || provider.provider).join(" > ");
+                const models = providers.map(provider => `${provider.provider}:${provider.resolved_model || provider.model || role.model}`).join(" | ");
+                const status = providers.map(provider => `${provider.provider}:${provider.status || (provider.configured ? "configured" : "not_configured")}`).join(" | ");
+                return `<tr>
+                  <td>${escapeHtml(role.priority)}</td>
+                  <td>${escapeHtml(role.label)} / ${escapeHtml(role.role)}</td>
+                  <td>${escapeHtml(role.model)}</td>
+                  <td>${escapeHtml(names)}</td>
+                  <td>${escapeHtml(models)}</td>
+                  <td>${escapeHtml(status)}</td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        `;
+        document.getElementById("plannerAlerts").innerHTML = alerts.length ? `
+          <div class="toolbar"><h2>配置提醒</h2><span class="muted">${alerts.length} 条</span></div>
+          ${alerts.map(item => `
+            <div class="approval-plan-item">
+              <strong>${escapeHtml(item.code || "")}</strong>
+              <div>${escapeHtml(item.message || "")}</div>
+              <div class="muted">${escapeHtml(item.role || "")} ${escapeHtml(item.provider || "")}</div>
+            </div>
+          `).join("")}
+        ` : '<div class="muted">暂无配置提醒</div>';
+      };
+
+      const approvalPlan = (task) => Array.isArray(task.input?.approval_plan) ? task.input.approval_plan : [];
+
+      const renderApprovalPlan = (task) => {
+        const plan = approvalPlan(task);
+        if (!plan.length) return '<div class="muted">无审批后下游任务</div>';
+        return `
+          <div class="approval-plan">
+            ${plan.map((item, index) => `
+              <div class="approval-plan-item">
+                <strong>${escapeHtml(index + 1)}. ${escapeHtml(item.type || "unknown")}</strong>
+                <div>${escapeHtml(item.title || "")}</div>
+                <div class="muted">优先级 ${escapeHtml(item.priority ?? task.priority)} | ${escapeHtml(item.metadata?.stage || "")}</div>
+                <pre class="section">${show(item.input || {})}</pre>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      };
+
+      const renderReviewPanel = (task) => {
+        if (task.type !== "review.human") return "";
+        const canApprove = ["pending", "blocked"].includes(task.state);
+        const downstream = task.result?.downstream_created || [];
+        return `
+          <div class="approval-panel section">
+            <h2>人工审批</h2>
+            <div class="detail-grid section">
+              ${detailItem("需求", task.input?.requirement || "")}
+              ${detailItem("审批说明", task.input?.instruction || "")}
+              ${detailItem("计划任务数", approvalPlan(task).length)}
+              ${detailItem("已派生任务数", Array.isArray(downstream) ? downstream.length : 0)}
+            </div>
+            <div class="section">
+              <h2>审批后任务</h2>
+              ${renderApprovalPlan(task)}
+            </div>
+            ${Array.isArray(downstream) && downstream.length ? `
+              <div class="section">
+                <h2>已创建下游</h2>
+                <table>
+                  <thead><tr><th>ID</th><th>类型</th><th>标题</th><th>状态</th></tr></thead>
+                  <tbody>
+                    ${downstream.map(item => `
+                      <tr>
+                        <td>${escapeHtml(shortId(item.id))}</td>
+                        <td>${escapeHtml(item.type)}</td>
+                        <td>${escapeHtml(item.title)}</td>
+                        <td>${statusBadge(item.state)}</td>
+                      </tr>
+                    `).join("")}
+                  </tbody>
+                </table>
+              </div>
+            ` : ""}
+            ${canApprove ? `
+              <label class="approval-reason">编辑 approval_plan
+                <textarea class="approval-plan-editor" id="approvalPlanEditor">${escapeHtml(JSON.stringify(approvalPlan(task), null, 2))}</textarea>
+              </label>
+              <label class="approval-reason">审批原因
+                <textarea id="approvalReason" placeholder="说明为什么批准、阻塞或取消"></textarea>
+              </label>
+              <div class="actions section">
+                <button class="primary" data-review-action="approve">批准并创建下游任务</button>
+                <button class="secondary" data-review-action="block">阻塞</button>
+                <button class="danger" data-review-action="cancel">取消</button>
+              </div>
+            ` : ""}
+          </div>
+        `;
+      };
+
+      const commandLabel = (task) => task?.result?.command_key || task?.input?.command || task?.type || "";
+
+      const renderQualitySummary = (task) => {
+        const passed = task.result && task.result.passed === true;
+        const failed = task.result && task.result.passed === false;
+        const resultText = passed ? "通过" : failed ? "未通过" : "暂无结果";
+        return `
+          <div class="detail-grid">
+            ${detailItem("ID", task.id)}
+            ${detailItem("命令", commandLabel(task))}
+            ${detailItem("状态", task.state)}
+            ${detailItem("结果", resultText)}
+            ${detailItem("退出码", task.result?.exit_code ?? "")}
+            ${detailItem("实施节点", task.worker_id || "未领取")}
+            ${detailItem("更新时间", formatDate(task.updated_at))}
+            ${detailItem("重试次数", task.retry_count ?? 0)}
+          </div>
+        `;
+      };
+
+      const renderQualityResult = (task) => {
+        const result = task.result || {};
+        const error = task.error || {};
+        if (task.type === "quality.env.check" && Array.isArray(result.checks)) {
+          const lines = result.checks.flatMap(item => [
+            `${item.ok ? "OK" : "FAIL"} ${item.name}`,
+            `命令: ${item.command}`,
+            `退出码: ${item.exit_code}`,
+            item.stdout_tail ? `输出:\n${item.stdout_tail}` : "",
+            item.stderr_tail ? `错误:\n${item.stderr_tail}` : "",
+            "",
+          ]);
+          return [
+            `状态: ${task.state}`,
+            `结果: ${result.passed ? "通过" : "未通过"}`,
+            `项目: ${result.project_host || ""}:${result.project_root || ""}`,
+            "",
+            ...lines,
+          ].join("\n");
+        }
+        return [
+          `状态: ${task.state}`,
+          `命令: ${commandLabel(task) || "未知"}`,
+          `执行: ${result.command || ""}`,
+          `退出码: ${result.exit_code ?? ""}`,
+          "",
+          "STDOUT:",
+          result.stdout_tail || "",
+          "",
+          "STDERR:",
+          result.stderr_tail || "",
+          "",
+          "ERROR:",
+          error.message || "",
+        ].join("\n");
+      };
+
+      const renderCodeSummary = (task) => {
+        const result = task.result || {};
+        return `
+          <div class="detail-grid">
+            ${detailItem("ID", task.id)}
+            ${detailItem("类型", task.type)}
+            ${detailItem("状态", task.state)}
+            ${detailItem("模式", result.mode || task.input?.mode || "plan_only")}
+            ${detailItem("会修改文件", result.will_modify_files === true ? "是" : "否")}
+            ${detailItem("diff", result.has_diff === true ? "有" : result.has_diff === false ? "无" : "未检测")}
+            ${detailItem("更新时间", formatDate(task.updated_at))}
+          </div>
+        `;
+      };
+
+      const renderCodePlan = (task) => {
+        const result = task.result || {};
+        if (task.type === "code.diff.preview") {
+          return [
+            `状态: ${task.state}`,
+            `项目: ${result.project_host || ""}:${result.project_root || ""}`,
+            `命令: ${result.command || ""}`,
+            `有 diff: ${result.has_diff ? "是" : "否"}`,
+            `已截断: ${result.truncated ? "是" : "否"}`,
+            "",
+            "路径:",
+            ...(result.paths || []).map(item => `- ${item}`),
+            "",
+            "DIFF:",
+            result.diff_tail || "",
+            "",
+            "ERROR:",
+            task.error?.message || "",
+          ].join("\n");
+        }
+        if (task.type === "code.change.apply") {
+          return [
+            `状态: ${task.state}`,
+            `模式: ${result.mode || task.input?.mode || "dry_run"}`,
+            `会修改文件: ${result.will_modify_files === true ? "是" : "否"}`,
+            `check 退出码: ${result.check_exit_code ?? ""}`,
+            `apply 退出码: ${result.apply_exit_code ?? ""}`,
+            "",
+            "触碰路径:",
+            ...(result.touched_paths || task.error?.touched_paths || []).map(item => `- ${item}`),
+            "",
+            "允许路径:",
+            ...(result.allowed_paths || task.error?.allowed_paths || []).map(item => `- ${item}`),
+            "",
+            "CHECK STDERR:",
+            result.check_stderr_tail || task.error?.check_stderr_tail || "",
+            "",
+            "APPLY STDERR:",
+            result.apply_stderr_tail || "",
+            "",
+            "ERROR:",
+            task.error?.message || "",
+          ].join("\n");
+        }
+        const lines = [
+          `状态: ${task.state}`,
+          `模式: ${result.mode || task.input?.mode || "plan_only"}`,
+          `会修改文件: ${result.will_modify_files === true ? "是" : "否"}`,
+          `项目: ${result.project_host || ""}:${result.project_root || ""}`,
+          `HEAD: ${result.workcopy_head || ""}`,
+          `工作副本有未提交变更: ${result.workcopy_dirty ? "是" : "否"}`,
+          "",
+          "需求:",
+          result.request || task.input?.requirement || "",
+          "",
+          "候选路径:",
+          ...(result.candidate_paths || []).map(item => `- ${item}`),
+          "",
+          "执行步骤:",
+          ...(result.proposed_steps || []).map(item => `- ${item}`),
+          "",
+          "安全规则:",
+          ...(result.safety_rules || []).map(item => `- ${item}`),
+          "",
+          "工作副本状态样例:",
+          ...(result.workcopy_status_sample || []).map(item => `- ${item}`),
+          "",
+          "下一步:",
+          result.next || "",
+          "",
+          "ERROR:",
+          task.error?.message || "",
+        ];
+        return lines.join("\n");
+      };
+
+      const setView = (view) => {
+        for (const el of document.querySelectorAll(".content > div")) el.classList.add("hidden");
+        document.getElementById(view).classList.remove("hidden");
+        for (const button of document.querySelectorAll("nav button")) {
+          button.classList.toggle("active", button.dataset.view === view);
+        }
+        refresh();
+      };
+
+      const renderTasks = (container, rows) => {
+        if (!rows.length) {
+          container.innerHTML = '<div class="card muted">暂无任务</div>';
+          return;
+        }
+        container.innerHTML = `
+          <table>
+            <thead><tr><th>ID</th><th>标题</th><th>类型</th><th>状态</th><th>实施节点</th><th>更新</th></tr></thead>
+            <tbody>
+              ${rows.map(task => `
+                <tr data-task="${task.id}">
+                  <td>${escapeHtml(shortId(task.id))}</td>
+                  <td>${escapeHtml(task.title)}</td>
+                  <td>${escapeHtml(task.type)}</td>
+                  <td>${statusBadge(task.state)}</td>
+                  <td>${escapeHtml(task.worker_id || "")}</td>
+                  <td>${escapeHtml(formatDate(task.updated_at))}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        `;
+        for (const row of container.querySelectorAll("tr[data-task]")) {
+          row.addEventListener("click", () => loadTask(row.dataset.task));
+        }
+      };
+
+      const renderQualityTasks = (rows) => {
+        const container = document.getElementById("qualityTable");
+        if (!rows.length) {
+          container.innerHTML = '<div class="card muted">暂无质量任务</div>';
+          return;
+        }
+        container.innerHTML = `
+          <table>
+            <thead><tr><th>ID</th><th>命令</th><th>状态</th><th>结果</th><th>实施节点</th><th>更新</th></tr></thead>
+            <tbody>
+              ${rows.map(task => {
+                const passed = task.result?.passed === true;
+                const failed = task.result?.passed === false || task.state === "failed";
+                const resultClass = passed ? "result-pass" : failed ? "result-fail" : "";
+                const resultText = passed ? "通过" : failed ? "未通过" : "";
+                return `
+                  <tr data-quality-task="${task.id}">
+                    <td>${escapeHtml(shortId(task.id))}</td>
+                    <td>${escapeHtml(commandLabel(task))}</td>
+                    <td>${statusBadge(task.state)}</td>
+                    <td class="${resultClass}">${escapeHtml(resultText)}</td>
+                    <td>${escapeHtml(task.worker_id || "")}</td>
+                    <td>${escapeHtml(formatDate(task.updated_at))}</td>
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        `;
+        for (const row of container.querySelectorAll("tr[data-quality-task]")) {
+          row.addEventListener("click", () => loadQualityTask(row.dataset.qualityTask));
+        }
+      };
+
+      const renderCodeTasks = (rows) => {
+        const container = document.getElementById("codeTable");
+        if (!rows.length) {
+          container.innerHTML = '<div class="card muted">暂无代码任务</div>';
+          return;
+        }
+        container.innerHTML = `
+          <table>
+            <thead><tr><th>ID</th><th>标题</th><th>类型</th><th>状态</th><th>模式</th><th>更新</th></tr></thead>
+            <tbody>
+              ${rows.map(task => `
+                <tr data-code-task="${task.id}">
+                  <td>${escapeHtml(shortId(task.id))}</td>
+                  <td>${escapeHtml(task.title)}</td>
+                  <td>${escapeHtml(task.type)}</td>
+                  <td>${statusBadge(task.state)}</td>
+                  <td>${escapeHtml(task.result?.mode || task.input?.mode || "plan_only")}</td>
+                  <td>${escapeHtml(formatDate(task.updated_at))}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        `;
+        for (const row of container.querySelectorAll("tr[data-code-task]")) {
+          row.addEventListener("click", () => loadCodeTask(row.dataset.codeTask));
+        }
+      };
+
+      const loadOverview = async () => {
+        const [health, workers, stats, recent] = await Promise.all([
+          api("/health"),
+          api("/workers"),
+          api(`/taskhub/stats?project=${project}`),
+          api(`/taskhub/tasks?project=${project}&limit=10`),
+        ]);
+        document.getElementById("healthText").textContent = `控制中心 ${health.status} | Postgres ${health.postgres} | Redis ${health.redis}（仅健康检查） | 实施节点 ${workers.length}`;
+        const states = stats.states || {};
+        document.getElementById("stats").innerHTML = ["blocked", "failed", "running", "pending", "succeeded", "canceled"].map(state => `
+          <div class="card" data-state="${state}">
+            <div class="muted">${state}</div>
+            <div class="metric">${states[state] || 0}</div>
+          </div>
+        `).join("");
+        for (const card of document.querySelectorAll("[data-state]")) {
+          card.addEventListener("click", () => {
+            document.getElementById("stateFilter").value = card.dataset.state;
+            setView("tasks");
+          });
+        }
+        renderTasks(document.getElementById("recentTasks"), recent);
+      };
+
+      const loadPlanner = async () => {
+        const [providerPayload, rolePayload, configPayload] = await Promise.all([
+          api("/planner/providers"),
+          api("/planner/roles"),
+          api("/planner/config-check"),
+        ]);
+        renderPlannerProviders(providerPayload);
+        renderPlannerRoles(rolePayload);
+        document.getElementById("plannerConfigCheck").textContent = show(configPayload);
+        if (!providerConfigDirty && !providerConfigSaving) updateProviderConfigForm(configPayload);
+        if (!accountProviderDirty && !accountProviderSaving) updateAccountProviderForm(configPayload);
+        if (!proxyConfigDirty && !proxyConfigSaving) updateProxyConfigForm(configPayload);
+      };
+
+      const testProvider = async (provider) => {
+        const form = document.getElementById("plannerForm");
+        const formData = new FormData(form);
+        const prompt = formData.get("requirement") || "测试 provider 是否能返回合法 JSON。";
+        document.getElementById("providerTestResult").textContent = `正在测试 ${provider} ...`;
+        const result = await api(`/planner/providers/${provider}/test`, {
+          method: "POST",
+          body: JSON.stringify({
+            role: "planner",
+            prompt,
+          }),
+        });
+        document.getElementById("providerTestResult").textContent = show(result);
+        await loadPlanner();
+      };
+
+      const loadConfigCheck = async () => {
+        const result = await api("/planner/config-check");
+        document.getElementById("plannerConfigCheck").textContent = show(result);
+        if (!providerConfigDirty && !providerConfigSaving) updateProviderConfigForm(result);
+        if (!accountProviderDirty && !accountProviderSaving) updateAccountProviderForm(result);
+        if (!proxyConfigDirty && !proxyConfigSaving) updateProxyConfigForm(result);
+      };
+
+      const updateAccountProviderForm = (configCheck, force = false) => {
+        const provider = document.getElementById("accountProviderSelect").value;
+        const config = (configCheck?.account_providers || []).find(item => item.provider === provider) || {};
+        currentAccountProviderConfig = config;
+        const summary = (configCheck?.account_providers || [])
+          .map(item => `${item.label}: ${item.status}/${item.quota_status}`)
+          .join(" | ");
+        document.getElementById("accountProviderStatus").textContent = summary || "Plus > Pro > API";
+        document.getElementById("accountProviderResult").textContent = show({
+          provider: config.provider,
+          status: config.status,
+          quota_status: config.quota_status,
+          cli_version: config.cli_version,
+          home: config.home,
+          login_command: config.login_command,
+          message: config.message,
+        });
+      };
+
+      const updateProxyConfigForm = (configCheck, force = false) => {
+        if (!force && proxyConfigDirty) return;
+        const form = document.getElementById("proxyConfigForm");
+        const proxy = configCheck?.proxy || {};
+        form.querySelector('[name="enabled"]').checked = true;
+        form.querySelector('[name="proxyUrl"]').value = proxy.proxy_url_mask || "";
+        form.querySelector('[name="noProxy"]').value = proxy.no_proxy || "127.0.0.1,localhost,192.168.31.0/24,192.168.31.24,192.168.31.31";
+        syncProxyFields();
+        document.getElementById("proxyStatus").textContent = proxy.enabled
+          ? `OpenAI 走代理 ${proxy.proxy_url_mask || ""}；DeepSeek/MiniMax 直连`
+          : "OpenAI 代理缺失";
+      };
+
+      const syncProxyFields = () => {
+        const form = document.getElementById("proxyConfigForm");
+        const enabled = form.querySelector('[name="enabled"]').checked;
+        form.querySelector('[name="proxyUrl"]').disabled = !enabled;
+        document.getElementById("proxyUrlField").classList.toggle("field-disabled", !enabled);
+      };
+
+      const saveProxyConfig = async (event) => {
+        event.preventDefault();
+        const form = event.target;
+        proxyConfigSaving = true;
+        document.getElementById("proxyConfigResult").textContent = "正在保存代理配置 ...";
+        try {
+          const result = await api("/planner/proxy/config", {
+            method: "POST",
+            body: JSON.stringify({
+              enabled: true,
+              proxy_url: form.querySelector('[name="proxyUrl"]').value || null,
+              no_proxy: form.querySelector('[name="noProxy"]').value || null,
+              restart: form.querySelector('[name="restart"]').checked,
+            }),
+          });
+          document.getElementById("proxyConfigResult").textContent = show(result);
+          proxyConfigDirty = false;
+          if (result.restart?.scheduled) {
+            document.getElementById("proxyStatus").textContent = "正在重启 ...";
+            await new Promise(resolve => setTimeout(resolve, 2500));
+          }
+          const configPayload = await api("/planner/config-check");
+          document.getElementById("plannerConfigCheck").textContent = show(configPayload);
+          updateProxyConfigForm(configPayload, true);
+        } finally {
+          proxyConfigSaving = false;
+        }
+      };
+
+      const renderRoleModelFields = (provider, roleModels) => {
+        const defaults = providerDefaults[provider] || providerDefaults.gpt_api;
+        const labels = defaults.roleLabels || {};
+        document.getElementById("roleModelFields").innerHTML = `
+          <div class="toolbar"><h2>角色 Model 覆盖</h2><span class="muted">留空则使用默认 API Model</span></div>
+          <div class="grid">
+            ${Object.keys(defaults.roleModels).map(role => `
+              <label>${escapeHtml(labels[role] || role)}
+                <input name="roleModel_${escapeHtml(role)}" data-role-model="${escapeHtml(role)}" value="${escapeHtml(roleModels[role] || "")}" placeholder="角色专用 model id" />
+              </label>
+            `).join("")}
+          </div>
+        `;
+      };
+
+      const collectRoleModelFields = () => {
+        const result = {};
+        for (const input of document.querySelectorAll("[data-role-model]")) {
+          result[input.dataset.roleModel] = input.value.trim();
+        }
+        return result;
+      };
+
+      const updateProviderConfigForm = (configCheck, force = false) => {
+        if (!force && providerConfigDirty) return;
+        const form = document.getElementById("providerConfigForm");
+        const provider = document.getElementById("providerConfigSelect").value;
+        const defaults = providerDefaults[provider] || providerDefaults.gpt_api;
+        const providerConfig = (configCheck?.providers || []).find(item => item.provider === provider);
+        form.querySelector('[name="baseUrl"]').value = providerConfig?.base_url || defaults.baseUrl;
+        form.querySelector('[name="defaultModel"]').value = providerConfig?.model || defaults.model;
+        const roleModels = {};
+        for (const role of Object.keys(defaults.roleModels)) {
+          roleModels[role] = "";
+        }
+        for (const role of configCheck?.roles || []) {
+          for (const item of role.provider_models || []) {
+            if (item.provider === provider && roleModels[role.role] !== undefined) {
+              roleModels[role.role] = item.override_model || "";
+            }
+          }
+        }
+        renderRoleModelFields(provider, roleModels);
+        document.getElementById("providerKeyMask").textContent = providerConfig?.api_key_mask
+          ? `已保存 ${providerConfig.api_key_mask}`
+          : "未保存 key";
+      };
+
+      const saveProviderConfig = async (event) => {
+        event.preventDefault();
+        const form = event.target;
+        const provider = form.querySelector('[name="provider"]').value;
+        const roleModels = collectRoleModelFields();
+        providerConfigSaving = true;
+        document.getElementById("providerConfigResult").textContent = `正在保存 ${provider} ...`;
+        try {
+          const result = await api(`/planner/providers/${provider}/config`, {
+            method: "POST",
+            body: JSON.stringify({
+              api_key: form.querySelector('[name="apiKey"]').value || null,
+              base_url: form.querySelector('[name="baseUrl"]').value,
+              model: form.querySelector('[name="defaultModel"]').value,
+              role_models: roleModels,
+            }),
+          });
+          form.querySelector('[name="apiKey"]').value = "";
+          document.getElementById("providerConfigResult").textContent = show(result);
+          providerConfigDirty = false;
+          const configPayload = await api("/planner/config-check");
+          document.getElementById("plannerConfigCheck").textContent = show(configPayload);
+          updateProviderConfigForm(configPayload, true);
+          renderPlannerProviders(await api("/planner/providers"));
+          renderPlannerRoles(await api("/planner/roles"));
+        } finally {
+          providerConfigSaving = false;
+        }
+      };
+
+      const loadTasks = async () => {
+        const state = document.getElementById("stateFilter").value;
+        const url = `/taskhub/tasks?project=${project}&limit=100${state ? `&state=${state}` : ""}`;
+        renderTasks(document.getElementById("taskTable"), await api(url));
+      };
+
+      const loadTask = async (id) => {
+        selectedTaskId = id;
+        const task = await api(`/taskhub/tasks/${id}`);
+        selectedTaskApprovalHash = task.approval_content_hash || "";
+        for (const row of document.querySelectorAll("tr[data-task]")) {
+          row.classList.toggle("selected", row.dataset.task === id);
+        }
+        document.getElementById("taskSummary").innerHTML = renderTaskSummary(task);
+        document.getElementById("taskDetail").textContent = show(task);
+        const actions = [];
+        if (task.state === "failed") actions.push(["重试", "retry", false], ["取消", "cancel", true]);
+        if (task.state === "blocked" && task.type === "review.human") actions.push(["重试", "retry", false]);
+        if (task.state === "blocked" && task.type !== "review.human") actions.push(["重试", "retry", false], ["取消", "cancel", true]);
+        if (task.state === "running") actions.push(["阻塞", "block", false]);
+        if (task.state === "pending" && task.type !== "review.human") actions.push(["取消", "cancel", true]);
+        document.getElementById("taskActions").innerHTML = actions.map(([label, action, danger]) => `
+          <button class="${danger ? "danger" : "secondary"}" data-action="${action}">${label}</button>
+        `).join("");
+        for (const button of document.querySelectorAll("[data-action]")) {
+          button.addEventListener("click", () => taskAction(button.dataset.action));
+        }
+        document.getElementById("taskSummary").insertAdjacentHTML("beforeend", renderReviewPanel(task));
+        for (const button of document.querySelectorAll("[data-review-action]")) {
+          button.addEventListener("click", () => reviewAction(button.dataset.reviewAction));
+        }
+      };
+
+      const loadQuality = async () => {
+        const allRows = await api(`/taskhub/tasks?project=${project}&limit=100`);
+        const rows = allRows.filter(task => ["test.run", "quality.env.check"].includes(task.type)).slice(0, 50);
+        renderQualityTasks(rows);
+        document.getElementById("qualityStatus").textContent = `最近 ${rows.length} 条`;
+        if (selectedQualityTaskId && rows.some(task => task.id === selectedQualityTaskId)) {
+          await loadQualityTask(selectedQualityTaskId);
+        } else if (rows.length) {
+          await loadQualityTask(rows[0].id);
+        }
+      };
+
+      const loadQualityTask = async (id) => {
+        selectedQualityTaskId = id;
+        const task = await api(`/taskhub/tasks/${id}`);
+        for (const row of document.querySelectorAll("tr[data-quality-task]")) {
+          row.classList.toggle("selected", row.dataset.qualityTask === id);
+        }
+        document.getElementById("qualitySummary").innerHTML = renderQualitySummary(task);
+        document.getElementById("qualityDetail").textContent = renderQualityResult(task);
+      };
+
+      const createQualityTask = async (command) => {
+        const task = await api("/taskhub/tasks", {
+          method: "POST",
+          body: JSON.stringify({
+            project,
+            type: "test.run",
+            title: `质量命令: ${command}`,
+            priority: 80,
+            input: { command },
+            metadata: { source: "web-quality-panel" },
+          }),
+        });
+        selectedQualityTaskId = task.id;
+        await loadQuality();
+        await loadQualityTask(task.id);
+      };
+
+      const createQualityEnvCheck = async () => {
+        const task = await api("/taskhub/tasks", {
+          method: "POST",
+          body: JSON.stringify({
+            project,
+            type: "quality.env.check",
+            title: "质量环境检测",
+            priority: 85,
+            input: {},
+            metadata: { source: "web-quality-panel" },
+          }),
+        });
+        selectedQualityTaskId = task.id;
+        await loadQuality();
+        await loadQualityTask(task.id);
+      };
+
+      const loadCode = async () => {
+        const allRows = await api(`/taskhub/tasks?project=${project}&limit=120`);
+        const rows = allRows.filter(task => ["code.change", "code.diff.preview", "code.change.apply"].includes(task.type)).slice(0, 50);
+        renderCodeTasks(rows);
+        document.getElementById("codeStatus").textContent = `最近 ${rows.length} 条`;
+        if (selectedCodeTaskId && rows.some(task => task.id === selectedCodeTaskId)) {
+          await loadCodeTask(selectedCodeTaskId);
+        } else if (rows.length) {
+          await loadCodeTask(rows[0].id);
+        }
+      };
+
+      const loadCodeTask = async (id) => {
+        selectedCodeTaskId = id;
+        const task = await api(`/taskhub/tasks/${id}`);
+        for (const row of document.querySelectorAll("tr[data-code-task]")) {
+          row.classList.toggle("selected", row.dataset.codeTask === id);
+        }
+        document.getElementById("codeSummary").innerHTML = renderCodeSummary(task);
+        document.getElementById("codeDetail").textContent = renderCodePlan(task);
+      };
+
+      const createCodeTask = async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.target);
+        const files = String(form.get("files") || "")
+          .split(",")
+          .map(item => item.trim())
+          .filter(Boolean);
+        const task = await api("/taskhub/tasks", {
+          method: "POST",
+          body: JSON.stringify({
+            project,
+            type: "code.change",
+            title: "代码变更计划",
+            priority: 82,
+            input: {
+              requirement: form.get("requirement"),
+              mode: "plan_only",
+              files,
+            },
+            metadata: { source: "web-code-panel" },
+          }),
+        });
+        selectedCodeTaskId = task.id;
+        await loadCode();
+        await loadCodeTask(task.id);
+      };
+
+      const createCodeDiffPreview = async () => {
+        const task = await api("/taskhub/tasks", {
+          method: "POST",
+          body: JSON.stringify({
+            project,
+            type: "code.diff.preview",
+            title: "当前 diff 预览",
+            priority: 84,
+            input: { paths: [] },
+            metadata: { source: "web-code-panel" },
+          }),
+        });
+        selectedCodeTaskId = task.id;
+        await loadCode();
+        await loadCodeTask(task.id);
+      };
+
+      const createCodeApplyDryRun = async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.target);
+        const allowedPaths = String(form.get("allowedPaths") || "")
+          .split(",")
+          .map(item => item.trim())
+          .filter(Boolean);
+        const task = await api("/taskhub/tasks", {
+          method: "POST",
+          body: JSON.stringify({
+            project,
+            type: "code.change.apply",
+            title: "代码 diff dry-run 校验",
+            priority: 83,
+            input: {
+              unified_diff: form.get("unifiedDiff"),
+              allowed_paths: allowedPaths,
+              apply: false,
+            },
+            metadata: { source: "web-code-panel" },
+          }),
+        });
+        selectedCodeTaskId = task.id;
+        await loadCode();
+        await loadCodeTask(task.id);
+      };
+
+      const taskAction = async (action) => {
+        if (!selectedTaskId) return;
+        const reason = prompt("原因");
+        if (!reason) return;
+        const body = { reason };
+        await api(`/taskhub/tasks/${selectedTaskId}/${action}`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        await loadTask(selectedTaskId);
+        await loadTasks();
+      };
+
+      const reviewAction = async (action) => {
+        if (!selectedTaskId) return;
+        const reason = document.getElementById("approvalReason")?.value?.trim();
+        if (!reason) {
+          alert("请填写审批原因");
+          return;
+        }
+        const body = { reason };
+        if (action === "approve") {
+          try {
+            const editedPlan = JSON.parse(document.getElementById("approvalPlanEditor")?.value || "[]");
+            if (!Array.isArray(editedPlan)) throw new Error("approval_plan 必须是数组");
+            body.result = { approved_by: "web-console" };
+            body.approval_plan = editedPlan;
+            body.approval_hash = selectedTaskApprovalHash;
+          } catch (error) {
+            alert(`approval_plan JSON 无效: ${error.message}`);
+            return;
+          }
+        }
+        await api(`/taskhub/tasks/${selectedTaskId}/${action}`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        await loadTask(selectedTaskId);
+        await loadTasks();
+      };
+
+      const loadWorkers = async () => {
+        const workers = await api("/workers");
+        document.getElementById("workerList").innerHTML = `
+          <table>
+            <thead><tr><th>URL</th><th>状态</th><th>详情</th></tr></thead>
+            <tbody>
+              ${workers.map(worker => `<tr><td>${escapeHtml(worker.url)}</td><td>${escapeHtml(worker.status)}</td><td>${escapeHtml(worker.detail)}</td></tr>`).join("")}
+            </tbody>
+          </table>
+        `;
+      };
+
+      const createTask = async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.target);
+        const payload = {
+          project: form.get("project"),
+          type: form.get("type"),
+          title: form.get("title"),
+          priority: Number(form.get("priority")),
+          input: { note: form.get("input") || "" },
+          metadata: { source: "web-console" },
+        };
+        const task = await api("/taskhub/tasks", { method: "POST", body: JSON.stringify(payload) });
+        document.getElementById("createSummary").innerHTML = renderTaskSummary(task);
+        document.getElementById("createResult").textContent = show(task);
+        document.getElementById("stateFilter").value = "";
+        setView("tasks");
+        await loadTasks();
+        await loadTask(task.id);
+      };
+
+      const invokeGraph = async () => {
+        const form = new FormData(document.getElementById("createForm"));
+        const text = form.get("input") || "";
+        const result = await api("/graphs/douyin_stage1_requirement_flow/invoke", {
+          method: "POST",
+          body: JSON.stringify({
+            project: form.get("project"),
+            title: form.get("title"),
+            priority: Number(form.get("priority")),
+            requirement: text,
+            metadata: { source: "web-console" },
+          }),
+        });
+        document.getElementById("createSummary").innerHTML = `
+          <div class="detail-grid">
+            ${detailItem("图入口", result.graph)}
+            ${detailItem("创建任务数", result.created)}
+            ${detailItem("项目", result.project)}
+            ${detailItem("下一步", result.next)}
+          </div>
+        `;
+        document.getElementById("createResult").textContent = show(result);
+        document.getElementById("stateFilter").value = "";
+        setView("tasks");
+        await loadTasks();
+        if (result.tasks && result.tasks.length) await loadTask(result.tasks[0].id);
+      };
+
+      const invokePlanner = async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.target);
+        const provider = form.get("provider");
+        const endpoint = provider ? "/planner/invoke" : "/planner/multi-invoke";
+        const result = await api(endpoint, {
+          method: "POST",
+          body: JSON.stringify({
+            project,
+            provider: provider || null,
+            title: form.get("title"),
+            priority: Number(form.get("priority")),
+            requirement: form.get("requirement"),
+            metadata: { source: "web-planner" },
+          }),
+        });
+        const reviewTask = (result.tasks || []).find(task => task.type === "review.human") || (result.tasks || [])[0];
+        const attempts = (result.planner?.role_outputs || [])
+          .flatMap(output => output.attempts || []);
+        const alertText = (result.planner?.alerts || [])
+          .map(item => `${item.role || ""}/${item.provider || ""}: ${item.code || ""}`)
+          .join(" | ");
+        document.getElementById("plannerSummary").innerHTML = `
+          <div class="detail-grid">
+            ${detailItem("主管来源", result.planner?.source || "")}
+            ${detailItem("模型", result.planner?.model || "fallback")}
+            ${detailItem("风险", result.planner?.risk_level || "")}
+            ${detailItem("计划任务数", result.planner?.tasks?.length || 0)}
+            ${detailItem("Provider 尝试", attempts.length)}
+            ${detailItem("提醒", alertText || "无")}
+            ${detailItem("创建任务数", result.created)}
+            ${detailItem("下一步", result.next)}
+          </div>
+        `;
+        document.getElementById("plannerResult").textContent = show(result);
+        if (reviewTask) {
+          document.getElementById("stateFilter").value = "";
+          setView("tasks");
+          await loadTasks();
+          await loadTask(reviewTask.id);
+        }
+      };
+
+      const refresh = async () => {
+        const current = document.querySelector("nav button.active").dataset.view;
+        try {
+          if (current === "overview") await loadOverview();
+          if (current === "planner") await loadPlanner();
+          if (current === "tasks") await loadTasks();
+          if (current === "quality") await loadQuality();
+          if (current === "code") await loadCode();
+          if (current === "workers") await loadWorkers();
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+
+      document.querySelectorAll("nav button").forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));
+      document.getElementById("refresh").addEventListener("click", refresh);
+      document.getElementById("logout").addEventListener("click", async () => {
+        try { await api("/auth/logout", { method: "POST", body: "{}" }); } finally { showLogin(); }
+      });
+      document.getElementById("loginForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const status = document.getElementById("loginStatus");
+        const token = new FormData(event.target).get("token");
+        status.textContent = "登录中";
+        try {
+          await api("/auth/login", { method: "POST", body: JSON.stringify({ token }) });
+          event.target.reset();
+          status.textContent = "";
+          hideLogin();
+          await refresh();
+        } catch (error) {
+          status.textContent = "令牌无效";
+        }
+      });
+      document.getElementById("plannerForm").addEventListener("submit", invokePlanner);
+      document.getElementById("configCheckButton").addEventListener("click", loadConfigCheck);
+      document.getElementById("providerConfigForm").addEventListener("submit", saveProviderConfig);
+      document.getElementById("providerConfigForm").addEventListener("input", () => {
+        if (!providerConfigSaving) providerConfigDirty = true;
+      });
+      document.getElementById("providerConfigSelect").addEventListener("change", async () => {
+        providerConfigDirty = false;
+        await loadConfigCheck();
+      });
+      document.getElementById("accountProviderSelect").addEventListener("change", async () => {
+        accountProviderDirty = false;
+        await loadConfigCheck();
+      });
+      document.getElementById("accountRefresh").addEventListener("click", loadConfigCheck);
+      document.getElementById("accountCopyLogin").addEventListener("click", async () => {
+        const command = currentAccountProviderConfig?.login_command || "";
+        if (command) await navigator.clipboard.writeText(command);
+      });
+      document.getElementById("proxyConfigForm").addEventListener("submit", saveProxyConfig);
+      document.getElementById("proxyConfigForm").addEventListener("input", () => {
+        if (!proxyConfigSaving) proxyConfigDirty = true;
+      });
+      document.querySelector('#proxyConfigForm [name="enabled"]').addEventListener("change", syncProxyFields);
+      document.getElementById("stateFilter").addEventListener("change", loadTasks);
+      document.getElementById("createForm").addEventListener("submit", createTask);
+      document.getElementById("codeForm").addEventListener("submit", createCodeTask);
+      document.getElementById("codeDiffPreview").addEventListener("click", createCodeDiffPreview);
+      document.getElementById("codeApplyForm").addEventListener("submit", createCodeApplyDryRun);
+      document.getElementById("invokeGraph").addEventListener("click", invokeGraph);
+      document.querySelectorAll("[data-quality-command]").forEach(button => {
+        button.addEventListener("click", () => createQualityTask(button.dataset.qualityCommand));
+      });
+      document.getElementById("qualityEnvCheck").addEventListener("click", createQualityEnvCheck);
+      const bootstrap = async () => {
+        const status = await api("/auth/status");
+        if (status.authenticated) {
+          hideLogin();
+          await refresh();
+        } else {
+          showLogin();
+        }
+      };
+      bootstrap();
+      setInterval(() => {
+        if (document.getElementById("authOverlay").classList.contains("hidden")) refresh();
+      }, 10000);
+    </script>
+  </body>
+</html>
