@@ -87,7 +87,13 @@ RUNNERS = {"h5.inspect": run_h5_inspection}
 
 def publish_artifacts(task: dict[str, Any], result: dict[str, Any]) -> list[dict[str, Any]]:
     published = []
-    for value in result.get("artifacts", [])[:100]:
+    artifact_value = result.get("artifacts", [])
+    if isinstance(artifact_value, dict):
+        task_dir = ARTIFACT_ROOT / str(task["id"])
+        values = [task_dir / str(item.get("name")) for item in artifact_value.get("files", []) if item.get("name")]
+    else:
+        values = artifact_value if isinstance(artifact_value, list) else []
+    for value in values[:100]:
         path = Path(str(value))
         candidates = [path] if path.is_file() else list(path.glob("**/*"))[:100] if path.is_dir() else []
         for candidate in candidates:
