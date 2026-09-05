@@ -56,10 +56,18 @@ def _run(command: list[str], cwd: Path, timeout: int, env: dict[str, str] | None
 
 def run_h5_inspection(task: dict[str, Any]) -> dict[str, Any]:
     payload = task.get("input") if isinstance(task.get("input"), dict) else {}
+    if payload.get("allowed_host_confirmed") is not True:
+        raise ValueError("GUI inspection host was not confirmed by a human")
+    if payload.get("login_environment_confirmed") is not True:
+        raise ValueError("GUI inspection login environment was not confirmed by a human")
+    profile_path = str(CONFIG.get("profile_path") or "").strip()
+    if payload.get("login_environment") == "dedicated_profile" and not profile_path:
+        raise ValueError("dedicated GUI profile is not configured")
     request_payload = {
         "url": validate_url(str(payload.get("url") or "")), "headed": payload.get("headed", True),
         "viewports": payload.get("viewports"), "required_selectors": payload.get("required_selectors", []),
         "timeout_ms": min(120000, max(5000, int(payload.get("timeout_ms", 60000)))),
+        "profile_dir": profile_path if payload.get("login_environment") == "dedicated_profile" else None,
     }
     task_dir = ARTIFACT_ROOT / str(task["id"])
     task_dir.mkdir(parents=True, exist_ok=True)
