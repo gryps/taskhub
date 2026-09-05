@@ -68,6 +68,7 @@ def run_h5_inspection(task: dict[str, Any]) -> dict[str, Any]:
         "viewports": payload.get("viewports"), "required_selectors": payload.get("required_selectors", []),
         "timeout_ms": min(120000, max(5000, int(payload.get("timeout_ms", 60000)))),
         "profile_dir": profile_path if payload.get("login_environment") == "dedicated_profile" else None,
+        "forbidden_path_prefixes": payload.get("forbidden_path_prefixes", ["/login"]),
     }
     task_dir = ARTIFACT_ROOT / str(task["id"])
     task_dir.mkdir(parents=True, exist_ok=True)

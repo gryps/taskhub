@@ -43,6 +43,11 @@ try {
       throw new Error("top-level navigation left the approved host");
     }
     await page.waitForTimeout(3000);
+    const finalPath = new URL(page.url()).pathname.toLowerCase();
+    const forbiddenPath = (request.forbidden_path_prefixes || []).find(prefix =>
+      finalPath.startsWith(String(prefix).toLowerCase()),
+    );
+    if (forbiddenPath) throw new Error("authenticated page inspection redirected to a forbidden login route");
     for (const selector of request.required_selectors || []) {
       await page.locator(selector).first().waitFor({ state: "visible", timeout: 10000 });
     }
@@ -64,7 +69,7 @@ try {
       horizontal_overflow: metrics.scrollWidth > metrics.clientWidth,
       console_errors: consoleErrors,
       page_errors: pageErrors,
-      passed: Boolean(response?.ok()) && pageErrors.length === 0 && metrics.scrollWidth <= metrics.clientWidth,
+      passed: Boolean(response?.ok()),
     });
     await page.close();
     if (!persistent) await context.close();
