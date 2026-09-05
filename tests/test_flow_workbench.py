@@ -20,6 +20,13 @@ class FlowWorkbenchContractTests(unittest.TestCase):
             self.assertIn(action, self.html)
         self.assertIn("/first-workflow", self.html)
 
+    def test_plan_approval_stays_in_the_flow_workbench(self) -> None:
+        self.assertIn("data-flow-review-task=", self.html)
+        self.assertIn("批准执行", self.html)
+        self.assertIn("取消本流程", self.html)
+        self.assertIn("计划内容确认无误，同意进入开发实施。", self.html)
+        self.assertNotIn('data-flow-open-task="${escapeHtml(approvalTask.id)}"', self.html)
+
 
 if __name__ == "__main__":
     unittest.main()

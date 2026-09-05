@@ -607,6 +607,33 @@
         background: #f4fbf6;
       }
 
+      .attention-banner.expanded {
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
+      }
+
+      .flow-approval-inline {
+        border-top: 1px solid #e5b455;
+        padding-top: 12px;
+      }
+
+      .flow-approval-inline textarea {
+        min-height: 72px;
+      }
+
+      .flow-approval-tasks {
+        display: grid;
+        gap: 7px;
+        margin: 10px 0;
+      }
+
+      .flow-approval-task {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 9px 10px;
+        background: var(--surface);
+      }
+
       .flow-canvas-scroll {
         overflow-x: auto;
         padding: 18px 2px 12px;
@@ -784,6 +811,7 @@
         .flow-layout { min-height: 0; }
         .flow-list { max-height: 250px; }
         .attention-banner { grid-template-columns: 1fr; }
+        .flow-approval-inline .detail-grid { grid-template-columns: 1fr; }
         .wizard-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         #advanced > .toolbar,
         #advancedCards,
@@ -1508,6 +1536,8 @@
       let selectedFlowWorkflowId = null;
       let selectedFlowDetail = null;
       let selectedFlowStage = null;
+      let selectedFlowApprovalTask = null;
+      let flowApprovalReason = "计划内容确认无误，同意进入开发实施。";
 
       const redact = (value) => {
         if (Array.isArray(value)) return value.map(redact);
@@ -2775,12 +2805,74 @@
         await loadFlowDesk(workflowId);
       };
 
+      const renderFlowApprovalForm = (task) => {
+        const plan = approvalPlan(task);
+        return `<div class="flow-approval-inline">
+          <div class="detail-grid">
+            ${detailItem("原始需求", task.input?.requirement || selectedFlowDetail?.context?.requirement || "-")}
+            ${detailItem("规划摘要", task.input?.planner_summary || selectedFlowDetail?.summary || "-")}
+            ${detailItem("风险等级", task.input?.risk_level || selectedFlowDetail?.risk_level || "medium")}
+            ${detailItem("实施任务", `${plan.length} 项`)}
+          </div>
+          <div class="section"><strong>批准后将依次执行</strong></div>
+          <div class="flow-approval-tasks">${plan.length ? plan.map((item, index) => `
+            <div class="flow-approval-task">
+              <strong>${index + 1}. ${escapeHtml(item.title || "未命名任务")}</strong>
+              <div class="muted">${escapeHtml(item.metadata?.acceptance || item.input?.acceptance || "按任务结果和后续审查验收")}</div>
+            </div>`).join("") : '<div class="muted">规划中没有需要实施的任务，批准后将直接进入审查。</div>'}</div>
+          <label>审批意见
+            <textarea id="flowApprovalReason" placeholder="填写批准或取消原因">${escapeHtml(flowApprovalReason)}</textarea>
+          </label>
+          <div class="actions section">
+            <button class="primary" data-flow-review-action="approve">批准执行</button>
+            <button class="danger" data-flow-review-action="cancel">取消本流程</button>
+            <button class="secondary" data-flow-review-action="close">暂不处理</button>
+          </div>
+        </div>`;
+      };
+
+      const openFlowApproval = async (taskId) => {
+        selectedFlowApprovalTask = await api(`/taskhub/tasks/${taskId}`);
+        renderFlowAttention(selectedFlowDetail);
+      };
+
+      const submitFlowReview = async (action) => {
+        if (!selectedFlowApprovalTask) return;
+        if (action === "close") {
+          selectedFlowApprovalTask = null;
+          renderFlowAttention(selectedFlowDetail);
+          return;
+        }
+        const reason = document.getElementById("flowApprovalReason")?.value.trim();
+        if (!reason) {
+          document.getElementById("flowApprovalReason")?.focus();
+          alert("请填写审批意见");
+          return;
+        }
+        const body = action === "approve"
+          ? {
+              reason,
+              result: {approved_by: "flow-workbench"},
+              approval_hash: selectedFlowApprovalTask.approval_content_hash,
+            }
+          : {reason};
+        await api(`/taskhub/tasks/${selectedFlowApprovalTask.id}/${action}`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        selectedFlowApprovalTask = null;
+        flowApprovalReason = "计划内容确认无误，同意进入开发实施。";
+        await loadFlowDesk(selectedFlowWorkflowId);
+      };
+
       const renderFlowAttention = (workflow) => {
         const [title, detail] = flowInstruction(workflow);
         const approvalTask = (workflow.tasks || []).find(task => task.type === "review.human" && ["pending", "running", "blocked"].includes(task.state));
         let controls = "";
         if (workflow.state === "awaiting_plan_approval" && approvalTask) {
-          controls = `<button class="primary" data-flow-open-task="${escapeHtml(approvalTask.id)}">处理计划审批</button>`;
+          controls = selectedFlowApprovalTask?.id === approvalTask.id
+            ? renderFlowApprovalForm(selectedFlowApprovalTask)
+            : `<button class="primary" data-flow-review-task="${escapeHtml(approvalTask.id)}">处理计划审批</button>`;
         } else if (workflow.state === "awaiting_supervision") {
           controls = `<input id="flowActionReason" placeholder="填写最终裁决意见" />
             <div class="actions"><button class="primary" data-flow-action="approve_release">批准完成</button><button class="danger" data-flow-action="request_rework">要求返工</button></div>`;
@@ -2792,13 +2884,20 @@
             <div class="actions"><button class="primary" data-flow-action="resume">恢复流程</button><button class="danger" data-flow-action="cancel">取消流程</button></div>`;
         }
         const container = document.getElementById("flowAttention");
-        container.innerHTML = `<div class="attention-banner ${flowNeedsHuman(workflow) ? "" : "passive"}">
+        const expanded = selectedFlowApprovalTask?.id === approvalTask?.id;
+        container.innerHTML = `<div class="attention-banner ${flowNeedsHuman(workflow) ? "" : "passive"} ${expanded ? "expanded" : ""}">
           <div><strong>${escapeHtml(title)}</strong><div class="muted">${escapeHtml(detail)}</div></div>
           <div>${controls}</div>
         </div>`;
-        for (const button of container.querySelectorAll("[data-flow-open-task]")) {
-          button.addEventListener("click", () => openFlowTask(button.dataset.flowOpenTask));
+        for (const button of container.querySelectorAll("[data-flow-review-task]")) {
+          button.addEventListener("click", () => openFlowApproval(button.dataset.flowReviewTask));
         }
+        for (const button of container.querySelectorAll("[data-flow-review-action]")) {
+          button.addEventListener("click", () => submitFlowReview(button.dataset.flowReviewAction));
+        }
+        document.getElementById("flowApprovalReason")?.addEventListener("input", event => {
+          flowApprovalReason = event.target.value;
+        });
         for (const button of container.querySelectorAll("[data-flow-action]")) {
           button.addEventListener("click", () => submitFlowAction(workflow.id, button.dataset.flowAction));
         }
@@ -2834,9 +2933,11 @@
       };
 
       const loadFlowDetail = async (workflowId) => {
+        if (selectedFlowWorkflowId !== workflowId) selectedFlowApprovalTask = null;
         selectedFlowWorkflowId = workflowId;
         selectedFlowDetail = await api(`/taskhub/workflows/${workflowId}`);
         const workflow = selectedFlowDetail;
+        if (workflow.state !== "awaiting_plan_approval") selectedFlowApprovalTask = null;
         document.getElementById("flowEmpty").classList.add("hidden");
         document.getElementById("flowSelected").classList.remove("hidden");
         document.getElementById("flowTitle").textContent = workflow.summary || `工作流 ${shortId(workflow.id)}`;

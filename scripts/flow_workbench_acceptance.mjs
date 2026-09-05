@@ -17,6 +17,12 @@ try {
     await page.locator('#loginForm button[type="submit"]').click();
     await page.locator("#flowdesk").waitFor({ state: "visible", timeout: 30000 });
     await page.locator("#flowDeskStatus").filter({ hasNotText: "加载中" }).waitFor({ timeout: 30000 });
+    const approvalTrigger = page.locator("[data-flow-review-task]");
+    const approvalTriggerFound = await approvalTrigger.count() > 0;
+    if (approvalTriggerFound) {
+      await approvalTrigger.first().click();
+      await page.locator("#flowApprovalReason").waitFor({ state: "visible", timeout: 10000 });
+    }
     const layout = await page.evaluate(() => {
       const flowDesk = document.querySelector("#flowdesk");
       const canvasScroll = document.querySelector(".flow-canvas-scroll");
@@ -27,15 +33,17 @@ try {
         stageCount: document.querySelectorAll("[data-flow-stage]").length,
         canvasContained: Boolean(canvasScroll && canvasScroll.scrollWidth >= canvasScroll.clientWidth),
         attentionText: document.querySelector("#flowAttention")?.textContent?.trim() || "",
+        approvalInline: Boolean(document.querySelector("#flowApprovalReason") && document.querySelector('[data-flow-review-action="approve"]')),
       };
     });
     await page.screenshot({ path: `${outputRoot}/${viewport.name}.png`, fullPage: true });
-    results.push({...viewport, ...layout, horizontalOverflow: layout.bodyWidth > layout.viewportWidth + 1});
+    results.push({...viewport, approvalTriggerFound, ...layout, horizontalOverflow: layout.bodyWidth > layout.viewportWidth + 1});
     await page.close();
   }
 } finally {
   await browser.close();
 }
-const passed = results.every(item => item.flowDeskVisible && item.stageCount === 7 && item.canvasContained && !item.horizontalOverflow);
+const passed = results.every(item => item.flowDeskVisible && item.stageCount === 7 && item.canvasContained
+  && (!item.approvalTriggerFound || item.approvalInline) && !item.horizontalOverflow);
 console.log(JSON.stringify({status: passed ? "passed" : "failed", results}));
 if (!passed) process.exitCode = 1;
