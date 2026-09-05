@@ -18,15 +18,14 @@ class PipelineReadinessTests(unittest.TestCase):
 
     def test_capability_readiness_is_explicit(self):
         workers = [
-            {"status": "ok", "worker_id": "worker-31-31-implementation-a", "task_types": "code.change"},
-            {"status": "ok", "worker_id": "worker-31-31-implementation", "task_types": "code.change"},
-            {"status": "ok", "worker_id": "worker-31-24-quality", "task_types": "test.run"},
+            {"status": "ok", "worker_id": "worker-31-31-implementation-a", "task_types": "code.change,test.run,quality.env.check"},
+            {"status": "ok", "worker_id": "worker-31-31-implementation", "task_types": "code.change,test.run,quality.env.check"},
             {"status": "ok", "worker_id": "worker-31-34-gui", "task_types": "h5.inspect"},
         ]
         result = assess_workers(workers)
         self.assertTrue(result["dual_pipeline_ready"])
         self.assertTrue(result["quality_ready"])
-        self.assertEqual(set(result), {"dual_pipeline_ready", "implementation_workers", "quality_ready"})
+        self.assertTrue(result["workspace_validation_ready"])
 
 
 if __name__ == "__main__":

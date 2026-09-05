@@ -58,7 +58,8 @@ APPROVAL_DOWNSTREAM_TYPES = {
     "h5.inspect",
 }
 IMPLEMENTATION_TASK_TYPES = {"code.change", "code.diff.preview", "code.change.apply"}
-QUALITY_TASK_TYPES = {"test.run", "quality.env.check", "review.model"}
+WORKSPACE_TASK_TYPES = IMPLEMENTATION_TASK_TYPES | {"test.run", "quality.env.check"}
+QUALITY_TASK_TYPES = {"review.model"}
 GUI_TASK_TYPES = {"h5.inspect"}
 UNSCHEDULABLE_TASK_TYPES = {"market.price.collect", "commerce.listing.draft"}
 
@@ -170,7 +171,7 @@ def normalize_resource_keys(keys: list[str], workspace_id: str | None = None) ->
 
 
 def default_target_worker(task_type: str) -> str | None:
-    if task_type in IMPLEMENTATION_TASK_TYPES:
+    if task_type in WORKSPACE_TASK_TYPES:
         return os.getenv("TASKHUB_IMPLEMENTATION_WORKER", "worker-31-31-implementation").strip() or None
     if task_type in QUALITY_TASK_TYPES:
         return os.getenv("TASKHUB_QUALITY_WORKER", "worker-31-24-quality").strip() or None
@@ -180,7 +181,7 @@ def default_target_worker(task_type: str) -> str | None:
 
 
 def worker_pool(task_type: str) -> list[str]:
-    if task_type in IMPLEMENTATION_TASK_TYPES:
+    if task_type in WORKSPACE_TASK_TYPES:
         value = os.getenv(
             "TASKHUB_IMPLEMENTATION_WORKERS",
             "worker-31-31-implementation-a,worker-31-31-implementation",
@@ -216,6 +217,8 @@ def least_loaded_worker(cur, task_type: str) -> str | None:
 def automatic_target_worker(cur, task_type: str, pipeline_worker_id: str | None) -> str | None:
     if task_type in QUALITY_TASK_TYPES or task_type in GUI_TASK_TYPES:
         return least_loaded_worker(cur, task_type)
+    if pipeline_worker_id and task_type in WORKSPACE_TASK_TYPES:
+        return pipeline_worker_id
     return pipeline_worker_id or least_loaded_worker(cur, task_type)
 
 

@@ -7,18 +7,20 @@ from app.taskhub import TaskCreate, insert_task
 
 
 class HandoffContractTests(unittest.TestCase):
-    def test_unregistered_contract_is_generic(self):
+    def test_code_change_contract_is_strict(self):
         contract = handoff_contract("code.change", {"requirement": "add checkout"}, {})
-        self.assertFalse(contract["strict"])
-        self.assertEqual(contract["consumer"], "assigned-worker")
+        self.assertTrue(contract["strict"])
+        self.assertEqual(contract["consumer"], "pipeline-worker")
 
-    def test_unregistered_input_has_no_domain_validation(self):
-        validate_task_input("code.change", {"requirement": "add checkout"})
+    def test_code_change_requires_execute_mode_and_requirement(self):
+        validate_task_input("code.change", {"requirement": "add checkout", "mode": "execute"})
+        with self.assertRaises(ValueError):
+            validate_task_input("code.change", {"requirement": "add checkout", "mode": "plan_only"})
 
-    def test_unregistered_result_is_non_strict(self):
-        result = validate_task_result("code.change", {"status": "done"})
-        self.assertTrue(result["valid"])
-        self.assertFalse(result["strict"])
+    def test_code_change_result_requires_workspace_evidence(self):
+        result = validate_task_result("code.change", {"will_modify_files": True})
+        self.assertFalse(result["valid"])
+        self.assertTrue(result["strict"])
 
     def test_h5_inspection_requires_human_confirmed_url_and_login(self):
         with self.assertRaises(ValueError):

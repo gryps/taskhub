@@ -23,6 +23,7 @@ from app.auth import (
     create_session,
     require_csrf,
 )
+from app.coder_executor import router as coder_executor_router
 from app.advanced import init_advanced, router as advanced_router, run_advanced_cycle
 from app.douyin_graph import router as douyin_graph_router
 from app.graph import compiled_graph
@@ -46,6 +47,7 @@ app.include_router(notification_router)
 app.include_router(operations_router)
 app.include_router(advanced_router)
 app.include_router(integration_router)
+app.include_router(coder_executor_router)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -77,7 +79,7 @@ integration_task: asyncio.Task[None] | None = None
 def is_worker_endpoint(path: str) -> bool:
     return (
         path.startswith("/taskhub/") and any(path.endswith(suffix) for suffix in WORKER_PATH_SUFFIXES)
-    ) or path.startswith("/taskhub/integration/artifacts/")
+    ) or path.startswith("/taskhub/integration/artifacts/") or path == "/taskhub/coder/execute"
 
 
 @app.middleware("http")

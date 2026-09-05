@@ -50,6 +50,16 @@ PLAN_SCHEMA = {
     },
 }
 
+CODE_CHANGE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["summary", "tests"],
+    "properties": {
+        "summary": {"type": "string"},
+        "tests": {"type": "array", "items": {"type": "string"}},
+    },
+}
+
 _LOCKS = {provider: threading.Lock() for provider in ACCOUNT_PROVIDERS}
 _STATUS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _RUNTIME_STATE: dict[str, dict[str, Any]] = {}
@@ -295,6 +305,113 @@ def run_account(
             "status": "failed",
             "reason": "runner_error",
             "message": f"Codex CLI Runner 无法执行: {exc.__class__.__name__}",
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "model": model or "account_default",
+        }
+    finally:
+        lock.release()
+
+
+def run_account_workspace(
+    provider: str,
+    prompt: str,
+    workdir: str,
+    model: str | None = None,
+) -> tuple[str | None, dict[str, Any]]:
+    """Run an authenticated Codex account against an isolated controller-side copy."""
+    status = account_status(provider, force=True)
+    if not status["configured"]:
+        return None, {
+            "provider": provider,
+            "status": "failed",
+            "reason": status["status"],
+            "message": status.get("message", "账号不可用。"),
+        }
+    lock = _LOCKS[provider]
+    if not lock.acquire(blocking=False):
+        return None, {"provider": provider, "status": "failed", "reason": "busy", "message": "账号 Runner 正在执行其他任务。"}
+
+    started = time.monotonic()
+    try:
+        with tempfile.TemporaryDirectory(prefix=f"codex-result-{provider}-") as temp_dir:
+            schema_path = Path(temp_dir) / "schema.json"
+            output_path = Path(temp_dir) / "last-message.json"
+            schema_path.write_text(json.dumps(CODE_CHANGE_SCHEMA), encoding="utf-8")
+            command = [
+                codex_binary(),
+                "exec",
+                "--ephemeral",
+                "--ignore-user-config",
+                "--sandbox",
+                "workspace-write",
+                "--skip-git-repo-check",
+                "--color",
+                "never",
+                "--cd",
+                workdir,
+                "--output-schema",
+                str(schema_path),
+                "--output-last-message",
+                str(output_path),
+                "--json",
+            ]
+            if model:
+                command.extend(["--model", model])
+            command.append("-")
+            completed = subprocess.run(
+                command,
+                input=prompt,
+                env=account_environment(provider),
+                capture_output=True,
+                text=True,
+                timeout=float(os.getenv("CODEX_CODER_TIMEOUT", "1200")),
+                check=False,
+            )
+            duration_ms = int((time.monotonic() - started) * 1000)
+            if completed.returncode != 0 or not output_path.exists():
+                reason, message = _classify_failure(f"{completed.stdout[-2000:]}\n{completed.stderr[-2000:]}")
+                return None, {
+                    "provider": provider,
+                    "status": "failed",
+                    "reason": reason,
+                    "message": message,
+                    "exit_code": completed.returncode,
+                    "duration_ms": duration_ms,
+                    "model": model or "account_default",
+                }
+            _RUNTIME_STATE[provider] = {"quota_status": "available"}
+            return output_path.read_text(encoding="utf-8"), {
+                "provider": provider,
+                "status": "succeeded",
+                "reason": "ok",
+                "duration_ms": duration_ms,
+                "model": model or "account_default",
+                "usage": _usage_from_jsonl(completed.stdout),
+            }
+    except subprocess.TimeoutExpired:
+        return None, {
+            "provider": provider,
+            "status": "failed",
+            "reason": "timeout",
+            "message": "Codex 施工执行超时。",
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "model": model or "account_default",
+        }
+    except ProxyRequiredError:
+        return None, {
+            "provider": provider,
+            "status": "failed",
+            "reason": "proxy_required",
+            "message": "OpenAI 账号施工通道必须配置网络代理。",
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "model": model or "account_default",
+        }
+    except (OSError, ValueError) as exc:
+        return None, {
+            "provider": provider,
+            "status": "failed",
+            "reason": "runner_error",
+            "message": f"Codex 施工执行失败: {exc.__class__.__name__}",
             "duration_ms": int((time.monotonic() - started) * 1000),
             "model": model or "account_default",
         }

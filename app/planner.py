@@ -629,14 +629,14 @@ def fallback_tasks(request: PlannerRequest, reason: str) -> list[dict[str, Any]]
         },
         {
             "type": "code.change",
-            "title": title_with("代码变更计划", title),
+            "title": title_with("施工模型执行", title),
             "priority": request.priority - 5,
             "input": {
                 "requirement": request.requirement,
-                "mode": "plan_only",
+                "mode": "execute",
                 "constraints": [
-                    "中级 planner 只生成受控任务计划。",
-                    "真实写入必须经过 review.human 审批。",
+                    "施工模型只在当前流水线隔离工作副本生成并应用受控 diff。",
+                    "真实写入必须带有 review.human 审批证据。",
                     "不得触碰密钥、Cookie、Token、登录态和生产数据。",
                     f"fallback 原因: {reason}",
                 ],
@@ -680,7 +680,7 @@ def role_prompt(role: dict[str, Any], request: PlannerRequest, prior_outputs: li
         f"Current role: {role_name}. Model label: {role['model']}. "
         f"Allowed task types: {allowed}. "
         "Never plan production publishing, credential access, cookies, tokens, or destructive actions. "
-        "Prefer reviewable plan-only tasks. "
+        "Use code.change for real implementation after human approval. Every code.change must include the full requirement. "
         "Schema: {\"summary\": string, \"risk_level\": \"low|medium|high\", "
         "\"tasks\": [{\"type\": string, \"title\": string, \"priority\": number, "
         "\"input\": object, \"metadata\": object}], \"notes\": [string]}"
@@ -1008,6 +1008,14 @@ def normalize_tasks(raw_tasks: Any, request: PlannerRequest, stage: str) -> list
             continue
         title = str(item.get("title") or f"Planner task {index + 1}: {task_type}")[:96]
         task_input = item.get("input") if isinstance(item.get("input"), dict) else {}
+        if task_type == "code.change":
+            task_input = {
+                **task_input,
+                "requirement": str(task_input.get("requirement") or request.requirement),
+                "mode": "execute",
+            }
+        elif task_type == "test.run":
+            task_input = {**task_input, "command": str(task_input.get("command") or "check")}
         metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
         normalized_tasks.append(
             {

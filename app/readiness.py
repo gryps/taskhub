@@ -14,13 +14,18 @@ def task_type_set(worker: dict[str, Any]) -> set[str]:
 def assess_workers(workers: list[dict[str, Any]]) -> dict[str, Any]:
     online = {item.get("worker_id"): item for item in workers if item.get("status") == "ok"}
     implementation = sorted(IMPLEMENTATION_WORKERS & set(online))
-    quality = online.get("worker-31-24-quality")
+    workspace_validation_ready = bool(implementation) and all(
+        {"code.change", "test.run", "quality.env.check"}.issubset(task_type_set(online[worker_id]))
+        for worker_id in implementation
+    )
     return {
         "dual_pipeline_ready": len(implementation) == 2 and all(
-            "code.change" in task_type_set(online[worker_id]) for worker_id in implementation
+            {"code.change", "test.run", "quality.env.check"}.issubset(task_type_set(online[worker_id]))
+            for worker_id in implementation
         ),
         "implementation_workers": implementation,
-        "quality_ready": bool(quality and "test.run" in task_type_set(quality)),
+        "quality_ready": workspace_validation_ready,
+        "workspace_validation_ready": workspace_validation_ready,
     }
 
 

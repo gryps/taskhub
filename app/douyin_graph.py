@@ -110,15 +110,15 @@ def invoke_requirement_flow(request: RequirementInvoke) -> dict[str, Any]:
                     },
                     {
                         "type": "code.change",
-                        "title": task_title("审批后代码变更计划", title),
+                        "title": task_title("审批后施工模型执行", title),
                         "priority": request.priority - 13,
                         "input": {
                             "requirement": text or title,
-                            "mode": "plan_only",
+                            "mode": "execute",
                             "constraints": [
-                                "初级阶段只生成计划和风险清单，不直接修改文件。",
+                                "只在当前流水线隔离工作副本执行代码修改。",
                                 "不得触碰密钥、Cookie、Token、登录态和生产数据。",
-                                "代码修改前必须由人工确认范围。",
+                                "代码修改必须携带本次人工审批证据。",
                             ],
                         },
                         "metadata": {"stage": "post_approval_code_plan"},

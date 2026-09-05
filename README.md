@@ -128,7 +128,8 @@ TaskHub pipelines isolate routing and workspaces for concurrent product work:
 Default role routing follows the deployed hardware architecture:
 
 - code tasks: `worker-31-31-implementation`
-- test and model-review tasks: `worker-31-24-quality`
+- workspace tests and environment checks: the pipeline's own implementation worker
+- model-review tasks: `worker-31-24-quality`
 - H5 GUI inspection: `worker-31-34-gui`
 
 Override these IDs with `TASKHUB_IMPLEMENTATION_WORKER`, `TASKHUB_QUALITY_WORKER`, and `TASKHUB_GUI_WORKER` when nodes change.

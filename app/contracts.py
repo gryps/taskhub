@@ -5,8 +5,29 @@ from urllib.parse import urlsplit
 
 
 CONTRACT_VERSION = "taskhub.handoff/v1"
-STRICT_TASK_TYPES = {"h5.inspect"}
+STRICT_TASK_TYPES = {"code.change", "test.run", "quality.env.check", "h5.inspect"}
 TASK_CONTRACTS: dict[str, dict[str, Any]] = {
+    "code.change": {
+        "producer": "planner",
+        "consumer": "pipeline-worker",
+        "required_input": ["requirement"],
+        "required_result": ["will_modify_files", "workspace_id", "baseline_commit", "diff_sha256", "touched_paths"],
+        "human_release_required": True,
+    },
+    "test.run": {
+        "producer": "pipeline-worker",
+        "consumer": "pipeline-worker",
+        "required_input": ["command"],
+        "required_result": ["passed", "workspace_id", "workcopy_head", "workcopy_status_sha256"],
+        "human_release_required": False,
+    },
+    "quality.env.check": {
+        "producer": "planner",
+        "consumer": "pipeline-worker",
+        "required_input": [],
+        "required_result": ["passed", "workspace_id", "workcopy_head", "workcopy_status_sha256"],
+        "human_release_required": False,
+    },
     "h5.inspect": {
         "producer": "planner",
         "consumer": "worker-31-34-gui",
@@ -47,6 +68,8 @@ def validate_task_input(task_type: str, task_input: dict[str, Any]) -> None:
             raise ValueError("h5.inspect allowed host must be confirmed by a human")
         if task_input.get("login_environment_confirmed") is not True:
             raise ValueError("h5.inspect login environment must be confirmed by a human")
+    if task_type == "code.change" and str(task_input.get("mode") or "execute") != "execute":
+        raise ValueError("code.change mode must be execute")
 
 
 def validate_task_result(task_type: str, result: dict[str, Any]) -> dict[str, Any]:

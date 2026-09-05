@@ -1174,7 +1174,7 @@
               <input name="files" placeholder="可选，逗号分隔，例如 apps/api/app/services/shops.py, apps/web/src/" />
             </label>
             <div class="actions">
-              <button class="primary" type="submit">生成代码变更计划</button>
+              <button class="primary" type="submit">提交施工审批</button>
               <button class="secondary" type="button" id="codeDiffPreview">当前 diff 预览</button>
             </div>
           </form>
@@ -3274,17 +3274,22 @@
           .split(",")
           .map(item => item.trim())
           .filter(Boolean);
+        const approvalPlan = [
+          {type: "code.change", title: "施工模型执行", priority: 82, input: {requirement: form.get("requirement"), mode: "execute", files}},
+          {type: "code.diff.preview", title: "施工结果 diff", priority: 81, input: {paths: files}, depends_on_indices: [0]},
+          {type: "test.run", title: "同工作副本测试", priority: 80, input: {command: "check"}, depends_on_indices: [1]},
+        ];
         const task = await api("/taskhub/tasks", {
           method: "POST",
           body: JSON.stringify({
             project,
-            type: "code.change",
-            title: "代码变更计划",
+            type: "review.human",
+            title: "人工确认施工任务",
             priority: 82,
             input: {
               requirement: form.get("requirement"),
-              mode: "plan_only",
-              files,
+              instruction: "确认后，施工模型将在所选流水线工作副本修改代码，并在同一副本运行测试。",
+              approval_plan: approvalPlan,
             },
             metadata: { source: "web-code-panel" },
             pipeline_id: form.get("pipelineId") || null,
@@ -3292,7 +3297,7 @@
         });
         selectedCodeTaskId = task.id;
         await loadCode();
-        await loadCodeTask(task.id);
+        alert("施工审批已创建，请在监督裁决中批准后执行。");
       };
 
       const createCodeDiffPreview = async () => {
