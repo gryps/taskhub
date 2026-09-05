@@ -209,6 +209,12 @@ def least_loaded_worker(cur, task_type: str) -> str | None:
     return row["worker_id"] if row else default_target_worker(task_type)
 
 
+def automatic_target_worker(cur, task_type: str, pipeline_worker_id: str | None) -> str | None:
+    if task_type in QUALITY_TASK_TYPES or task_type in GUI_TASK_TYPES:
+        return least_loaded_worker(cur, task_type)
+    return pipeline_worker_id or least_loaded_worker(cur, task_type)
+
+
 def redact(value: Any) -> Any:
     if isinstance(value, dict):
         result: dict[str, Any] = {}
@@ -1319,10 +1325,7 @@ def insert_task(cur, request: TaskCreate, actor: str, reason: str) -> dict[str, 
             if request.pipeline_id and registered_workspace["pipeline_id"] != request.pipeline_id:
                 raise HTTPException(status_code=409, detail="workspace is bound to a different pipeline")
     if not target_worker_id:
-        if request.type in IMPLEMENTATION_TASK_TYPES:
-            target_worker_id = pipeline_worker_id or least_loaded_worker(cur, request.type)
-        else:
-            target_worker_id = pipeline_worker_id or least_loaded_worker(cur, request.type)
+        target_worker_id = automatic_target_worker(cur, request.type, pipeline_worker_id)
     resource_keys = normalize_resource_keys(request.resource_keys, workspace_id)
     cur.execute(
         """
