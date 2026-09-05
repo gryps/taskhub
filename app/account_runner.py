@@ -186,7 +186,7 @@ def _usage_from_jsonl(output: str) -> dict[str, Any]:
 
 
 def account_workdir() -> str:
-    return os.getenv("CODEX_PROJECT_WORKDIR", "/home/gryps/apps/douyin-listing-workbench")
+    return os.getenv("CODEX_PROJECT_WORKDIR", "/home/gryps/apps/douyin-listing-workbench-runner")
 
 
 def run_account(
