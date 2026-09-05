@@ -1393,6 +1393,21 @@ def failure_needs_workspace_bootstrap(error: dict[str, Any]) -> bool:
     return error.get("exit_code") == 127 or "command not found" in evidence or "not found\n" in evidence
 
 
+def automatic_rework_category(error: dict[str, Any]) -> str:
+    evidence = json.dumps(error, ensure_ascii=False, default=str).lower()
+    if failure_needs_workspace_bootstrap(error):
+        return "workspace_environment"
+    if "ruff check" in evidence or " f401" in evidence or " i001" in evidence:
+        return "lint"
+    if "mypy" in evidence or "typecheck" in evidence:
+        return "typecheck"
+    if "pytest" in evidence or "failed " in evidence:
+        return "tests"
+    if "vite" in evidence or "tsc" in evidence or "eslint" in evidence:
+        return "frontend_check"
+    return "quality_gate"
+
+
 def schedule_automatic_rework(
     cur,
     task: dict[str, Any],
@@ -1409,15 +1424,14 @@ def schedule_automatic_rework(
     workflow = cur.fetchone()
     if not workflow or workflow["state"] not in {"implementation", "blocked"}:
         return None
-    environment_repair = failure_needs_workspace_bootstrap(error)
-    if environment_repair:
-        attempt = int(metadata.get("automatic_environment_repair_attempt") or 0) + 1
-        if attempt > 1:
-            return None
-    else:
-        attempt = int(metadata.get("automatic_code_rework_attempt") or 0) + 1
-        if attempt > int(workflow.get("max_iterations") or 3):
-            return None
+    category = automatic_rework_category(error)
+    environment_repair = category == "workspace_environment"
+    previous_category = str(metadata.get("automatic_rework_category") or "")
+    attempt = int(metadata.get("automatic_category_attempt") or 0) + 1 if previous_category == category else 1
+    category_limit = 1 if environment_repair else int(workflow.get("max_iterations") or 3)
+    total_attempt = int(task.get("retry_count") or 0) + 1
+    if attempt > category_limit or total_attempt > int(workflow.get("max_iterations") or 3) * 3:
+        return None
     cur.execute("select * from taskhub_pipelines where id = %s", (task["pipeline_id"],))
     pipeline = cur.fetchone()
     if not pipeline or pipeline["state"] != "active" or not pipeline.get("default_worker_id"):
@@ -1431,11 +1445,9 @@ def schedule_automatic_rework(
         "automatic_rework": True,
         "automatic_rework_attempt": attempt,
         "automatic_rework_for_task_id": str(task["id"]),
-        "automatic_environment_repair_attempt": attempt if environment_repair else int(
-            metadata.get("automatic_environment_repair_attempt") or 0
-        ),
-        "automatic_code_rework_attempt": int(metadata.get("automatic_code_rework_attempt") or 0)
-        if environment_repair else attempt,
+        "automatic_rework_category": category,
+        "automatic_category_attempt": attempt,
+        "automatic_total_attempt": total_attempt,
     }
     code_task = None
     diff_task = None
@@ -1511,7 +1523,7 @@ def schedule_automatic_rework(
         """,
         (
             Jsonb(redact(retry_input)), Jsonb(redact(common_metadata)), worker_id, workspace_id,
-            attempt, now_utc(), task["id"],
+            total_attempt, now_utc(), task["id"],
         ),
     )
     retried_task = cur.fetchone()

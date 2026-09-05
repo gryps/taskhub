@@ -1,6 +1,6 @@
 import unittest
 
-from app.taskhub import automatic_rework_requirement, failure_needs_workspace_bootstrap
+from app.taskhub import automatic_rework_category, automatic_rework_requirement, failure_needs_workspace_bootstrap
 
 
 class AutomaticReworkTests(unittest.TestCase):
@@ -20,6 +20,11 @@ class AutomaticReworkTests(unittest.TestCase):
         self.assertTrue(failure_needs_workspace_bootstrap({"exit_code": 127, "stderr_tail": "tsc: not found\n"}))
         self.assertTrue(failure_needs_workspace_bootstrap({"stderr_tail": "tool: command not found"}))
         self.assertFalse(failure_needs_workspace_bootstrap({"exit_code": 1, "stdout_tail": "11 tests failed"}))
+
+    def test_failure_categories_separate_environment_lint_and_tests(self) -> None:
+        self.assertEqual(automatic_rework_category({"exit_code": 127}), "workspace_environment")
+        self.assertEqual(automatic_rework_category({"stdout_tail": "ruff check\nF401 imported but unused"}), "lint")
+        self.assertEqual(automatic_rework_category({"stdout_tail": "pytest\n3 failed"}), "tests")
 
 
 if __name__ == "__main__":
