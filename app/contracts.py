@@ -1,11 +1,20 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlsplit
 
 
 CONTRACT_VERSION = "taskhub.handoff/v1"
-STRICT_TASK_TYPES: set[str] = set()
-TASK_CONTRACTS: dict[str, dict[str, Any]] = {}
+STRICT_TASK_TYPES = {"h5.inspect"}
+TASK_CONTRACTS: dict[str, dict[str, Any]] = {
+    "h5.inspect": {
+        "producer": "planner",
+        "consumer": "worker-31-34-gui",
+        "required_input": ["url", "allowed_host_confirmed", "login_environment_confirmed"],
+        "required_result": ["passed"],
+        "human_release_required": True,
+    },
+}
 
 
 def handoff_contract(task_type: str, task_input: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
@@ -30,6 +39,16 @@ def validate_task_input(task_type: str, task_input: dict[str, Any]) -> None:
     missing = [key for key in definition["required_input"] if task_input.get(key) is None or task_input.get(key) == ""]
     if missing:
         raise ValueError(f"{task_type} input is missing required fields: {', '.join(missing)}")
+    if task_type == "h5.inspect":
+        parsed = urlsplit(str(task_input["url"]))
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("h5.inspect url must be an absolute HTTP(S) URL")
+        if task_input.get("allowed_host_confirmed") is not True:
+            raise ValueError("h5.inspect allowed host must be confirmed by a human")
+        if task_input.get("login_environment_confirmed") is not True:
+            raise ValueError("h5.inspect login environment must be confirmed by a human")
+
+
 def validate_task_result(task_type: str, result: dict[str, Any]) -> dict[str, Any]:
     definition = TASK_CONTRACTS.get(task_type)
     if not definition:
@@ -38,7 +57,8 @@ def validate_task_result(task_type: str, result: dict[str, Any]) -> dict[str, An
     for key in definition["required_result"]:
         if result.get(key) is None or result.get(key) == "":
             errors.append(f"missing result field: {key}")
-    if result.get("status") not in definition["result_statuses"]:
+    result_statuses = definition.get("result_statuses") or []
+    if result_statuses and result.get("status") not in result_statuses:
         errors.append(f"invalid result status: {result.get('status') or 'missing'}")
     if "artifacts" in definition["required_result"] and not isinstance(result.get("artifacts"), list):
         errors.append("result artifacts must be a list")

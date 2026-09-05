@@ -20,6 +20,34 @@ class HandoffContractTests(unittest.TestCase):
         self.assertTrue(result["valid"])
         self.assertFalse(result["strict"])
 
+    def test_h5_inspection_requires_human_confirmed_url_and_login(self):
+        with self.assertRaises(ValueError):
+            validate_task_input("h5.inspect", {})
+        with self.assertRaises(ValueError):
+            validate_task_input(
+                "h5.inspect",
+                {"url": "https://example.com", "allowed_host_confirmed": True},
+            )
+        validate_task_input(
+            "h5.inspect",
+            {
+                "url": "https://example.com/path",
+                "allowed_host_confirmed": True,
+                "login_environment_confirmed": True,
+            },
+        )
+
+    def test_h5_inspection_rejects_non_http_url(self):
+        with self.assertRaises(ValueError):
+            validate_task_input(
+                "h5.inspect",
+                {
+                    "url": "file:///tmp/page.html",
+                    "allowed_host_confirmed": True,
+                    "login_environment_confirmed": True,
+                },
+            )
+
     def test_out_of_scope_business_tasks_are_rejected(self):
         for task_type in ("market.price.collect", "commerce.listing.draft"):
             with self.subTest(task_type=task_type), self.assertRaises(HTTPException) as raised:

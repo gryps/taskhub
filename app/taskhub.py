@@ -121,6 +121,10 @@ class TaskAction(BaseModel):
     reason: str = Field(..., min_length=1)
 
 
+class TaskRetry(TaskAction):
+    input: dict[str, Any] | None = None
+
+
 class TaskApprove(BaseModel):
     reason: str = Field(..., min_length=1)
     result: dict[str, Any] = Field(default_factory=dict)
@@ -1665,6 +1669,40 @@ def block_tasks_with_failed_dependencies(cur, project: str, actor: str) -> None:
         add_history(cur, task["id"], "pending", "blocked", actor, "upstream dependency failed", error)
 
 
+def requeue_dependency_blocked_descendants(cur, task_id: uuid.UUID, actor: str) -> int:
+    cur.execute(
+        """
+        with recursive descendants(id) as (
+            select dependency.task_id
+            from taskhub_task_dependencies dependency
+            where dependency.depends_on_task_id = %s
+            union
+            select dependency.task_id
+            from taskhub_task_dependencies dependency
+            join descendants parent on parent.id = dependency.depends_on_task_id
+        )
+        select task.* from taskhub_tasks task
+        where task.id in (select id from descendants)
+          and task.state = 'blocked'
+          and task.error->>'code' = 'DEPENDENCY_FAILED'
+        for update
+        """,
+        (task_id,),
+    )
+    descendants = cur.fetchall()
+    timestamp = now_utc()
+    for descendant in descendants:
+        cur.execute(
+            "update taskhub_tasks set state='pending', error=null, updated_at=%s where id=%s",
+            (timestamp, descendant["id"]),
+        )
+        add_history(
+            cur, descendant["id"], "blocked", "pending", actor,
+            "upstream task was prepared for retry", {"upstream_task_id": str(task_id)},
+        )
+    return len(descendants)
+
+
 def release_resource_leases(cur, task_id: uuid.UUID) -> None:
     cur.execute(
         """
@@ -1972,17 +2010,24 @@ def fail_task(task_id: uuid.UUID, request: TaskFail) -> dict[str, Any]:
 
 
 @router.post("/tasks/{task_id}/retry")
-def retry_task(task_id: uuid.UUID, request: Request, payload: TaskAction) -> dict[str, Any]:
+def retry_task(task_id: uuid.UUID, request: Request, payload: TaskRetry) -> dict[str, Any]:
     updated_at = now_utc()
     with connect() as conn:
         with conn.cursor() as cur:
             task = load_task_for_update(cur, task_id)
             assert_transition(task["state"], "pending")
+            retry_input = payload.input if payload.input is not None else task.get("input") or {}
+            try:
+                validate_task_input(task["type"], retry_input)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             release_resource_leases(cur, task_id)
             cur.execute(
                 """
                 update taskhub_tasks
                 set state = 'pending',
+                    input = %s,
+                    error = null,
                     worker_id = null,
                     lease_token = null,
                     lease_expires_at = null,
@@ -1994,16 +2039,23 @@ def retry_task(task_id: uuid.UUID, request: Request, payload: TaskAction) -> dic
                 where id = %s
                 returning *
                 """,
-                (updated_at, task_id),
+                (Jsonb(redact(retry_input)), updated_at, task_id),
             )
             row = cur.fetchone()
-            add_history(cur, task_id, task["state"], "pending", request.state.actor, payload.reason)
+            add_history(
+                cur, task_id, task["state"], "pending", request.state.actor, payload.reason,
+                {"input_updated": payload.input is not None},
+            )
+            requeued_descendants = requeue_dependency_blocked_descendants(cur, task_id, request.state.actor)
             workflow_id = workflow_id_for_task(task)
             if workflow_id:
                 cur.execute("select state from taskhub_workflows where id = %s", (workflow_id,))
                 workflow = cur.fetchone()
                 if workflow and workflow["state"] == "blocked":
-                    transition_workflow(cur, workflow_id, "retry", request.state.actor, payload.reason)
+                    transition_workflow(
+                        cur, workflow_id, "retry", request.state.actor, payload.reason,
+                        {"retry_task_id": str(task_id), "requeued_descendants": requeued_descendants},
+                    )
         conn.commit()
     return serialize_task(row)
 

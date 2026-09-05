@@ -2805,6 +2805,39 @@
         await loadFlowDesk(workflowId);
       };
 
+      const submitFlowTaskRetry = async (task) => {
+        const reasonInput = document.getElementById("flowActionReason");
+        const reason = reasonInput?.value.trim();
+        if (!reason) {
+          reasonInput?.focus();
+          alert("请先填写恢复原因");
+          return;
+        }
+        const body = {reason};
+        if (task.type === "h5.inspect") {
+          const url = document.getElementById("flowRetryGuiUrl")?.value.trim() || "";
+          const allowedHostConfirmed = document.getElementById("flowRetryGuiHost")?.checked === true;
+          const loginEnvironmentConfirmed = document.getElementById("flowRetryGuiLogin")?.checked === true;
+          if (!url || !allowedHostConfirmed || !loginEnvironmentConfirmed) {
+            alert("请填写 URL，并确认域名白名单和专用浏览器登录环境");
+            return;
+          }
+          body.input = {
+            ...(task.input || {}),
+            url,
+            headed: true,
+            allowed_host_confirmed: true,
+            login_environment: "dedicated_profile",
+            login_environment_confirmed: true,
+          };
+        }
+        await api(`/taskhub/tasks/${task.id}/retry`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        await loadFlowDesk(selectedFlowWorkflowId);
+      };
+
       const renderFlowApprovalForm = (task) => {
         const plan = approvalPlan(task);
         return `<div class="flow-approval-inline">
@@ -2819,6 +2852,14 @@
             <div class="flow-approval-task">
               <strong>${index + 1}. ${escapeHtml(item.title || "未命名任务")}</strong>
               <div class="muted">${escapeHtml(item.metadata?.acceptance || item.input?.acceptance || "按任务结果和后续审查验收")}</div>
+              ${item.type === "h5.inspect" ? `<div class="section">
+                <label>页面检查地址
+                  <input data-flow-h5-url="${index}" value="${escapeHtml(item.input?.url || "")}" placeholder="https://允许访问的域名/页面" />
+                </label>
+                <label><input type="checkbox" data-flow-h5-host="${index}" ${item.input?.allowed_host_confirmed === true ? "checked" : ""} /> 我已确认该域名已加入 GUI 节点白名单</label>
+                <label><input type="checkbox" data-flow-h5-login="${index}" ${item.input?.login_environment_confirmed === true ? "checked" : ""} /> 我已在专用浏览器 Profile 中人工完成登录</label>
+                <div class="muted">系统不会读取、上传或代填 Cookie、密码、验证码和 Token。</div>
+              </div>` : ""}
             </div>`).join("") : '<div class="muted">规划中没有需要实施的任务，批准后将直接进入审查。</div>'}</div>
           <label>审批意见
             <textarea id="flowApprovalReason" placeholder="填写批准或取消原因">${escapeHtml(flowApprovalReason)}</textarea>
@@ -2849,11 +2890,34 @@
           alert("请填写审批意见");
           return;
         }
+        let editedPlan = null;
+        if (action === "approve") {
+          editedPlan = JSON.parse(JSON.stringify(approvalPlan(selectedFlowApprovalTask)));
+          for (const [index, item] of editedPlan.entries()) {
+            if (item.type !== "h5.inspect") continue;
+            const url = document.querySelector(`[data-flow-h5-url="${index}"]`)?.value.trim() || "";
+            const allowedHostConfirmed = document.querySelector(`[data-flow-h5-host="${index}"]`)?.checked === true;
+            const loginEnvironmentConfirmed = document.querySelector(`[data-flow-h5-login="${index}"]`)?.checked === true;
+            if (!url || !allowedHostConfirmed || !loginEnvironmentConfirmed) {
+              alert("页面检查任务必须填写 URL，并确认域名白名单和专用浏览器登录环境");
+              return;
+            }
+            item.input = {
+              ...(item.input || {}),
+              url,
+              headed: true,
+              allowed_host_confirmed: true,
+              login_environment: "dedicated_profile",
+              login_environment_confirmed: true,
+            };
+          }
+        }
         const body = action === "approve"
           ? {
               reason,
               result: {approved_by: "flow-workbench"},
               approval_hash: selectedFlowApprovalTask.approval_content_hash,
+              approval_plan: editedPlan,
             }
           : {reason};
         await api(`/taskhub/tasks/${selectedFlowApprovalTask.id}/${action}`, {
@@ -2868,6 +2932,7 @@
       const renderFlowAttention = (workflow) => {
         const [title, detail] = flowInstruction(workflow);
         const approvalTask = (workflow.tasks || []).find(task => task.type === "review.human" && ["pending", "running", "blocked"].includes(task.state));
+        const failedTask = (workflow.tasks || []).find(task => task.state === "failed");
         let controls = "";
         if (workflow.state === "awaiting_plan_approval" && approvalTask) {
           controls = selectedFlowApprovalTask?.id === approvalTask.id
@@ -2877,8 +2942,14 @@
           controls = `<input id="flowActionReason" placeholder="填写最终裁决意见" />
             <div class="actions"><button class="primary" data-flow-action="approve_release">批准完成</button><button class="danger" data-flow-action="request_rework">要求返工</button></div>`;
         } else if (workflow.state === "blocked") {
-          controls = `<input id="flowActionReason" placeholder="填写恢复或取消原因" />
-            <div class="actions"><button class="primary" data-flow-action="retry">恢复处理</button><button class="danger" data-flow-action="cancel">取消流程</button></div>`;
+          controls = failedTask ? `${failedTask.type === "h5.inspect" ? `
+              <label>页面检查地址<input id="flowRetryGuiUrl" value="${escapeHtml(failedTask.input?.url || "")}" placeholder="https://允许访问的域名/页面" /></label>
+              <label><input id="flowRetryGuiHost" type="checkbox" ${failedTask.input?.allowed_host_confirmed === true ? "checked" : ""} /> 域名已加入 GUI 节点白名单</label>
+              <label><input id="flowRetryGuiLogin" type="checkbox" ${failedTask.input?.login_environment_confirmed === true ? "checked" : ""} /> 已在专用浏览器 Profile 中人工完成登录</label>` : ""}
+            <input id="flowActionReason" placeholder="填写恢复原因" />
+            <div class="actions"><button class="primary" data-flow-task-retry="${escapeHtml(failedTask.id)}">恢复失败任务</button><button class="danger" data-flow-action="cancel">取消流程</button></div>`
+            : `<input id="flowActionReason" placeholder="没有可重试的失败任务，请填写处理意见" />
+            <div class="actions"><button class="danger" data-flow-action="cancel">取消流程</button></div>`;
         } else if (workflow.state === "paused") {
           controls = `<input id="flowActionReason" placeholder="填写恢复或取消原因" />
             <div class="actions"><button class="primary" data-flow-action="resume">恢复流程</button><button class="danger" data-flow-action="cancel">取消流程</button></div>`;
@@ -2900,6 +2971,9 @@
         });
         for (const button of container.querySelectorAll("[data-flow-action]")) {
           button.addEventListener("click", () => submitFlowAction(workflow.id, button.dataset.flowAction));
+        }
+        for (const button of container.querySelectorAll("[data-flow-task-retry]")) {
+          button.addEventListener("click", () => submitFlowTaskRetry(failedTask));
         }
       };
 

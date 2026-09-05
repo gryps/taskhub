@@ -27,6 +27,19 @@ class FlowWorkbenchContractTests(unittest.TestCase):
         self.assertIn("计划内容确认无误，同意进入开发实施。", self.html)
         self.assertNotIn('data-flow-open-task="${escapeHtml(approvalTask.id)}"', self.html)
 
+    def test_gui_plan_requires_url_host_and_login_confirmation(self) -> None:
+        self.assertIn('data-flow-h5-url=', self.html)
+        self.assertIn('data-flow-h5-host=', self.html)
+        self.assertIn('data-flow-h5-login=', self.html)
+        self.assertIn('approval_plan: editedPlan', self.html)
+
+    def test_blocked_gui_task_can_be_completed_and_retried_inline(self) -> None:
+        self.assertIn('id="flowRetryGuiUrl"', self.html)
+        self.assertIn('id="flowRetryGuiHost"', self.html)
+        self.assertIn('id="flowRetryGuiLogin"', self.html)
+        self.assertIn("submitFlowTaskRetry", self.html)
+        self.assertIn("恢复失败任务", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
