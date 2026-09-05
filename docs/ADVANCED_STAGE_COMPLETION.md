@@ -7,8 +7,8 @@ workers execute bounded tasks and never receive controller or provider secrets.
 ## 1. Project Workspaces
 
 - `taskhub_projects` registers one local Git authority host/root per project.
-- Authority hosts are restricted by `TASKHUB_PROJECT_SOURCE_HOSTS`; the default
-  is `192.168.31.17`.
+- Authority hosts are restricted by `TASKHUB_PROJECT_SOURCE_HOSTS`; the deployed
+  default is `192.168.31.3`.
 - `taskhub_project_workspaces` binds a pipeline, worker, workspace ID, local path,
   branch, and baseline commit. Workspace IDs and branches cannot be reused.
 - Once a project is registered, task creation rejects paused projects and unknown

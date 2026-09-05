@@ -185,6 +185,10 @@ def _usage_from_jsonl(output: str) -> dict[str, Any]:
     return usage
 
 
+def account_workdir() -> str:
+    return os.getenv("CODEX_PROJECT_WORKDIR", "/home/gryps/apps/douyin-listing-workbench")
+
+
 def run_account(
     provider: str,
     prompt: str,
@@ -220,7 +224,7 @@ def run_account(
                 "--color",
                 "never",
                 "--cd",
-                os.getenv("PROJECT_SOURCE_ROOT", "/home/gryps/apps/douyin-listing-workbench"),
+                account_workdir(),
                 "--output-schema",
                 str(schema_path),
                 "--output-last-message",

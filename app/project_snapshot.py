@@ -8,8 +8,8 @@ from typing import Any
 
 
 def capture_project_snapshot() -> dict[str, Any]:
-    host = os.getenv("PROJECT_SOURCE_HOST", "192.168.31.17")
-    root = os.getenv("PROJECT_SOURCE_ROOT", "/home/gryps/.openclaw/workspace/douyin-listing-workbench")
+    host = os.getenv("PROJECT_SOURCE_HOST", "192.168.31.3")
+    root = os.getenv("PROJECT_SOURCE_ROOT", "/home/gryps/projects/douyin-listing-workbench")
     workspace_id = os.getenv("PROJECT_WORKSPACE_ID", "douyin-listing-workbench@authority")
     local_hosts = {"", "localhost", "127.0.0.1", os.uname().nodename.lower()}
     git_status = ["git", "-C", root, "status", "--porcelain=v1", "--branch", "--untracked-files=normal"]

@@ -30,7 +30,7 @@ DEFAULT_WORKSPACES = [
 
 
 DEFAULT_MEMORIES = [
-    ("constraint", "代码权威源", "项目代码权威源位于 192.168.31.17，本项目禁止从云端主机索取资源。", 100, ["architecture", "source"]),
+    ("constraint", "代码权威源", "项目代码权威源位于 192.168.31.3，本项目禁止从云端主机索取资源。", 100, ["architecture", "source"]),
     ("constraint", "双生产线隔离", "A/B 实施流水线使用独立 WSL、工作区和分支，不共享节点计算资源。", 95, ["pipeline", "isolation"]),
     ("decision", "人工发布边界", "发布、上线、凭据变更和生产代码应用必须由人工批准。", 100, ["governance", "safety"]),
 ]
@@ -149,11 +149,11 @@ def bootstrap(args: argparse.Namespace) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bootstrap the deployed advanced-stage project registry.")
     parser.add_argument("--project", default="douyin-listing-workbench")
-    parser.add_argument("--name", default="抖音电商工作台")
-    parser.add_argument("--source-host", default="192.168.31.17")
-    parser.add_argument("--source-root", default="/home/gryps/.openclaw/workspace/douyin-listing-workbench")
+    parser.add_argument("--name", default="抖店管理平台")
+    parser.add_argument("--source-host", default="192.168.31.3")
+    parser.add_argument("--source-root", default="/home/gryps/projects/douyin-listing-workbench")
     parser.add_argument("--source-branch", default="openclaw/be012-review-r1")
-    parser.add_argument("--source-commit", default="322dbc1d700ab602ed76c89000352374199c8298")
+    parser.add_argument("--source-commit", default="e481119186cf152c0737f6cd8edef7addace9352")
     return parser.parse_args()
 
 

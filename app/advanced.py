@@ -217,7 +217,7 @@ def init_advanced() -> None:
 
 
 def allowed_source_hosts() -> set[str]:
-    return {item.strip() for item in os.getenv("TASKHUB_PROJECT_SOURCE_HOSTS", "192.168.31.17").split(",") if item.strip()}
+    return {item.strip() for item in os.getenv("TASKHUB_PROJECT_SOURCE_HOSTS", "192.168.31.3").split(",") if item.strip()}
 
 
 def validate_project_location(slug: str, source_host: str, source_root: str) -> tuple[str, str, str]:

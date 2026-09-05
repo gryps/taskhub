@@ -22,9 +22,10 @@ The eight integration tasks requested after the advanced stage are implemented.
 ## Configuration
 
 ```bash
-TASKHUB_PROJECT_SOURCE_HOSTS=192.168.31.17
-PROJECT_SOURCE_HOST=192.168.31.17
-PROJECT_SOURCE_ROOT=/home/gryps/.openclaw/workspace/douyin-listing-workbench
+TASKHUB_PROJECT_SOURCE_HOSTS=192.168.31.3
+PROJECT_SOURCE_HOST=192.168.31.3
+PROJECT_SOURCE_ROOT=/home/gryps/projects/douyin-listing-workbench
+CODEX_PROJECT_WORKDIR=/home/gryps/apps/douyin-listing-workbench
 PROJECT_SOURCE_SSH_USER=gryps
 PROJECT_SOURCE_SSH_PORT=22
 TASKHUB_ARTIFACT_ROOT=/home/gryps/apps/langgraph-control/data/artifacts
