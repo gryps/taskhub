@@ -162,6 +162,9 @@ security boundaries. Linux workers can publish files with
 `scripts/publish_artifact.py`; the Windows GUI worker publishes task artifacts
 automatically.
 
+The original three-stage product plans and implementation records are preserved
+under `docs/product-plans/`.
+
 ## Run
 
 ```bash
