@@ -2,6 +2,8 @@
 
 LangGraph control plane deployed under `/home/gryps/apps/langgraph-control`.
 
+中文操作手册：[`docs/TASKHUB_OPERATION_MANUAL_ZH.md`](docs/TASKHUB_OPERATION_MANUAL_ZH.md)
+
 ## Endpoints
 
 - `GET /health`
