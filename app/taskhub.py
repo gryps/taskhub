@@ -59,6 +59,7 @@ APPROVAL_DOWNSTREAM_TYPES = {
 }
 IMPLEMENTATION_TASK_TYPES = {"code.change", "code.diff.preview", "code.change.apply"}
 WORKSPACE_TASK_TYPES = IMPLEMENTATION_TASK_TYPES | {"test.run", "quality.env.check"}
+AUTO_REWORK_FAILURE_TYPES = {"test.run", "quality.env.check"}
 QUALITY_TASK_TYPES = {"review.model"}
 GUI_TASK_TYPES = {"h5.inspect"}
 UNSCHEDULABLE_TASK_TYPES = {"market.price.collect", "commerce.listing.draft"}
@@ -1288,6 +1289,59 @@ def backfill_workflow_implementation(
     }
 
 
+@router.post("/workflows/{workflow_id}/auto-recover")
+def auto_recover_workflow(workflow_id: uuid.UUID, request: Request, payload: TaskAction) -> dict[str, Any]:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("select * from taskhub_workflows where id = %s for update", (workflow_id,))
+            workflow = cur.fetchone()
+            if not workflow:
+                raise HTTPException(status_code=404, detail="workflow not found")
+            if workflow["state"] != "blocked" or workflow.get("resume_state") != "implementation":
+                raise HTTPException(status_code=409, detail="workflow is not blocked during implementation")
+            cur.execute(
+                """
+                select * from taskhub_tasks
+                where metadata->>'workflow_id' = %s and state = 'failed'
+                  and type = any(%s)
+                order by updated_at desc
+                limit 1
+                for update
+                """,
+                (str(workflow_id), list(AUTO_REWORK_FAILURE_TYPES)),
+            )
+            failed_task = cur.fetchone()
+            if not failed_task:
+                raise HTTPException(status_code=409, detail="workflow has no automatically recoverable failed gate")
+            recovery = schedule_automatic_rework(
+                cur, failed_task, failed_task.get("error") or {}, request.state.actor,
+            )
+            if not recovery:
+                raise HTTPException(status_code=409, detail="automatic rework limit or routing prerequisites were not met")
+            transition_workflow(
+                cur,
+                workflow_id,
+                "retry",
+                "taskhub:auto-rework",
+                payload.reason,
+                {
+                    "failed_task_id": str(failed_task["id"]),
+                    "code_task_id": str(recovery["code_task"]["id"]),
+                    "diff_task_id": str(recovery["diff_task"]["id"]),
+                    "automatic": True,
+                },
+            )
+        conn.commit()
+    return {
+        "workflow_id": str(workflow_id),
+        "state": "implementation",
+        "status": "automatic_rework_queued",
+        "failed_task_id": str(failed_task["id"]),
+        "code_task_id": str(recovery["code_task"]["id"]),
+        "diff_task_id": str(recovery["diff_task"]["id"]),
+    }
+
+
 def reconcile_workflow_tasks(cur, task: dict[str, Any], actor: str) -> None:
     workflow_id = workflow_id_for_task(task)
     if not workflow_id or not (task.get("metadata") or {}).get("approval_source_task_id"):
@@ -1315,6 +1369,130 @@ def reconcile_workflow_tasks(cur, task: dict[str, Any], actor: str) -> None:
             cur, workflow_id, "implementation_done", actor, "all approved implementation tasks succeeded",
             {"task_states": counts},
         )
+
+
+def automatic_rework_requirement(workflow: dict[str, Any], failed_task: dict[str, Any], error: dict[str, Any]) -> str:
+    original_requirement = str((workflow.get("context") or {}).get("requirement") or workflow.get("summary") or "")
+    failure = json.dumps(redact(error), ensure_ascii=False, default=str)[:12000]
+    return (
+        "TaskHub detected a failed implementation quality gate. Diagnose and fix the root cause in the current "
+        "pipeline worktree, then leave the worktree ready for the same gate to run again. Keep the change minimal; "
+        "do not weaken, skip, delete, or mark tests as expected failures merely to make the gate pass. Preserve the "
+        "approved scope and all safety boundaries. Do not commit, deploy, access production systems or production "
+        "data, or read/upload credentials.\n\n"
+        f"Failed gate: {failed_task.get('title') or failed_task.get('type')}\n"
+        f"Gate input: {json.dumps(redact(failed_task.get('input') or {}), ensure_ascii=False, default=str)}\n"
+        f"Failure evidence: {failure}\n\n"
+        f"Original approved requirement:\n{original_requirement[:12000]}"
+    )
+
+
+def schedule_automatic_rework(
+    cur,
+    task: dict[str, Any],
+    error: dict[str, Any],
+    actor: str,
+) -> dict[str, Any] | None:
+    if task.get("type") not in AUTO_REWORK_FAILURE_TYPES or not task.get("pipeline_id"):
+        return None
+    workflow_id = workflow_id_for_task(task)
+    metadata = task.get("metadata") or {}
+    if not workflow_id or not metadata.get("approval_source_task_id"):
+        return None
+    cur.execute("select * from taskhub_workflows where id = %s for update", (workflow_id,))
+    workflow = cur.fetchone()
+    if not workflow or workflow["state"] not in {"implementation", "blocked"}:
+        return None
+    attempt = int(task.get("retry_count") or 0) + 1
+    if attempt > int(workflow.get("max_iterations") or 3):
+        return None
+    cur.execute("select * from taskhub_pipelines where id = %s", (task["pipeline_id"],))
+    pipeline = cur.fetchone()
+    if not pipeline or pipeline["state"] != "active" or not pipeline.get("default_worker_id"):
+        return None
+
+    worker_id = pipeline["default_worker_id"]
+    workspace_id = pipeline["workspace_id"]
+    common_metadata = {
+        **metadata,
+        "stage": "automatic_test_rework",
+        "automatic_rework": True,
+        "automatic_rework_attempt": attempt,
+        "automatic_rework_for_task_id": str(task["id"]),
+    }
+    code_task = insert_task(
+        cur,
+        TaskCreate(
+            project=task["project"],
+            type="code.change",
+            title=f"自动返工 {attempt}: {task['title']}",
+            priority=min(100, int(task.get("priority") or 50) + 10),
+            input={"mode": "execute", "requirement": automatic_rework_requirement(workflow, task, error)},
+            metadata=common_metadata,
+            idempotency_key=f"auto-rework:{task['id']}:{attempt}:code",
+            pipeline_id=task["pipeline_id"],
+            workspace_id=workspace_id,
+            target_worker_id=worker_id,
+        ),
+        "taskhub:auto-rework",
+        "quality gate failure created an automatic corrective implementation",
+    )
+    diff_task = insert_task(
+        cur,
+        TaskCreate(
+            project=task["project"],
+            type="code.diff.preview",
+            title=f"自动返工差异检查 {attempt}: {task['title']}",
+            priority=min(99, int(task.get("priority") or 50) + 9),
+            input={"paths": []},
+            metadata=common_metadata,
+            idempotency_key=f"auto-rework:{task['id']}:{attempt}:diff",
+            depends_on=[code_task["id"]],
+            pipeline_id=task["pipeline_id"],
+            workspace_id=workspace_id,
+            target_worker_id=worker_id,
+        ),
+        "taskhub:auto-rework",
+        "automatic corrective diff verification created",
+    )
+    retry_input = task.get("input") or {}
+    if task["type"] == "test.run" and not retry_input.get("command"):
+        retry_input = {**retry_input, "command": "check"}
+    validate_task_input(task["type"], retry_input)
+    add_task_dependency(cur, task["id"], diff_task["id"])
+    cur.execute(
+        """
+        update taskhub_tasks
+        set state = 'pending', input = %s, metadata = %s, error = null,
+            worker_id = null, target_worker_id = %s, workspace_id = %s,
+            lease_token = null, lease_expires_at = null, heartbeat_at = null,
+            claimed_at = null, completed_at = null, retry_count = %s, updated_at = %s
+        where id = %s
+        returning *
+        """,
+        (
+            Jsonb(redact(retry_input)), Jsonb(redact(common_metadata)), worker_id, workspace_id,
+            attempt, now_utc(), task["id"],
+        ),
+    )
+    retried_task = cur.fetchone()
+    add_history(
+        cur,
+        task["id"],
+        "failed",
+        "pending",
+        "taskhub:auto-rework",
+        "quality gate queued behind automatic corrective implementation",
+        {"attempt": attempt, "code_task_id": str(code_task["id"]), "diff_task_id": str(diff_task["id"])},
+    )
+    requeued_descendants = requeue_dependency_blocked_descendants(cur, task["id"], "taskhub:auto-rework")
+    return {
+        "workflow": workflow,
+        "task": retried_task,
+        "code_task": code_task,
+        "diff_task": diff_task,
+        "requeued_descendants": requeued_descendants,
+    }
 
 
 @router.get("/workflows")
@@ -2208,7 +2386,11 @@ def fail_task(task_id: uuid.UUID, request: TaskFail) -> dict[str, Any]:
             row = cur.fetchone()
             release_resource_leases(cur, task_id)
             add_history(cur, task_id, task["state"], "failed", request.worker_id, "task failed", request.error)
-            reconcile_workflow_tasks(cur, task, request.worker_id)
+            recovery = schedule_automatic_rework(cur, row, request.error, request.worker_id)
+            if recovery:
+                row = recovery["task"]
+            else:
+                reconcile_workflow_tasks(cur, task, request.worker_id)
         conn.commit()
     return serialize_task(row)
 

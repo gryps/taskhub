@@ -45,6 +45,11 @@ class FlowWorkbenchContractTests(unittest.TestCase):
         self.assertIn("/backfill-implementation", self.html)
         self.assertIn("submitFlowBackfill", self.html)
 
+    def test_failed_quality_gate_can_be_sent_to_automatic_rework(self) -> None:
+        self.assertIn("由 TaskHub 自动返工", self.html)
+        self.assertIn("/auto-recover", self.html)
+        self.assertIn("submitFlowAutoRecover", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()

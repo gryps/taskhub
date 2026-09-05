@@ -2858,6 +2858,15 @@
         await loadFlowDesk(selectedFlowWorkflowId);
       };
 
+      const submitFlowAutoRecover = async (workflowId) => {
+        const result = await api(`/taskhub/workflows/${workflowId}/auto-recover`, {
+          method: "POST",
+          body: JSON.stringify({reason: "质量门禁失败，由 TaskHub 自动生成返工、差异检查和同工作副本复测"}),
+        });
+        alert(`TaskHub 已接管返工，施工任务 ${result.code_task_id.slice(0, 8)} 已进入队列。`);
+        await loadFlowDesk(workflowId);
+      };
+
       const renderFlowApprovalForm = (task) => {
         const plan = approvalPlan(task);
         return `<div class="flow-approval-inline">
@@ -2953,6 +2962,8 @@
         const [title, detail] = flowInstruction(workflow);
         const approvalTask = (workflow.tasks || []).find(task => task.type === "review.human" && ["pending", "running", "blocked"].includes(task.state));
         const failedTask = (workflow.tasks || []).find(task => task.state === "failed");
+        const autoRecoverable = failedTask && ["test.run", "quality.env.check"].includes(failedTask.type)
+          && workflow.resume_state === "implementation";
         let controls = "";
         if (workflow.state === "awaiting_plan_approval" && approvalTask) {
           controls = selectedFlowApprovalTask?.id === approvalTask.id
@@ -2966,6 +2977,9 @@
           controls = backfillCount > 0 ? `
             <input id="flowActionReason" value="补齐已批准但尚未真实执行的施工项" />
             <div class="actions"><button class="primary" data-flow-backfill>补齐剩余施工 (${backfillCount})</button><button class="danger" data-flow-action="cancel">取消流程</button></div>`
+            : autoRecoverable ? `
+              <div class="muted">质量门禁失败。TaskHub 将自动安排施工修复、差异检查，并在 A 线同一工作副本重新测试。</div>
+              <div class="actions"><button class="primary" data-flow-auto-recover>由 TaskHub 自动返工</button><button class="danger" data-flow-action="cancel">取消流程</button></div>`
             : failedTask ? `${failedTask.type === "h5.inspect" ? `
               <label>页面检查地址<input id="flowRetryGuiUrl" value="${escapeHtml(failedTask.input?.url || "")}" placeholder="https://允许访问的域名/页面" /></label>
               <label><input id="flowRetryGuiHost" type="checkbox" ${failedTask.input?.allowed_host_confirmed === true ? "checked" : ""} /> 域名已加入 GUI 节点白名单</label>
@@ -2992,6 +3006,9 @@
         }
         for (const button of container.querySelectorAll("[data-flow-backfill]")) {
           button.addEventListener("click", () => submitFlowBackfill(workflow.id));
+        }
+        for (const button of container.querySelectorAll("[data-flow-auto-recover]")) {
+          button.addEventListener("click", () => submitFlowAutoRecover(workflow.id));
         }
         document.getElementById("flowApprovalReason")?.addEventListener("input", event => {
           flowApprovalReason = event.target.value;
