@@ -701,7 +701,11 @@ def create_workflow_evidence(
                     str(plan.get("risk_level") or "medium"),
                     previous_hash,
                     pipeline_id,
-                    Jsonb({"planner_source": plan.get("source"), "planner_model": plan.get("model")}),
+                    Jsonb({
+                        "requirement": requirement,
+                        "planner_source": plan.get("source"),
+                        "planner_model": plan.get("model"),
+                    }),
                     created_at,
                     created_at,
                 ),

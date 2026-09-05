@@ -295,6 +295,12 @@
       .active { background: #e8f6ee; color: var(--green); }
       .paused { background: #fff2df; color: var(--orange); }
       .completed { background: #eef2f7; color: var(--gray); }
+      .planning,
+      .implementation,
+      .review,
+      .risk { background: #e6efff; color: var(--blue); }
+      .awaiting_plan_approval,
+      .awaiting_supervision { background: #fff2df; color: var(--orange); }
 
       .form {
         display: grid;
@@ -500,6 +506,221 @@
         border-bottom: 1px solid var(--line);
       }
 
+      .flow-create {
+        display: grid;
+        grid-template-columns: minmax(260px, 1fr) minmax(180px, 0.35fr) auto;
+        gap: 12px;
+        align-items: end;
+        padding: 14px;
+      }
+
+      .flow-create textarea {
+        min-height: 70px;
+      }
+
+      .flow-layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: 14px;
+        min-height: 540px;
+      }
+
+      .flow-list-panel,
+      .flow-main {
+        padding: 14px;
+        min-width: 0;
+      }
+
+      .flow-list {
+        display: grid;
+        gap: 6px;
+        max-height: 650px;
+        overflow-y: auto;
+      }
+
+      .flow-list-item {
+        width: 100%;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: transparent;
+        padding: 10px;
+        color: var(--text);
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .flow-list-item:hover,
+      .flow-list-item.active {
+        border-color: var(--line);
+        background: #f7f9fc;
+      }
+
+      .flow-list-item.active {
+        border-left: 3px solid var(--blue);
+      }
+
+      .flow-list-title {
+        display: block;
+        margin-bottom: 7px;
+        font-weight: 650;
+        overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        overflow: hidden;
+      }
+
+      .flow-requirement {
+        margin-top: 8px;
+        max-height: 72px;
+        overflow: auto;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-size: 14px;
+      }
+
+      .flow-list-meta,
+      .flow-summary-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .attention-banner {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: center;
+        margin-top: 12px;
+        border: 1px solid #e5b455;
+        border-left: 4px solid var(--orange);
+        border-radius: 6px;
+        padding: 11px 12px;
+        background: #fff8e8;
+      }
+
+      .attention-banner.passive {
+        border-color: var(--line);
+        border-left-color: var(--green);
+        background: #f4fbf6;
+      }
+
+      .flow-canvas-scroll {
+        overflow-x: auto;
+        padding: 18px 2px 12px;
+      }
+
+      .flow-canvas {
+        display: grid;
+        grid-template-columns: repeat(6, 100px 24px) 100px;
+        align-items: center;
+        width: 100%;
+        min-width: 844px;
+      }
+
+      .flow-node {
+        width: 100px;
+        min-height: 126px;
+        display: grid;
+        align-content: space-between;
+        gap: 8px;
+        border: 2px solid var(--line);
+        border-radius: 8px;
+        padding: 9px;
+        background: #fff;
+        color: var(--text);
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .flow-node:hover,
+      .flow-node.selected {
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+      }
+
+      .flow-node.done { border-color: var(--green); background: #f4fbf6; }
+      .flow-node.current { border-color: var(--blue); background: #f3f7ff; }
+      .flow-node.attention { border-color: var(--orange); background: #fff8e8; }
+      .flow-node.problem { border-color: var(--red); background: #fff5f5; }
+      .flow-node.canceled { border-color: var(--gray); background: #f5f5f5; }
+
+      .flow-node-index {
+        width: 24px;
+        height: 24px;
+        display: inline-grid;
+        place-items: center;
+        border-radius: 50%;
+        background: #e8ecf2;
+        color: #344054;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .flow-node.done .flow-node-index { background: var(--green); color: #fff; }
+      .flow-node.current .flow-node-index { background: var(--blue); color: #fff; }
+      .flow-node.attention .flow-node-index { background: var(--orange); color: #fff; }
+      .flow-node.problem .flow-node-index { background: var(--red); color: #fff; }
+      .flow-node-title { font-size: 15px; font-weight: 700; }
+      .flow-node-owner { color: var(--muted); font-size: 12px; }
+
+      #flowTitle {
+        max-width: 850px;
+        font-size: 18px;
+        overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
+
+      .flow-edge {
+        height: 3px;
+        background: var(--line);
+        position: relative;
+      }
+
+      .flow-edge::after {
+        content: "";
+        position: absolute;
+        right: -1px;
+        top: -4px;
+        border-left: 7px solid var(--line);
+        border-top: 5px solid transparent;
+        border-bottom: 5px solid transparent;
+      }
+
+      .flow-edge.done { background: var(--green); }
+      .flow-edge.done::after { border-left-color: var(--green); }
+      .flow-edge.rework { background: repeating-linear-gradient(90deg, var(--orange) 0 7px, transparent 7px 11px); }
+      .flow-edge.rework::after { border-left-color: var(--orange); }
+
+      .flow-detail-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(260px, 0.5fr);
+        gap: 12px;
+        margin-top: 10px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+      }
+
+      .flow-detail-grid h3 {
+        margin: 0 0 10px;
+        font-size: 15px;
+      }
+
+      .flow-timeline {
+        display: grid;
+        gap: 8px;
+      }
+
+      .flow-timeline-row {
+        border-left: 3px solid var(--line);
+        padding: 4px 0 4px 10px;
+        font-size: 13px;
+      }
+
       .hidden {
         display: none;
       }
@@ -554,9 +775,15 @@
         }
         .grid,
         .split,
-        .command-grid {
+        .command-grid,
+        .flow-create,
+        .flow-layout,
+        .flow-detail-grid {
           grid-template-columns: 1fr;
         }
+        .flow-layout { min-height: 0; }
+        .flow-list { max-height: 250px; }
+        .attention-banner { grid-template-columns: 1fr; }
         .wizard-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         #advanced > .toolbar,
         #advancedCards,
@@ -627,7 +854,8 @@
     </header>
     <main>
       <nav>
-        <button data-view="overview" class="active">总览</button>
+        <button data-view="flowdesk" class="active">流程工作台</button>
+        <button data-view="overview">总览</button>
         <button data-view="tasks">任务中心</button>
         <button data-view="planning">规划编排</button>
         <button data-view="code">开发实施</button>
@@ -639,7 +867,56 @@
         <button data-view="system">系统设置</button>
       </nav>
       <section class="content">
-        <div id="overview">
+        <div id="flowdesk">
+          <div class="toolbar">
+            <h2>流程工作台</h2>
+            <span class="muted" id="flowDeskStatus">加载中</span>
+          </div>
+          <form class="flow-create panel" id="flowQuickForm">
+            <label>输入新需求
+              <textarea name="requirement" required placeholder="说明要开发或修复的内容，以及验收结果"></textarea>
+            </label>
+            <label>生产流水线
+              <select name="pipelineId" id="flowPipelineSelect"><option value="">不绑定流水线</option></select>
+            </label>
+            <button class="primary" type="submit">开始执行</button>
+          </form>
+          <div class="flow-layout section">
+            <aside class="flow-list-panel panel">
+              <div class="toolbar"><h2>需求流程</h2><span class="muted" id="flowListCount">0 条</span></div>
+              <div class="flow-list" id="flowWorkflowList"></div>
+            </aside>
+            <section class="flow-main panel">
+              <div id="flowEmpty" class="muted">尚无工作流，请先输入需求。</div>
+              <div id="flowSelected" class="hidden">
+                <div class="flow-summary-row">
+                  <div>
+                    <h2 id="flowTitle">工作流</h2>
+                    <div class="muted" id="flowMeta"></div>
+                    <div class="flow-requirement" id="flowRequirement"></div>
+                  </div>
+                  <span id="flowStateBadge"></span>
+                </div>
+                <div id="flowAttention"></div>
+                <div class="flow-canvas-scroll">
+                  <div class="flow-canvas" id="flowCanvas"></div>
+                </div>
+                <div class="flow-detail-grid">
+                  <div>
+                    <h3 id="flowDetailTitle">当前环节</h3>
+                    <div id="flowStageDetail"></div>
+                  </div>
+                  <div>
+                    <h3>流转记录</h3>
+                    <div class="flow-timeline" id="flowTimeline"></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div id="overview" class="hidden">
           <div class="toolbar"><h2>总览</h2><span class="muted" id="healthText">加载中</span></div>
           <div class="grid" id="stats"></div>
           <div class="section">
@@ -1227,6 +1504,10 @@
       let operationsPolicySaving = false;
       let cachedPipelines = [];
       let cachedWorkers = [];
+      let cachedFlowWorkflows = [];
+      let selectedFlowWorkflowId = null;
+      let selectedFlowDetail = null;
+      let selectedFlowStage = null;
 
       const redact = (value) => {
         if (Array.isArray(value)) return value.map(redact);
@@ -1678,7 +1959,7 @@
         for (const button of document.querySelectorAll("nav button")) {
           button.classList.toggle("active", button.dataset.view === view);
         }
-        refresh();
+        return refresh();
       };
 
       const renderTasks = (container, rows) => {
@@ -2203,6 +2484,7 @@
           document.getElementById("qualityPipelineSelect"),
           document.getElementById("codePipelineSelect"),
           document.getElementById("firstWorkflowPipeline"),
+          document.getElementById("flowPipelineSelect"),
         ]) {
           const selected = select.value;
           const emptyLabel = select.id === "pipelineFilter" ? "全部流水线" : "不绑定流水线";
@@ -2279,6 +2561,58 @@
         completed: "已完成",
         canceled: "已取消",
       }[state] || state);
+
+      const workflowActionLabel = (action) => ({
+        plan_ready: "规划完成",
+        approve_plan: "计划已批准",
+        implementation_done: "实施完成",
+        review_pass: "审查通过",
+        review_reject: "审查退回实施",
+        risk_clear: "风险检查通过",
+        risk_block: "风险阻塞",
+        approve_release: "最终批准",
+        request_rework: "监督要求返工",
+        pause: "暂停",
+        resume: "恢复",
+        retry: "恢复处理",
+        block: "进入阻塞",
+        cancel: "取消",
+      }[action] || action);
+
+      const flowStages = [
+        {key: "planning", label: "规划编排", owner: "规划模型", states: ["planning"], roles: ["planner"]},
+        {key: "plan_approval", label: "计划审批", owner: "需要人工确认", states: ["awaiting_plan_approval"], roles: ["supervisor"]},
+        {key: "implementation", label: "开发实施", owner: "施工模型 / 实施节点", states: ["implementation"], roles: ["coder"]},
+        {key: "review", label: "审查验收", owner: "审查模型", states: ["review"], roles: ["reviewer"]},
+        {key: "risk", label: "风险报告", owner: "风险模型", states: ["risk"], roles: ["risk"]},
+        {key: "supervision", label: "监督裁决", owner: "需要人工确认", states: ["awaiting_supervision"], roles: ["supervisor"]},
+        {key: "completed", label: "流程完成", owner: "结果已归档", states: ["completed"], roles: []},
+      ];
+
+      const flowEffectiveState = (workflow) => ["blocked", "paused"].includes(workflow.state)
+        ? (workflow.resume_state || workflow.state)
+        : workflow.state;
+
+      const flowStageIndex = (workflow) => {
+        const state = flowEffectiveState(workflow);
+        const index = flowStages.findIndex(stage => stage.states.includes(state));
+        return index < 0 ? 0 : index;
+      };
+
+      const flowNeedsHuman = (workflow) => ["awaiting_plan_approval", "awaiting_supervision", "blocked", "paused"].includes(workflow.state);
+
+      const flowInstruction = (workflow) => ({
+        planning: ["系统正在生成实施计划", "无需操作，完成后会进入计划审批。"],
+        awaiting_plan_approval: ["需要您审批实施计划", "确认任务拆分、流水线和验收要求后批准。"],
+        implementation: ["实施节点正在开发", "无需操作，等待代码与执行结果回传。"],
+        review: ["审查模型正在验收", "无需操作，未通过时会退回实施。"],
+        risk: ["风险模型正在检查", "无需操作，风险通过后进入最终裁决。"],
+        awaiting_supervision: ["需要您做最终裁决", "检查审查和风险结论，批准完成或要求返工。"],
+        blocked: ["流程已阻塞，需要您处理", "查看当前环节详情，确认问题后恢复处理或取消。"],
+        paused: ["流程已暂停，需要您处理", "确认可以继续后恢复，或取消该流程。"],
+        completed: ["流程已经完成", "结果和流转记录已保留。"],
+        canceled: ["流程已经取消", "该流程不会继续流转。"],
+      }[workflow.state] || ["等待状态更新", "刷新后查看最新状态。"]);
 
       const workflowActions = (workflow) => {
         if (workflow.state === "review") return [["审查通过", "review_pass", false], ["驳回实施", "review_reject", true]];
@@ -2358,6 +2692,221 @@
         document.getElementById("workflowStatus").textContent = `${active.length} 条处理中 | 共 ${workflows.length} 条`;
         renderWorkflowTable(document.getElementById("workflowList"), workflows);
         return workflows;
+      };
+
+      const flowStageClass = (workflow, index) => {
+        const currentIndex = flowStageIndex(workflow);
+        if (workflow.state === "completed") return "done";
+        if (index < currentIndex) return "done";
+        if (index > currentIndex) return "pending";
+        if (workflow.state === "canceled") return "canceled";
+        if (workflow.state === "blocked") return "problem";
+        if (["awaiting_plan_approval", "awaiting_supervision", "paused"].includes(workflow.state)) return "attention";
+        return "current";
+      };
+
+      const flowStageStatusText = (className) => ({
+        done: "已完成",
+        current: "进行中",
+        attention: "等您处理",
+        problem: "已阻塞",
+        canceled: "已取消",
+        pending: "未开始",
+      }[className] || className);
+
+      const flowTasksForStage = (workflow, stageKey) => {
+        const types = {
+          planning: ["ops.note", "project.context.sync", "requirement.split"],
+          plan_approval: ["review.human"],
+          implementation: ["code.change", "code.change.apply", "code.diff.preview"],
+          review: ["review.model", "test.run", "quality.env.check", "h5.inspect"],
+        }[stageKey] || [];
+        return (workflow.tasks || []).filter(task => types.includes(task.type));
+      };
+
+      const renderFlowStageDetail = (stageKey) => {
+        const workflow = selectedFlowDetail;
+        if (!workflow) return;
+        selectedFlowStage = stageKey;
+        const stage = flowStages.find(item => item.key === stageKey) || flowStages[flowStageIndex(workflow)];
+        const runs = (workflow.role_runs || []).filter(run => stage.roles.includes(run.role));
+        const run = runs.at(-1);
+        const tasks = flowTasksForStage(workflow, stage.key);
+        document.getElementById("flowDetailTitle").textContent = `${stage.label} · ${stage.owner}`;
+        document.getElementById("flowStageDetail").innerHTML = `
+          <div class="detail-grid">
+            ${detailItem("环节状态", flowStageStatusText(flowStageClass(workflow, flowStages.indexOf(stage))))}
+            ${detailItem("负责方", stage.owner)}
+            ${detailItem("模型", run ? `${run.provider || "-"} / ${run.model || "-"}` : "尚无运行记录")}
+            ${detailItem("模型结论", run?.verdict || run?.status || "-")}
+          </div>
+          ${run?.summary ? `<div class="section"><strong>处理摘要</strong><div class="muted section">${escapeHtml(run.summary)}</div></div>` : ""}
+          <div class="section">
+            <strong>关联任务 (${tasks.length})</strong>
+            <div class="actions section">${tasks.length ? tasks.map(task => `
+              <button class="secondary" data-flow-open-task="${escapeHtml(task.id)}">${escapeHtml(task.title)} · ${escapeHtml(task.state)}</button>
+            `).join("") : '<span class="muted">该环节没有独立任务记录</span>'}</div>
+          </div>`;
+        for (const node of document.querySelectorAll("[data-flow-stage]")) {
+          node.classList.toggle("selected", node.dataset.flowStage === stage.key);
+        }
+        for (const button of document.querySelectorAll("[data-flow-open-task]")) {
+          button.addEventListener("click", () => openFlowTask(button.dataset.flowOpenTask));
+        }
+      };
+
+      const openFlowTask = async (taskId) => {
+        await setView("tasks");
+        await loadTask(taskId);
+      };
+
+      const submitFlowAction = async (workflowId, action) => {
+        const input = document.getElementById("flowActionReason");
+        const reason = input?.value.trim();
+        if (!reason) {
+          input?.focus();
+          alert("请先填写处理意见");
+          return;
+        }
+        await api(`/taskhub/workflows/${workflowId}/actions`, {
+          method: "POST",
+          body: JSON.stringify({action, reason, output: {source: "flow-workbench"}}),
+        });
+        await loadFlowDesk(workflowId);
+      };
+
+      const renderFlowAttention = (workflow) => {
+        const [title, detail] = flowInstruction(workflow);
+        const approvalTask = (workflow.tasks || []).find(task => task.type === "review.human" && ["pending", "running", "blocked"].includes(task.state));
+        let controls = "";
+        if (workflow.state === "awaiting_plan_approval" && approvalTask) {
+          controls = `<button class="primary" data-flow-open-task="${escapeHtml(approvalTask.id)}">处理计划审批</button>`;
+        } else if (workflow.state === "awaiting_supervision") {
+          controls = `<input id="flowActionReason" placeholder="填写最终裁决意见" />
+            <div class="actions"><button class="primary" data-flow-action="approve_release">批准完成</button><button class="danger" data-flow-action="request_rework">要求返工</button></div>`;
+        } else if (workflow.state === "blocked") {
+          controls = `<input id="flowActionReason" placeholder="填写恢复或取消原因" />
+            <div class="actions"><button class="primary" data-flow-action="retry">恢复处理</button><button class="danger" data-flow-action="cancel">取消流程</button></div>`;
+        } else if (workflow.state === "paused") {
+          controls = `<input id="flowActionReason" placeholder="填写恢复或取消原因" />
+            <div class="actions"><button class="primary" data-flow-action="resume">恢复流程</button><button class="danger" data-flow-action="cancel">取消流程</button></div>`;
+        }
+        const container = document.getElementById("flowAttention");
+        container.innerHTML = `<div class="attention-banner ${flowNeedsHuman(workflow) ? "" : "passive"}">
+          <div><strong>${escapeHtml(title)}</strong><div class="muted">${escapeHtml(detail)}</div></div>
+          <div>${controls}</div>
+        </div>`;
+        for (const button of container.querySelectorAll("[data-flow-open-task]")) {
+          button.addEventListener("click", () => openFlowTask(button.dataset.flowOpenTask));
+        }
+        for (const button of container.querySelectorAll("[data-flow-action]")) {
+          button.addEventListener("click", () => submitFlowAction(workflow.id, button.dataset.flowAction));
+        }
+      };
+
+      const renderFlowCanvas = (workflow) => {
+        const currentIndex = flowStageIndex(workflow);
+        document.getElementById("flowCanvas").innerHTML = flowStages.map((stage, index) => {
+          const className = flowStageClass(workflow, index);
+          const edgeClass = index < currentIndex || workflow.state === "completed" ? "done" : "";
+          const reworkClass = workflow.iteration > 0 && index === 1 ? "rework" : edgeClass;
+          return `${index ? `<div class="flow-edge ${reworkClass}"></div>` : ""}
+            <button class="flow-node ${className}" data-flow-stage="${stage.key}" title="查看${stage.label}详情">
+              <span class="flow-node-index">${index + 1}</span>
+              <span class="flow-node-title">${stage.label}</span>
+              <span class="flow-node-owner">${stage.owner}</span>
+              <span class="status ${className === "done" ? "succeeded" : className === "problem" ? "failed" : className === "attention" ? "blocked" : className === "current" ? "running" : "pending"}">${flowStageStatusText(className)}</span>
+            </button>`;
+        }).join("");
+        for (const node of document.querySelectorAll("[data-flow-stage]")) {
+          node.addEventListener("click", () => renderFlowStageDetail(node.dataset.flowStage));
+        }
+      };
+
+      const renderFlowTimeline = (workflow) => {
+        const transitions = [...(workflow.transitions || [])].reverse().slice(0, 10);
+        document.getElementById("flowTimeline").innerHTML = transitions.length ? transitions.map(item => `
+          <div class="flow-timeline-row">
+            <strong>${escapeHtml(workflowActionLabel(item.action))}</strong>
+            <div class="muted">${escapeHtml(formatDate(item.created_at))} · ${escapeHtml(item.actor)}</div>
+            <div>${escapeHtml(workflowStateLabel(item.to_state))}</div>
+          </div>`).join("") : '<div class="muted">暂无流转记录</div>';
+      };
+
+      const loadFlowDetail = async (workflowId) => {
+        selectedFlowWorkflowId = workflowId;
+        selectedFlowDetail = await api(`/taskhub/workflows/${workflowId}`);
+        const workflow = selectedFlowDetail;
+        document.getElementById("flowEmpty").classList.add("hidden");
+        document.getElementById("flowSelected").classList.remove("hidden");
+        document.getElementById("flowTitle").textContent = workflow.summary || `工作流 ${shortId(workflow.id)}`;
+        document.getElementById("flowMeta").textContent = `编号 ${shortId(workflow.id)} · 创建于 ${formatDate(workflow.created_at)} · 返工 ${workflow.iteration}/${workflow.max_iterations}`;
+        document.getElementById("flowRequirement").textContent = workflow.context?.requirement || "旧流程未保存原始需求，请查看规划摘要。";
+        document.getElementById("flowStateBadge").innerHTML = `<span class="status ${workflow.state}">${escapeHtml(workflowStateLabel(workflow.state))}</span>`;
+        renderFlowAttention(workflow);
+        renderFlowCanvas(workflow);
+        renderFlowTimeline(workflow);
+        renderFlowStageDetail(selectedFlowStage || flowStages[flowStageIndex(workflow)].key);
+        for (const button of document.querySelectorAll("[data-flow-workflow]")) {
+          button.classList.toggle("active", button.dataset.flowWorkflow === workflowId);
+        }
+      };
+
+      const renderFlowWorkflowList = (workflows) => {
+        document.getElementById("flowListCount").textContent = `${workflows.length} 条`;
+        document.getElementById("flowWorkflowList").innerHTML = workflows.length ? workflows.map(workflow => `
+          <button class="flow-list-item" data-flow-workflow="${escapeHtml(workflow.id)}">
+            <span class="flow-list-title">${escapeHtml(workflow.summary || `需求 ${shortId(workflow.id)}`)}</span>
+            <span class="flow-list-meta"><span class="status ${escapeHtml(workflow.state)}">${escapeHtml(workflowStateLabel(workflow.state))}</span><span class="muted">${escapeHtml(formatDate(workflow.updated_at))}</span></span>
+          </button>`).join("") : '<div class="muted">暂无需求流程</div>';
+        for (const button of document.querySelectorAll("[data-flow-workflow]")) {
+          button.addEventListener("click", () => loadFlowDetail(button.dataset.flowWorkflow));
+        }
+      };
+
+      const loadFlowDesk = async (preferredWorkflowId = null) => {
+        cachedFlowWorkflows = await api(`/taskhub/workflows?project=${project}&limit=100`);
+        const attention = cachedFlowWorkflows.filter(flowNeedsHuman);
+        const active = cachedFlowWorkflows.filter(item => !["completed", "canceled"].includes(item.state));
+        document.getElementById("flowDeskStatus").textContent = `${attention.length} 项需要您处理 · ${active.length} 项流转中`;
+        renderFlowWorkflowList(cachedFlowWorkflows);
+        const candidate = preferredWorkflowId
+          || (cachedFlowWorkflows.some(item => item.id === selectedFlowWorkflowId) ? selectedFlowWorkflowId : null)
+          || attention[0]?.id || active[0]?.id || cachedFlowWorkflows[0]?.id;
+        if (candidate) await loadFlowDetail(candidate);
+        else {
+          selectedFlowWorkflowId = null;
+          selectedFlowDetail = null;
+          document.getElementById("flowEmpty").classList.remove("hidden");
+          document.getElementById("flowSelected").classList.add("hidden");
+        }
+      };
+
+      const createFlowRequirement = async (event) => {
+        event.preventDefault();
+        const form = event.target;
+        const values = new FormData(form);
+        const button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        button.textContent = "正在规划";
+        try {
+          const result = await api(`/taskhub/integration/projects/${encodeURIComponent(project)}/first-workflow`, {
+            method: "POST",
+            body: JSON.stringify({
+              requirement: values.get("requirement"),
+              pipeline_id: values.get("pipelineId") || null,
+              priority: 70,
+            }),
+          });
+          form.querySelector('[name="requirement"]').value = "";
+          selectedFlowStage = null;
+          await loadFlowDesk(result.workflow?.workflow_id);
+        } catch (error) {
+          alert(`创建需求失败：${error.message}`);
+        } finally {
+          button.disabled = false;
+          button.textContent = "开始执行";
+        }
       };
 
       const loadPipelines = async () => {
@@ -3070,7 +3619,8 @@
       const refresh = async () => {
         const current = document.querySelector("nav button.active").dataset.view;
         try {
-          if (["tasks", "planning", "code", "quality"].includes(current)) await loadPipelines();
+          if (["flowdesk", "tasks", "planning", "code", "quality"].includes(current)) await loadPipelines();
+          if (current === "flowdesk") await loadFlowDesk();
           if (current === "overview") await loadOverview();
           if (current === "planner") await loadPlanner();
           if (current === "tasks") await loadTasks();
@@ -3108,6 +3658,7 @@
         }
       });
       document.getElementById("plannerForm").addEventListener("submit", invokePlanner);
+      document.getElementById("flowQuickForm").addEventListener("submit", createFlowRequirement);
       document.getElementById("configCheckButton").addEventListener("click", loadConfigCheck);
       document.getElementById("providerConfigForm").addEventListener("submit", saveProviderConfig);
       document.getElementById("providerConfigForm").addEventListener("input", () => {
