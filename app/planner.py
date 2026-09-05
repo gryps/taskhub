@@ -1324,9 +1324,20 @@ def multi_plan(request: PlannerRequest) -> dict[str, Any]:
     return build_role_plan(request)
 
 
-def create_planner_tasks(request: PlannerRequest, plan: dict[str, Any], actor: str) -> dict[str, Any]:
+def create_planner_tasks(
+    request: PlannerRequest,
+    plan: dict[str, Any],
+    actor: str,
+    workflow_id: uuid.UUID | None = None,
+) -> dict[str, Any]:
     title = request.title or request.requirement[:40] or "新的项目需求"
-    evidence = create_workflow_evidence(request.project, request.requirement, plan, request.pipeline_id)
+    evidence = create_workflow_evidence(
+        request.project,
+        request.requirement,
+        plan,
+        request.pipeline_id,
+        workflow_id=workflow_id,
+    )
     snapshot = capture_project_snapshot()
     common_metadata = {
         "source": "llm_planner",

@@ -643,13 +643,72 @@ def record_audit_event(
         return
 
 
+def create_planning_workflow(
+    project: str,
+    requirement: str,
+    pipeline_id: uuid.UUID | None = None,
+) -> dict[str, Any]:
+    workflow_id = uuid.uuid4()
+    created_at = now_utc()
+    requirement_hash = canonical_hash({"project": project, "requirement": requirement})
+    summary = requirement.strip()[:160]
+    with connect() as conn:
+        with conn.cursor() as cur:
+            if pipeline_id:
+                cur.execute("select project, state from taskhub_pipelines where id = %s", (pipeline_id,))
+                pipeline = cur.fetchone()
+                if not pipeline:
+                    raise HTTPException(status_code=400, detail="pipeline does not exist")
+                if pipeline["project"] != project:
+                    raise HTTPException(status_code=400, detail="pipeline belongs to a different project")
+                if pipeline["state"] in {"completed", "canceled"}:
+                    raise HTTPException(status_code=409, detail=f"pipeline is {pipeline['state']}")
+            cur.execute(
+                """
+                insert into taskhub_workflows
+                    (id, project, requirement_hash, state, summary, risk_level, evidence_root_hash,
+                     pipeline_id, active_role, context, created_at, updated_at)
+                values (%s, %s, %s, 'planning', %s, 'medium', %s, %s, 'planner', %s, %s, %s)
+                """,
+                (
+                    workflow_id,
+                    project,
+                    requirement_hash,
+                    summary,
+                    requirement_hash,
+                    pipeline_id,
+                    Jsonb({"requirement": requirement, "planner_status": "queued"}),
+                    created_at,
+                    created_at,
+                ),
+            )
+            cur.execute(
+                """
+                insert into taskhub_workflow_transitions
+                    (id, workflow_id, from_state, to_state, action, actor, reason, role,
+                     iteration, payload, created_at)
+                values (%s, %s, null, 'planning', 'requirement_submitted', 'taskhub:web',
+                        'requirement accepted for asynchronous planning', 'planner', 0, %s, %s)
+                """,
+                (uuid.uuid4(), workflow_id, Jsonb({"requirement_hash": requirement_hash}), created_at),
+            )
+        conn.commit()
+    return {
+        "workflow_id": str(workflow_id),
+        "requirement_hash": requirement_hash,
+        "state": "planning",
+    }
+
+
 def create_workflow_evidence(
     project: str,
     requirement: str,
     plan: dict[str, Any],
     pipeline_id: uuid.UUID | None = None,
+    workflow_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
-    workflow_id = uuid.uuid4()
+    existing_workflow = workflow_id is not None
+    workflow_id = workflow_id or uuid.uuid4()
     created_at = now_utc()
     requirement_hash = canonical_hash({"project": project, "requirement": requirement})
     previous_hash = requirement_hash
@@ -686,38 +745,80 @@ def create_workflow_evidence(
 
     with connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                insert into taskhub_workflows
-                    (id, project, requirement_hash, state, summary, risk_level, evidence_root_hash,
-                     pipeline_id, active_role, context, created_at, updated_at)
-                values (%s, %s, %s, 'awaiting_plan_approval', %s, %s, %s, %s, 'supervisor', %s, %s, %s)
-                """,
-                (
-                    workflow_id,
-                    project,
-                    requirement_hash,
-                    str(plan.get("summary") or ""),
-                    str(plan.get("risk_level") or "medium"),
-                    previous_hash,
-                    pipeline_id,
-                    Jsonb({
-                        "requirement": requirement,
-                        "planner_source": plan.get("source"),
-                        "planner_model": plan.get("model"),
-                    }),
-                    created_at,
-                    created_at,
-                ),
-            )
+            if existing_workflow:
+                cur.execute("select * from taskhub_workflows where id = %s for update", (workflow_id,))
+                workflow = cur.fetchone()
+                if not workflow:
+                    raise HTTPException(status_code=404, detail="workflow not found")
+                if workflow["project"] != project or workflow["requirement_hash"] != requirement_hash:
+                    raise HTTPException(status_code=409, detail="workflow requirement does not match")
+                if workflow["state"] != "planning":
+                    raise HTTPException(status_code=409, detail=f"workflow is {workflow['state']}")
+                context = {
+                    **(workflow.get("context") or {}),
+                    "planner_status": "completed",
+                    "planner_source": plan.get("source"),
+                    "planner_model": plan.get("model"),
+                }
+                cur.execute(
+                    """
+                    update taskhub_workflows
+                    set state = 'awaiting_plan_approval', summary = %s, risk_level = %s,
+                        evidence_root_hash = %s, active_role = 'supervisor', context = %s,
+                        updated_at = %s
+                    where id = %s
+                    """,
+                    (
+                        str(plan.get("summary") or requirement),
+                        str(plan.get("risk_level") or "medium"),
+                        previous_hash,
+                        Jsonb(context),
+                        created_at,
+                        workflow_id,
+                    ),
+                )
+                transition_from = "planning"
+                transition_actor = "workflow:planner"
+                transition_reason = "planner completed; plan is ready for human approval"
+            else:
+                cur.execute(
+                    """
+                    insert into taskhub_workflows
+                        (id, project, requirement_hash, state, summary, risk_level, evidence_root_hash,
+                         pipeline_id, active_role, context, created_at, updated_at)
+                    values (%s, %s, %s, 'awaiting_plan_approval', %s, %s, %s, %s, 'supervisor', %s, %s, %s)
+                    """,
+                    (
+                        workflow_id,
+                        project,
+                        requirement_hash,
+                        str(plan.get("summary") or ""),
+                        str(plan.get("risk_level") or "medium"),
+                        previous_hash,
+                        pipeline_id,
+                        Jsonb({
+                            "requirement": requirement,
+                            "planner_source": plan.get("source"),
+                            "planner_model": plan.get("model"),
+                        }),
+                        created_at,
+                        created_at,
+                    ),
+                )
+                transition_from = None
+                transition_actor = "multi_role_planner"
+                transition_reason = "plan and evidence created"
             cur.execute(
                 """
                 insert into taskhub_workflow_transitions
                     (id, workflow_id, from_state, to_state, action, actor, reason, role, iteration, payload, created_at)
-                values (%s, %s, null, 'awaiting_plan_approval', 'plan_ready', 'multi_role_planner',
-                        'five-role plan and evidence created', 'supervisor', 0, %s, %s)
+                values (%s, %s, %s, 'awaiting_plan_approval', 'plan_ready', %s, %s,
+                        'supervisor', 0, %s, %s)
                 """,
-                (uuid.uuid4(), workflow_id, Jsonb({"evidence_root_hash": previous_hash}), created_at),
+                (
+                    uuid.uuid4(), workflow_id, transition_from, transition_actor, transition_reason,
+                    Jsonb({"evidence_root_hash": previous_hash}), created_at,
+                ),
             )
             for row in evidence_rows:
                 cur.execute(

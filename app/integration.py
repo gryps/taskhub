@@ -23,8 +23,15 @@ from app.advanced import (
     governance_policy,
     validate_project_location,
 )
-from app.planner import PlannerRequest, multi_invoke
-from app.taskhub import TaskAction, connect, now_utc, record_audit_event, redact, retry_task
+from app.taskhub import (
+    TaskAction,
+    connect,
+    create_planning_workflow,
+    now_utc,
+    record_audit_event,
+    redact,
+    retry_task,
+)
 
 
 router = APIRouter(prefix="/taskhub/integration", tags=["integration"])
@@ -387,12 +394,13 @@ def launch_first_workflow(slug: str, payload: FirstWorkflowRequest) -> dict[str,
             cur.execute("select 1 from taskhub_projects where slug=%s and state='active'", (slug,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="active project not found")
-    return multi_invoke(PlannerRequest(
-        requirement=payload.requirement, project=slug, title=payload.title,
-        priority=payload.priority, pipeline_id=payload.pipeline_id,
-        idempotency_key=f"first:{slug}:{hashlib.sha256(payload.requirement.encode()).hexdigest()[:24]}",
-        metadata={"source": "one_click_onboarding", "guided_e2e": True},
-    ))
+    workflow = create_planning_workflow(slug, payload.requirement, payload.pipeline_id)
+    return {
+        "accepted": True,
+        "project": slug,
+        "workflow": workflow,
+        "next": "规划模型将在后台生成实施计划；完成后流程自动进入计划审批。",
+    }
 
 
 @router.get("/devices")

@@ -8,11 +8,12 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from app.planner import PlannerRequest, run_structured_role
+from app.planner import PlannerRequest, collect_alerts, create_planner_tasks, run_role, run_structured_role
 from app.taskhub import connect, now_utc, redact, transition_workflow
 
 
 AUTOMATED_STAGES = {
+    "planning": "planner",
     "review": "reviewer",
     "risk": "risk",
     "awaiting_supervision": "supervisor",
@@ -165,7 +166,7 @@ def claim_next_role_run() -> dict[str, Any] | None:
                 left join taskhub_workflow_role_runs run
                   on run.workflow_id = workflow.id
                  and run.entry_transition_id = transition.id
-                where workflow.state in ('review', 'risk', 'awaiting_supervision')
+                where workflow.state in ('planning', 'review', 'risk', 'awaiting_supervision')
                   and (
                     run.id is null
                     or (run.status = 'failed' and run.attempt_count < %s and run.next_retry_at <= %s)
@@ -305,19 +306,76 @@ def fail_role_run(claim: dict[str, Any], error: dict[str, Any]) -> None:
         conn.commit()
 
 
+def complete_planning_run(claim: dict[str, Any], output: dict[str, Any]) -> None:
+    requirement = str((claim.get("context") or {}).get("requirement") or claim["summary"])
+    request = PlannerRequest(
+        requirement=requirement,
+        project=str(claim["project"]),
+        title=requirement[:96],
+        priority=80,
+        pipeline_id=claim.get("pipeline_id"),
+        idempotency_key=f"workflow:{claim['workflow_id']}",
+        metadata={
+            "workflow_id": str(claim["workflow_id"]),
+            "source": "flow_workbench",
+            "guided_e2e": True,
+        },
+    )
+    plan = {
+        "source": output.get("source"),
+        "model": output.get("model"),
+        "summary": output.get("summary") or requirement,
+        "risk_level": output.get("risk_level") or "medium",
+        "tasks": output.get("tasks") or [],
+        "role_outputs": [output],
+        "alerts": collect_alerts([output]),
+        "execution_order": ["planner"],
+    }
+    create_planner_tasks(
+        request,
+        plan,
+        actor="workflow_planner",
+        workflow_id=claim["workflow_id"],
+    )
+    timestamp = now_utc()
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update taskhub_workflow_role_runs
+                set status = 'succeeded', provider = %s, model = %s, verdict = 'plan_ready',
+                    summary = %s, output = %s, completed_at = %s, next_retry_at = null
+                where id = %s and status = 'running'
+                """,
+                (
+                    output.get("source"), output.get("model"), output.get("summary"),
+                    Jsonb(redact(output)), timestamp, claim["run_id"],
+                ),
+            )
+        conn.commit()
+
+
 def run_automation_cycle() -> bool:
     claim = claim_next_role_run()
     if not claim:
         return False
     try:
+        requirement = str((claim.get("context") or {}).get("requirement") or claim["summary"])
         request = PlannerRequest(
-            requirement=str(claim["summary"]),
+            requirement=requirement,
             project=str(claim["project"]),
             title=f"workflow {claim['workflow_id']} {claim['state']}",
             priority=80,
             pipeline_id=claim.get("pipeline_id"),
             metadata={"workflow_id": str(claim["workflow_id"])},
         )
+        if claim["state"] == "planning":
+            raw_output = run_role("planner", request, [])
+            if raw_output.get("status") not in {"succeeded", "fallback"}:
+                fail_role_run(claim, raw_output)
+                return True
+            complete_planning_run(claim, raw_output)
+            return True
         raw_output = run_structured_role(
             claim["role"], request, stage_messages(claim), STAGE_OUTPUT_SCHEMAS[claim["state"]]
         )
