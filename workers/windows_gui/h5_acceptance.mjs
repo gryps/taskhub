@@ -38,10 +38,11 @@ try {
       if (message.type() === "error") consoleErrors.push(message.text().slice(0, 1000));
     });
     page.on("pageerror", error => pageErrors.push(String(error).slice(0, 1000)));
-    const response = await page.goto(request.url, { waitUntil: "networkidle", timeout: request.timeout_ms || 60000 });
+    const response = await page.goto(request.url, { waitUntil: "domcontentloaded", timeout: request.timeout_ms || 60000 });
     if (new URL(page.url()).hostname.toLowerCase() !== expectedHost) {
       throw new Error("top-level navigation left the approved host");
     }
+    await page.waitForTimeout(3000);
     for (const selector of request.required_selectors || []) {
       await page.locator(selector).first().waitFor({ state: "visible", timeout: 10000 });
     }
