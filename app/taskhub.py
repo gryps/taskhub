@@ -1409,6 +1409,20 @@ def automatic_rework_category(error: dict[str, Any]) -> str:
     return "quality_gate"
 
 
+def automatic_rework_route(task: dict[str, Any], pipeline: dict[str, Any]) -> dict[str, str] | None:
+    """Resolve a repair route without allowing an A/B workcopy crossover."""
+    if pipeline.get("state") != "active":
+        return None
+    worker_id = str(pipeline.get("default_worker_id") or "").strip()
+    workspace_id = str(pipeline.get("workspace_id") or "").strip()
+    if not worker_id or not workspace_id:
+        return None
+    task_workspace_id = str(task.get("workspace_id") or "").strip()
+    if task_workspace_id and task_workspace_id != workspace_id:
+        return None
+    return {"worker_id": worker_id, "workspace_id": workspace_id}
+
+
 def schedule_automatic_rework(
     cur,
     task: dict[str, Any],
@@ -1437,11 +1451,12 @@ def schedule_automatic_rework(
         return None
     cur.execute("select * from taskhub_pipelines where id = %s", (task["pipeline_id"],))
     pipeline = cur.fetchone()
-    if not pipeline or pipeline["state"] != "active" or not pipeline.get("default_worker_id"):
+    route = automatic_rework_route(task, pipeline) if pipeline else None
+    if not route:
         return None
 
-    worker_id = pipeline["default_worker_id"]
-    workspace_id = pipeline["workspace_id"]
+    worker_id = route["worker_id"]
+    workspace_id = route["workspace_id"]
     common_metadata = {
         **metadata,
         "stage": "automatic_test_rework",
@@ -1453,6 +1468,8 @@ def schedule_automatic_rework(
         "automatic_rework_category": category,
         "automatic_category_attempt": attempt,
         "automatic_total_attempt": retry_count,
+        "automatic_route_worker_id": worker_id,
+        "automatic_route_workspace_id": workspace_id,
     }
     code_task = None
     diff_task = None

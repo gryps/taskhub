@@ -1,6 +1,11 @@
 import unittest
 
-from app.taskhub import automatic_rework_category, automatic_rework_requirement, failure_needs_workspace_bootstrap
+from app.taskhub import (
+    automatic_rework_category,
+    automatic_rework_requirement,
+    automatic_rework_route,
+    failure_needs_workspace_bootstrap,
+)
 
 
 class AutomaticReworkTests(unittest.TestCase):
@@ -25,6 +30,41 @@ class AutomaticReworkTests(unittest.TestCase):
         self.assertEqual(automatic_rework_category({"exit_code": 127}), "workspace_environment")
         self.assertEqual(automatic_rework_category({"stdout_tail": "ruff check\nF401 imported but unused"}), "lint")
         self.assertEqual(automatic_rework_category({"stdout_tail": "pytest\n3 failed"}), "tests")
+
+    def test_rework_route_is_reusable_for_a_and_b(self) -> None:
+        for line in ("a", "b"):
+            workspace_id = f"storefront-implementation-{line}"
+            worker_id = f"worker-implementation-{line}"
+            route = automatic_rework_route(
+                {"workspace_id": workspace_id},
+                {"state": "active", "workspace_id": workspace_id, "default_worker_id": worker_id},
+            )
+            self.assertEqual(route, {"workspace_id": workspace_id, "worker_id": worker_id})
+
+    def test_rework_route_rejects_cross_line_workspace(self) -> None:
+        route = automatic_rework_route(
+            {"workspace_id": "storefront-implementation-a"},
+            {
+                "state": "active",
+                "workspace_id": "storefront-implementation-b",
+                "default_worker_id": "worker-implementation-b",
+            },
+        )
+        self.assertIsNone(route)
+
+    def test_rework_route_requires_active_complete_pipeline(self) -> None:
+        self.assertIsNone(
+            automatic_rework_route(
+                {"workspace_id": "storefront-a"},
+                {"state": "paused", "workspace_id": "storefront-a", "default_worker_id": "worker-a"},
+            )
+        )
+        self.assertIsNone(
+            automatic_rework_route(
+                {"workspace_id": "storefront-a"},
+                {"state": "active", "workspace_id": "storefront-a", "default_worker_id": None},
+            )
+        )
 
 
 if __name__ == "__main__":
