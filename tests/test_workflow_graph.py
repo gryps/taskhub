@@ -29,6 +29,12 @@ class WorkflowGraphTests(unittest.TestCase):
         self.assertEqual(result["next_state"], "implementation")
         self.assertTrue(result["increments_iteration"])
 
+    def test_backfill_returns_blocked_workflow_to_implementation(self) -> None:
+        result = resolve_workflow_transition("blocked", "backfill_implementation", "review")
+        self.assertEqual(result["next_state"], "implementation")
+        self.assertEqual(result["current_role"], "coder")
+        self.assertFalse(result["increments_iteration"])
+
     def test_invalid_transition_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             resolve_workflow_transition("implementation", "approve_release")

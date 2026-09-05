@@ -40,6 +40,11 @@ class FlowWorkbenchContractTests(unittest.TestCase):
         self.assertIn("submitFlowTaskRetry", self.html)
         self.assertIn("恢复失败任务", self.html)
 
+    def test_plan_only_implementation_can_be_backfilled_inline(self) -> None:
+        self.assertIn("补齐剩余施工", self.html)
+        self.assertIn("/backfill-implementation", self.html)
+        self.assertIn("submitFlowBackfill", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()

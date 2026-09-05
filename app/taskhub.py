@@ -139,6 +139,10 @@ class WorkflowAction(BaseModel):
     output: dict[str, Any] = Field(default_factory=dict)
 
 
+class WorkflowBackfill(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=2000)
+
+
 def database_url() -> str:
     value = os.getenv("DATABASE_URL")
     if not value:
@@ -1085,6 +1089,203 @@ def workflow_id_for_task(task: dict[str, Any]) -> uuid.UUID | None:
         return uuid.UUID(str(raw)) if raw else None
     except ValueError:
         return None
+
+
+def normalized_implementation_title(title: str) -> str:
+    value = str(title or "").strip()
+    for prefix in ("真实施工：", "真实施工:", "补齐施工：", "补齐施工:"):
+        if value.startswith(prefix):
+            return value[len(prefix):].strip()
+    return value
+
+
+def remaining_plan_only_code_tasks(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    completed_plan_ids: set[str] = set()
+    completed_titles: set[str] = set()
+    for task in tasks:
+        if task.get("type") != "code.change" or task.get("state") != "succeeded":
+            continue
+        result = task.get("result") or {}
+        if result.get("mode") != "execute":
+            continue
+        metadata = task.get("metadata") or {}
+        plan_task_id = metadata.get("backfill_plan_task_id") or metadata.get("replaces_plan_task_id")
+        if plan_task_id:
+            completed_plan_ids.add(str(plan_task_id))
+        completed_titles.add(normalized_implementation_title(str(task.get("title") or "")))
+
+    remaining = []
+    for task in tasks:
+        result = task.get("result") or {}
+        if task.get("type") != "code.change" or result.get("mode") != "plan_only":
+            continue
+        task_id = str(task.get("id") or "")
+        title = normalized_implementation_title(str(task.get("title") or ""))
+        if task_id not in completed_plan_ids and title not in completed_titles:
+            remaining.append(task)
+    return remaining
+
+
+def backfill_requirement(workflow: dict[str, Any], plan_task: dict[str, Any]) -> str:
+    requirement = str((workflow.get("context") or {}).get("requirement") or workflow.get("summary") or "").strip()
+    title = normalized_implementation_title(str(plan_task.get("title") or ""))
+    return (
+        f"继续完成已经人工批准的施工项：{title}\n\n"
+        f"原始业务需求与验收边界：\n{requirement}\n\n"
+        "施工要求：读取当前工作副本中已有变更，在其基础上完成本项功能并补充自动化测试；"
+        "保持现有架构和安全边界；不得读取或上传凭据、Cookie、Token 或登录态；"
+        "不得访问生产系统、发布商品或提交 Git commit。"
+    )
+
+
+@router.post("/workflows/{workflow_id}/backfill-implementation")
+def backfill_workflow_implementation(
+    workflow_id: uuid.UUID,
+    request: Request,
+    payload: WorkflowBackfill,
+) -> dict[str, Any]:
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("select * from taskhub_workflows where id = %s for update", (workflow_id,))
+            workflow = cur.fetchone()
+            if not workflow:
+                raise HTTPException(status_code=404, detail="workflow not found")
+
+            cur.execute(
+                """
+                select * from taskhub_tasks
+                where metadata->>'workflow_id' = %s
+                order by created_at
+                """,
+                (str(workflow_id),),
+            )
+            tasks = cur.fetchall()
+            existing = [task for task in tasks if (task.get("metadata") or {}).get("backfill_batch") is True]
+            if workflow["state"] == "implementation" and existing:
+                return {
+                    "workflow_id": str(workflow_id),
+                    "state": workflow["state"],
+                    "status": "already_running",
+                    "groups": len({(task.get("metadata") or {}).get("backfill_plan_task_id") for task in existing}),
+                    "task_ids": [str(task["id"]) for task in existing],
+                }
+            if workflow["state"] != "blocked":
+                raise HTTPException(status_code=409, detail=f"workflow is {workflow['state']}; backfill requires blocked state")
+            if existing:
+                raise HTTPException(status_code=409, detail="backfill tasks already exist; retry the failed task instead")
+
+            remaining = remaining_plan_only_code_tasks(tasks)
+            if not remaining:
+                raise HTTPException(status_code=409, detail="workflow has no remaining plan-only code tasks")
+            if not workflow.get("pipeline_id"):
+                raise HTTPException(status_code=409, detail="workflow is not bound to a pipeline")
+
+            rows: list[dict[str, Any]] = []
+            previous_test_id: uuid.UUID | None = None
+            total = len(remaining)
+            for group_index, plan_task in enumerate(remaining, start=1):
+                source_metadata = plan_task.get("metadata") or {}
+                approval_source_task_id = source_metadata.get("approval_source_task_id")
+                approval_content_hash = source_metadata.get("approval_content_hash")
+                if not approval_source_task_id or not approval_content_hash:
+                    raise HTTPException(status_code=409, detail="plan-only task does not contain approval evidence")
+                title = normalized_implementation_title(str(plan_task.get("title") or ""))
+                common_metadata = {
+                    "workflow_id": str(workflow_id),
+                    "stage": "coder_backfill_real_execution",
+                    "backfill_batch": True,
+                    "backfill_group": group_index,
+                    "backfill_group_total": total,
+                    "backfill_plan_task_id": str(plan_task["id"]),
+                    "approval_source_task_id": str(approval_source_task_id),
+                    "approval_content_hash": str(approval_content_hash),
+                }
+                shared = {
+                    "project": workflow["project"],
+                    "pipeline_id": workflow["pipeline_id"],
+                    "workspace_id": plan_task.get("workspace_id"),
+                    "target_worker_id": plan_task.get("target_worker_id"),
+                }
+                code_row = insert_task(
+                    cur,
+                    TaskCreate(
+                        **shared,
+                        type="code.change",
+                        title=f"补齐施工：{title}",
+                        priority=int(plan_task.get("priority") or 80),
+                        input={"mode": "execute", "requirement": backfill_requirement(workflow, plan_task)},
+                        metadata=common_metadata,
+                        idempotency_key=f"workflow-backfill:{workflow_id}:{plan_task['id']}:code",
+                    ),
+                    request.state.actor,
+                    "real implementation backfill requested from workflow workbench",
+                )
+                if previous_test_id:
+                    add_task_dependency(cur, code_row["id"], previous_test_id)
+                diff_row = insert_task(
+                    cur,
+                    TaskCreate(
+                        **shared,
+                        type="code.diff.preview",
+                        title=f"补齐差异：{title}",
+                        priority=int(plan_task.get("priority") or 80) - 1,
+                        input={"paths": []},
+                        metadata=common_metadata,
+                        idempotency_key=f"workflow-backfill:{workflow_id}:{plan_task['id']}:diff",
+                    ),
+                    request.state.actor,
+                    "diff verification created for implementation backfill",
+                )
+                add_task_dependency(cur, diff_row["id"], code_row["id"])
+                test_row = insert_task(
+                    cur,
+                    TaskCreate(
+                        **shared,
+                        type="test.run",
+                        title=f"同工作副本测试：{title}",
+                        priority=int(plan_task.get("priority") or 80) - 2,
+                        input={"command": "check"},
+                        metadata=common_metadata,
+                        idempotency_key=f"workflow-backfill:{workflow_id}:{plan_task['id']}:test",
+                    ),
+                    request.state.actor,
+                    "same-workspace test created for implementation backfill",
+                )
+                add_task_dependency(cur, test_row["id"], diff_row["id"])
+                previous_test_id = test_row["id"]
+                rows.extend((code_row, diff_row, test_row))
+
+            timestamp = now_utc()
+            cur.execute(
+                """
+                update taskhub_workflow_role_runs
+                set status = 'superseded', completed_at = %s,
+                    error = %s, next_retry_at = null
+                where workflow_id = %s and status = 'running'
+                """,
+                (
+                    timestamp,
+                    Jsonb({"reason": "implementation backfill superseded the premature role run"}),
+                    workflow_id,
+                ),
+            )
+            updated = transition_workflow(
+                cur,
+                workflow_id,
+                "backfill_implementation",
+                request.state.actor,
+                payload.reason,
+                {"backfill_groups": total, "backfill_task_ids": [str(row["id"]) for row in rows]},
+            )
+        conn.commit()
+    return {
+        "workflow_id": str(workflow_id),
+        "state": updated["state"],
+        "status": "created",
+        "groups": total,
+        "tasks_created": len(rows),
+        "task_ids": [str(row["id"]) for row in rows],
+    }
 
 
 def reconcile_workflow_tasks(cur, task: dict[str, Any], actor: str) -> None:

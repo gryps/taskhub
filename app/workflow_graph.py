@@ -36,6 +36,7 @@ ACTION_TARGETS = {
     "risk_block": {"risk": "blocked"},
     "approve_release": {"awaiting_supervision": "completed"},
     "request_rework": {"awaiting_supervision": "implementation"},
+    "backfill_implementation": {"blocked": "implementation"},
     "block": {
         "planning": "blocked",
         "awaiting_plan_approval": "blocked",
