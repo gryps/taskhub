@@ -61,6 +61,7 @@ APPROVAL_DOWNSTREAM_TYPES = {
 IMPLEMENTATION_TASK_TYPES = {"code.change", "code.diff.preview", "code.change.apply"}
 WORKSPACE_TASK_TYPES = IMPLEMENTATION_TASK_TYPES | {"test.run", "quality.env.check", "workspace.bootstrap"}
 AUTO_REWORK_FAILURE_TYPES = {"test.run", "quality.env.check"}
+AUTO_REWORK_POLICY_VERSION = 2
 QUALITY_TASK_TYPES = {"review.model"}
 GUI_TASK_TYPES = {"h5.inspect"}
 UNSCHEDULABLE_TASK_TYPES = {"market.price.collect", "commerce.listing.draft"}
@@ -1426,11 +1427,13 @@ def schedule_automatic_rework(
         return None
     category = automatic_rework_category(error)
     environment_repair = category == "workspace_environment"
-    previous_category = str(metadata.get("automatic_rework_category") or "")
+    same_policy = int(metadata.get("automatic_rework_policy_version") or 0) == AUTO_REWORK_POLICY_VERSION
+    previous_category = str(metadata.get("automatic_rework_category") or "") if same_policy else ""
     attempt = int(metadata.get("automatic_category_attempt") or 0) + 1 if previous_category == category else 1
     category_limit = 1 if environment_repair else int(workflow.get("max_iterations") or 3)
-    total_attempt = int(task.get("retry_count") or 0) + 1
-    if attempt > category_limit or total_attempt > int(workflow.get("max_iterations") or 3) * 3:
+    policy_attempt = int(metadata.get("automatic_policy_attempt") or 0) + 1 if same_policy else 1
+    retry_count = int(task.get("retry_count") or 0) + 1
+    if attempt > category_limit or policy_attempt > int(workflow.get("max_iterations") or 3) * 3:
         return None
     cur.execute("select * from taskhub_pipelines where id = %s", (task["pipeline_id"],))
     pipeline = cur.fetchone()
@@ -1443,11 +1446,13 @@ def schedule_automatic_rework(
         **metadata,
         "stage": "automatic_test_rework",
         "automatic_rework": True,
+        "automatic_rework_policy_version": AUTO_REWORK_POLICY_VERSION,
+        "automatic_policy_attempt": policy_attempt,
         "automatic_rework_attempt": attempt,
         "automatic_rework_for_task_id": str(task["id"]),
         "automatic_rework_category": category,
         "automatic_category_attempt": attempt,
-        "automatic_total_attempt": total_attempt,
+        "automatic_total_attempt": retry_count,
     }
     code_task = None
     diff_task = None
@@ -1461,7 +1466,7 @@ def schedule_automatic_rework(
                 priority=min(100, int(task.get("priority") or 50) + 10),
                 input={},
                 metadata=common_metadata,
-                idempotency_key=f"auto-rework:{task['id']}:environment:{attempt}",
+                idempotency_key=f"auto-rework:v{AUTO_REWORK_POLICY_VERSION}:{task['id']}:environment:{attempt}",
                 pipeline_id=task["pipeline_id"],
                 workspace_id=workspace_id,
                 target_worker_id=worker_id,
@@ -1479,7 +1484,7 @@ def schedule_automatic_rework(
                 priority=min(100, int(task.get("priority") or 50) + 10),
                 input={"mode": "execute", "requirement": automatic_rework_requirement(workflow, task, error)},
                 metadata=common_metadata,
-                idempotency_key=f"auto-rework:{task['id']}:{category}:{attempt}:code",
+                idempotency_key=f"auto-rework:v{AUTO_REWORK_POLICY_VERSION}:{task['id']}:{category}:{attempt}:code",
                 pipeline_id=task["pipeline_id"],
                 workspace_id=workspace_id,
                 target_worker_id=worker_id,
@@ -1496,7 +1501,7 @@ def schedule_automatic_rework(
                 priority=min(99, int(task.get("priority") or 50) + 9),
                 input={"paths": []},
                 metadata=common_metadata,
-                idempotency_key=f"auto-rework:{task['id']}:{category}:{attempt}:diff",
+                idempotency_key=f"auto-rework:v{AUTO_REWORK_POLICY_VERSION}:{task['id']}:{category}:{attempt}:diff",
                 depends_on=[code_task["id"]],
                 pipeline_id=task["pipeline_id"],
                 workspace_id=workspace_id,
@@ -1523,7 +1528,7 @@ def schedule_automatic_rework(
         """,
         (
             Jsonb(redact(retry_input)), Jsonb(redact(common_metadata)), worker_id, workspace_id,
-            total_attempt, now_utc(), task["id"],
+            retry_count, now_utc(), task["id"],
         ),
     )
     retried_task = cur.fetchone()
