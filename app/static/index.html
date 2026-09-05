@@ -2863,7 +2863,8 @@
           method: "POST",
           body: JSON.stringify({reason: "质量门禁失败，由 TaskHub 自动生成返工、差异检查和同工作副本复测"}),
         });
-        alert(`TaskHub 已接管返工，施工任务 ${result.code_task_id.slice(0, 8)} 已进入队列。`);
+        const kind = result.repair_kind === "workspace_bootstrap" ? "节点环境恢复" : "施工返工";
+        alert(`TaskHub 已接管，${kind}任务 ${result.repair_task_id.slice(0, 8)} 已进入队列。`);
         await loadFlowDesk(workflowId);
       };
 

@@ -4,7 +4,9 @@ import argparse
 from pathlib import Path
 
 
-REQUIRED_TASK_TYPES = {"code.change", "code.diff.preview", "code.change.apply", "test.run", "quality.env.check"}
+REQUIRED_TASK_TYPES = {
+    "code.change", "code.diff.preview", "code.change.apply", "test.run", "quality.env.check", "workspace.bootstrap"
+}
 
 
 def update_env(path: Path, workspace_id: str) -> None:

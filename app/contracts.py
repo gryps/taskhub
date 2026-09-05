@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 
 
 CONTRACT_VERSION = "taskhub.handoff/v1"
-STRICT_TASK_TYPES = {"code.change", "test.run", "quality.env.check", "h5.inspect"}
+STRICT_TASK_TYPES = {"code.change", "test.run", "quality.env.check", "workspace.bootstrap", "h5.inspect"}
 TASK_CONTRACTS: dict[str, dict[str, Any]] = {
     "code.change": {
         "producer": "planner",
@@ -23,6 +23,13 @@ TASK_CONTRACTS: dict[str, dict[str, Any]] = {
     },
     "quality.env.check": {
         "producer": "planner",
+        "consumer": "pipeline-worker",
+        "required_input": [],
+        "required_result": ["passed", "workspace_id", "workcopy_head", "workcopy_status_sha256"],
+        "human_release_required": False,
+    },
+    "workspace.bootstrap": {
+        "producer": "taskhub",
         "consumer": "pipeline-worker",
         "required_input": [],
         "required_result": ["passed", "workspace_id", "workcopy_head", "workcopy_status_sha256"],

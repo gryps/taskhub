@@ -1,6 +1,6 @@
 import unittest
 
-from app.taskhub import automatic_rework_requirement
+from app.taskhub import automatic_rework_requirement, failure_needs_workspace_bootstrap
 
 
 class AutomaticReworkTests(unittest.TestCase):
@@ -15,6 +15,11 @@ class AutomaticReworkTests(unittest.TestCase):
         self.assertIn("修复质量基线", requirement)
         self.assertIn("do not weaken, skip, delete", requirement)
         self.assertIn("Do not commit, deploy", requirement)
+
+    def test_command_not_found_is_routed_to_workspace_bootstrap(self) -> None:
+        self.assertTrue(failure_needs_workspace_bootstrap({"exit_code": 127, "stderr_tail": "tsc: not found\n"}))
+        self.assertTrue(failure_needs_workspace_bootstrap({"stderr_tail": "tool: command not found"}))
+        self.assertFalse(failure_needs_workspace_bootstrap({"exit_code": 1, "stdout_tail": "11 tests failed"}))
 
 
 if __name__ == "__main__":

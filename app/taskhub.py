@@ -53,12 +53,13 @@ APPROVAL_DOWNSTREAM_TYPES = {
     "project.context.sync",
     "project.git.status",
     "quality.env.check",
+    "workspace.bootstrap",
     "requirement.split",
     "test.run",
     "h5.inspect",
 }
 IMPLEMENTATION_TASK_TYPES = {"code.change", "code.diff.preview", "code.change.apply"}
-WORKSPACE_TASK_TYPES = IMPLEMENTATION_TASK_TYPES | {"test.run", "quality.env.check"}
+WORKSPACE_TASK_TYPES = IMPLEMENTATION_TASK_TYPES | {"test.run", "quality.env.check", "workspace.bootstrap"}
 AUTO_REWORK_FAILURE_TYPES = {"test.run", "quality.env.check"}
 QUALITY_TASK_TYPES = {"review.model"}
 GUI_TASK_TYPES = {"h5.inspect"}
@@ -1326,8 +1327,8 @@ def auto_recover_workflow(workflow_id: uuid.UUID, request: Request, payload: Tas
                 payload.reason,
                 {
                     "failed_task_id": str(failed_task["id"]),
-                    "code_task_id": str(recovery["code_task"]["id"]),
-                    "diff_task_id": str(recovery["diff_task"]["id"]),
+                    "repair_task_id": str(recovery["repair_task"]["id"]),
+                    "repair_kind": recovery["repair_kind"],
                     "automatic": True,
                 },
             )
@@ -1337,8 +1338,8 @@ def auto_recover_workflow(workflow_id: uuid.UUID, request: Request, payload: Tas
         "state": "implementation",
         "status": "automatic_rework_queued",
         "failed_task_id": str(failed_task["id"]),
-        "code_task_id": str(recovery["code_task"]["id"]),
-        "diff_task_id": str(recovery["diff_task"]["id"]),
+        "repair_task_id": str(recovery["repair_task"]["id"]),
+        "repair_kind": recovery["repair_kind"],
     }
 
 
@@ -1387,6 +1388,11 @@ def automatic_rework_requirement(workflow: dict[str, Any], failed_task: dict[str
     )
 
 
+def failure_needs_workspace_bootstrap(error: dict[str, Any]) -> bool:
+    evidence = json.dumps(error, ensure_ascii=False, default=str).lower()
+    return error.get("exit_code") == 127 or "command not found" in evidence or "not found\n" in evidence
+
+
 def schedule_automatic_rework(
     cur,
     task: dict[str, Any],
@@ -1403,9 +1409,15 @@ def schedule_automatic_rework(
     workflow = cur.fetchone()
     if not workflow or workflow["state"] not in {"implementation", "blocked"}:
         return None
-    attempt = int(task.get("retry_count") or 0) + 1
-    if attempt > int(workflow.get("max_iterations") or 3):
-        return None
+    environment_repair = failure_needs_workspace_bootstrap(error)
+    if environment_repair:
+        attempt = int(metadata.get("automatic_environment_repair_attempt") or 0) + 1
+        if attempt > 1:
+            return None
+    else:
+        attempt = int(metadata.get("automatic_code_rework_attempt") or 0) + 1
+        if attempt > int(workflow.get("max_iterations") or 3):
+            return None
     cur.execute("select * from taskhub_pipelines where id = %s", (task["pipeline_id"],))
     pipeline = cur.fetchone()
     if not pipeline or pipeline["state"] != "active" or not pipeline.get("default_worker_id"):
@@ -1419,47 +1431,74 @@ def schedule_automatic_rework(
         "automatic_rework": True,
         "automatic_rework_attempt": attempt,
         "automatic_rework_for_task_id": str(task["id"]),
+        "automatic_environment_repair_attempt": attempt if environment_repair else int(
+            metadata.get("automatic_environment_repair_attempt") or 0
+        ),
+        "automatic_code_rework_attempt": int(metadata.get("automatic_code_rework_attempt") or 0)
+        if environment_repair else attempt,
     }
-    code_task = insert_task(
-        cur,
-        TaskCreate(
-            project=task["project"],
-            type="code.change",
-            title=f"自动返工 {attempt}: {task['title']}",
-            priority=min(100, int(task.get("priority") or 50) + 10),
-            input={"mode": "execute", "requirement": automatic_rework_requirement(workflow, task, error)},
-            metadata=common_metadata,
-            idempotency_key=f"auto-rework:{task['id']}:{attempt}:code",
-            pipeline_id=task["pipeline_id"],
-            workspace_id=workspace_id,
-            target_worker_id=worker_id,
-        ),
-        "taskhub:auto-rework",
-        "quality gate failure created an automatic corrective implementation",
-    )
-    diff_task = insert_task(
-        cur,
-        TaskCreate(
-            project=task["project"],
-            type="code.diff.preview",
-            title=f"自动返工差异检查 {attempt}: {task['title']}",
-            priority=min(99, int(task.get("priority") or 50) + 9),
-            input={"paths": []},
-            metadata=common_metadata,
-            idempotency_key=f"auto-rework:{task['id']}:{attempt}:diff",
-            depends_on=[code_task["id"]],
-            pipeline_id=task["pipeline_id"],
-            workspace_id=workspace_id,
-            target_worker_id=worker_id,
-        ),
-        "taskhub:auto-rework",
-        "automatic corrective diff verification created",
-    )
+    code_task = None
+    diff_task = None
+    if environment_repair:
+        repair_task = insert_task(
+            cur,
+            TaskCreate(
+                project=task["project"],
+                type="workspace.bootstrap",
+                title=f"自动恢复节点依赖: {task['title']}",
+                priority=min(100, int(task.get("priority") or 50) + 10),
+                input={},
+                metadata=common_metadata,
+                idempotency_key=f"auto-rework:{task['id']}:environment:{attempt}",
+                pipeline_id=task["pipeline_id"],
+                workspace_id=workspace_id,
+                target_worker_id=worker_id,
+            ),
+            "taskhub:auto-rework",
+            "missing workspace dependency created an automatic bootstrap task",
+        )
+    else:
+        code_task = insert_task(
+            cur,
+            TaskCreate(
+                project=task["project"],
+                type="code.change",
+                title=f"自动返工 {attempt}: {task['title']}",
+                priority=min(100, int(task.get("priority") or 50) + 10),
+                input={"mode": "execute", "requirement": automatic_rework_requirement(workflow, task, error)},
+                metadata=common_metadata,
+                idempotency_key=f"auto-rework:{task['id']}:{attempt}:code",
+                pipeline_id=task["pipeline_id"],
+                workspace_id=workspace_id,
+                target_worker_id=worker_id,
+            ),
+            "taskhub:auto-rework",
+            "quality gate failure created an automatic corrective implementation",
+        )
+        diff_task = insert_task(
+            cur,
+            TaskCreate(
+                project=task["project"],
+                type="code.diff.preview",
+                title=f"自动返工差异检查 {attempt}: {task['title']}",
+                priority=min(99, int(task.get("priority") or 50) + 9),
+                input={"paths": []},
+                metadata=common_metadata,
+                idempotency_key=f"auto-rework:{task['id']}:{attempt}:diff",
+                depends_on=[code_task["id"]],
+                pipeline_id=task["pipeline_id"],
+                workspace_id=workspace_id,
+                target_worker_id=worker_id,
+            ),
+            "taskhub:auto-rework",
+            "automatic corrective diff verification created",
+        )
+        repair_task = diff_task
     retry_input = task.get("input") or {}
     if task["type"] == "test.run" and not retry_input.get("command"):
         retry_input = {**retry_input, "command": "check"}
     validate_task_input(task["type"], retry_input)
-    add_task_dependency(cur, task["id"], diff_task["id"])
+    add_task_dependency(cur, task["id"], repair_task["id"])
     cur.execute(
         """
         update taskhub_tasks
@@ -1483,7 +1522,11 @@ def schedule_automatic_rework(
         "pending",
         "taskhub:auto-rework",
         "quality gate queued behind automatic corrective implementation",
-        {"attempt": attempt, "code_task_id": str(code_task["id"]), "diff_task_id": str(diff_task["id"])},
+        {
+            "attempt": attempt,
+            "repair_kind": "workspace_bootstrap" if environment_repair else "code_change",
+            "repair_task_id": str(repair_task["id"]),
+        },
     )
     requeued_descendants = requeue_dependency_blocked_descendants(cur, task["id"], "taskhub:auto-rework")
     return {
@@ -1491,6 +1534,8 @@ def schedule_automatic_rework(
         "task": retried_task,
         "code_task": code_task,
         "diff_task": diff_task,
+        "repair_task": repair_task,
+        "repair_kind": "workspace_bootstrap" if environment_repair else "code_change",
         "requeued_descendants": requeued_descendants,
     }
 

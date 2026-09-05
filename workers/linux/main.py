@@ -46,7 +46,7 @@ def worker_name() -> str:
 def supported_task_types() -> list[str]:
     raw = os.getenv(
         "WORKER_TASK_TYPES",
-        "echo,system_info,ops.note,project.context.sync,project.git.status,requirement.split,code.change,code.diff.preview,code.change.apply,test.run,quality.env.check",
+        "echo,system_info,ops.note,project.context.sync,project.git.status,requirement.split,code.change,code.diff.preview,code.change.apply,test.run,quality.env.check,workspace.bootstrap",
     )
     return [item.strip() for item in raw.split(",") if item.strip()]
 
@@ -109,6 +109,8 @@ async def _execute_taskhub_task(task: dict[str, Any]) -> dict[str, Any]:
         return await asyncio.to_thread(run_project_test, task)
     if task_type == "quality.env.check":
         return await asyncio.to_thread(check_quality_environment, task)
+    if task_type == "workspace.bootstrap":
+        return await asyncio.to_thread(bootstrap_workspace, task)
     raise ValueError(f"unsupported task type: {task_type}")
 
 
@@ -681,6 +683,26 @@ def check_quality_environment(task: dict[str, Any]) -> dict[str, Any]:
         "checks": checks,
         **workcopy_evidence(),
     }
+
+
+def bootstrap_workspace(task: dict[str, Any]) -> dict[str, Any]:
+    workspace_id = require_task_workspace(task)
+    completed = run_project_command("npm run bootstrap", timeout=int(os.getenv("PROJECT_BOOTSTRAP_TIMEOUT", "1200")))
+    result = {
+        "tool": "workspace.bootstrap",
+        "workspace_id": workspace_id,
+        "command": "npm run bootstrap",
+        "exit_code": completed.returncode,
+        "stdout_tail": completed.stdout[-6000:],
+        "stderr_tail": completed.stderr[-6000:],
+        "passed": completed.returncode == 0,
+        **workcopy_evidence(),
+    }
+    if completed.returncode != 0:
+        raise TaskExecutionError(
+            {"code": "WORKSPACE_BOOTSTRAP_FAILED", "message": "npm run bootstrap failed", **result}
+        )
+    return result
 
 
 def run_project_test(task: dict[str, Any]) -> dict[str, Any]:
