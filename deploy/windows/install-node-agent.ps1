@@ -6,6 +6,7 @@ param(
   [int]$Port = 8391
 )
 $ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Security
 $Root = "C:\TaskHub"
 $Venv = Join-Path $Root "venv"
 $Jobs = Join-Path $Root "jobs"
@@ -52,6 +53,7 @@ if ($LASTEXITCODE -ne 0) { throw "Failed to protect the node token directory" }
 
 $Launch = @"
 `$ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Security
 `$EncryptedToken = [System.IO.File]::ReadAllBytes("$TokenFile")
 `$TokenBytes = [System.Security.Cryptography.ProtectedData]::Unprotect(
   `$EncryptedToken,
