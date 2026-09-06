@@ -46,6 +46,22 @@ def test_memory_task_index_filters_and_preserves_created_time():
     asyncio.run(exercise())
 
 
+def test_memory_task_index_filters_by_effective_rebound_project():
+    async def exercise():
+        index = MemoryTaskIndex()
+        await index.upsert({
+            "run_id": "rebound", "requirement": "Move task", "project_id": "old",
+            "current_stage": "merge_blocked", "status": "blocked",
+        })
+        await index.rebind("rebound", "new")
+        assert (await index.list(project_id="old")).total == 0
+        assert [item.run_id for item in (await index.list(project_id="new")).items] == [
+            "rebound"
+        ]
+
+    asyncio.run(exercise())
+
+
 def test_archived_tasks_are_hidden_and_upsert_does_not_revive_them():
     async def exercise():
         index = MemoryTaskIndex()
@@ -56,6 +72,7 @@ def test_archived_tasks_are_hidden_and_upsert_does_not_revive_them():
         await index.upsert(values)
         archived = await index.archive("archived")
         assert archived.archived_at is not None
+        del index._items["archived"]  # simulate loss of the rebuildable index row
         await index.upsert(dict(values, status="running"))
         assert (await index.list()).total == 0
         visible = await index.list(include_archived=True)

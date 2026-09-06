@@ -12,6 +12,8 @@ from taskhub_v2.domain.models import TaskPage, TaskSummary
 class MemoryTaskIndex:
     def __init__(self):
         self._items: dict[str, TaskSummary] = {}
+        # Lifecycle metadata is deliberately independent from the rebuildable index.
+        self._archive_tombstones: dict[str, datetime] = {}
 
     async def upsert(self, values: dict[str, Any], production_line: str | None = None):
         now = datetime.now(UTC)
@@ -28,7 +30,7 @@ class MemoryTaskIndex:
             pending_action=values.get("pending_action"),
             created_at=previous.created_at if previous else now,
             updated_at=now,
-            archived_at=previous.archived_at if previous else None,
+            archived_at=self._archive_tombstones.get(values["run_id"]),
             rebound_project_id=previous.rebound_project_id if previous else None,
         )
         if previous and item.model_dump(exclude={"updated_at"}) == previous.model_dump(
@@ -46,7 +48,13 @@ class MemoryTaskIndex:
         items = [
             item for item in self._items.values()
             if (include_archived or item.archived_at is None)
-            and all(not value or getattr(item, key) == value for key, value in filters.items())
+            and all(
+                not value or (
+                    (item.rebound_project_id or item.project_id) if key == "project_id"
+                    else getattr(item, key)
+                ) == value
+                for key, value in filters.items()
+            )
         ]
         items.sort(key=lambda item: (item.updated_at, item.run_id), reverse=True)
         start = (page - 1) * page_size
@@ -57,6 +65,7 @@ class MemoryTaskIndex:
         item = self._items.get(run_id)
         if item and item.archived_at is None:
             now = datetime.now(UTC)
+            self._archive_tombstones[run_id] = now
             item = item.model_copy(update={"archived_at": now, "updated_at": now})
             self._items[run_id] = item
         return item
@@ -91,6 +100,17 @@ class PostgresTaskIndex:
             await connection.execute(
                 "ALTER TABLE taskhub_task_index ADD COLUMN IF NOT EXISTS rebound_project_id TEXT"
             )
+            await connection.execute("""
+                CREATE TABLE IF NOT EXISTS taskhub_task_archive (
+                  run_id TEXT PRIMARY KEY, archived_at TIMESTAMPTZ NOT NULL)
+            """)
+            # Preserve lifecycle state created by versions that stored it only
+            # on the rebuildable index row.
+            await connection.execute("""
+                INSERT INTO taskhub_task_archive (run_id, archived_at)
+                SELECT run_id, archived_at FROM taskhub_task_index
+                WHERE archived_at IS NOT NULL ON CONFLICT (run_id) DO NOTHING
+            """)
             for column in ("project_id", "production_line", "status", "stage", "updated_at"):
                 await connection.execute(
                     f"CREATE INDEX IF NOT EXISTS taskhub_task_index_{column} "
@@ -104,15 +124,17 @@ class PostgresTaskIndex:
             await connection.execute("""
                 INSERT INTO taskhub_task_index
                   (run_id, requirement_summary, project_id, production_line, stage, status,
-                   blocking_reason, pending_action, created_at, updated_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s)
+                   blocking_reason, pending_action, created_at, updated_at, archived_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s,
+                        (SELECT archived_at FROM taskhub_task_archive WHERE run_id=%s))
                 ON CONFLICT (run_id) DO UPDATE SET
                   requirement_summary=EXCLUDED.requirement_summary,
                   project_id=EXCLUDED.project_id,
                   production_line=COALESCE(%s, taskhub_task_index.production_line),
                   stage=EXCLUDED.stage, status=EXCLUDED.status,
                   blocking_reason=EXCLUDED.blocking_reason,
-                  pending_action=EXCLUDED.pending_action, updated_at=EXCLUDED.updated_at
+                  pending_action=EXCLUDED.pending_action, updated_at=EXCLUDED.updated_at,
+                  archived_at=COALESCE(taskhub_task_index.archived_at, EXCLUDED.archived_at)
                 WHERE (taskhub_task_index.requirement_summary, taskhub_task_index.project_id,
                        taskhub_task_index.production_line, taskhub_task_index.stage,
                        taskhub_task_index.status, taskhub_task_index.blocking_reason,
@@ -120,11 +142,13 @@ class PostgresTaskIndex:
                       (EXCLUDED.requirement_summary, EXCLUDED.project_id,
                        COALESCE(%s, taskhub_task_index.production_line), EXCLUDED.stage,
                        EXCLUDED.status, EXCLUDED.blocking_reason, EXCLUDED.pending_action)
+                   OR (taskhub_task_index.archived_at IS NULL
+                       AND EXCLUDED.archived_at IS NOT NULL)
             """, (values["run_id"], _summary(values.get("requirement", "")), values["project_id"],
                   production_line or "default", values["current_stage"], values["status"],
                   json.dumps(values.get("blocking_reason")),
                   json.dumps(values.get("pending_action")), now, now, production_line,
-                  production_line))
+                  production_line, values["run_id"]))
         return await self.get(values["run_id"])
 
     async def get(self, run_id: str) -> TaskSummary | None:
@@ -140,7 +164,8 @@ class PostgresTaskIndex:
         clauses, params = ([] if include_archived else ["archived_at IS NULL"]), []
         for key, value in filters.items():
             if value:
-                clauses.append(f"{key}=%s")
+                column = "COALESCE(rebound_project_id, project_id)" if key == "project_id" else key
+                clauses.append(f"{column}=%s")
                 params.append(str(value))
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         async with self.pool.connection() as connection:
@@ -159,8 +184,15 @@ class PostgresTaskIndex:
     async def archive(self, run_id: str) -> TaskSummary | None:
         async with self.pool.connection() as connection:
             await connection.execute(
+                """INSERT INTO taskhub_task_archive (run_id, archived_at)
+                   SELECT run_id, COALESCE(archived_at, now()) FROM taskhub_task_index
+                   WHERE run_id=%s ON CONFLICT (run_id) DO NOTHING""",
+                (run_id,),
+            )
+            await connection.execute(
                 """UPDATE taskhub_task_index
-                   SET archived_at=COALESCE(archived_at, now()), updated_at=now()
+                   SET archived_at=(SELECT archived_at FROM taskhub_task_archive
+                                    WHERE run_id=taskhub_task_index.run_id), updated_at=now()
                    WHERE run_id=%s""",
                 (run_id,),
             )

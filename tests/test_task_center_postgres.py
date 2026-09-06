@@ -87,11 +87,13 @@ def test_postgres_archive_and_rebind_survive_checkpoint_backfill(postgres_dsn, t
             await service.resume(rebound_run.run_id, ResumeRequest(decision='approve'))
             archived = await service.archive(archived_run.run_id)
             await service.rebind(rebound_run.run_id, 'replacement')
-            # Make both rows stale so backfill must actually take the SQL update branch.
-            for run in (archived_run, rebound_run):
-                await index.upsert(dict(run_id=run.run_id, project_id='original',
-                                        requirement='stale', current_stage='intake', status='running'))
-            assert (await index.get(archived_run.run_id)).archived_at == archived.archived_at
+            # Delete the archived index row: its independent tombstone must prevent revival.
+            async with index.pool.connection() as connection:
+                await connection.execute('DELETE FROM taskhub_task_index WHERE run_id=%s',
+                                         (archived_run.run_id,))
+            await index.upsert(dict(run_id=rebound_run.run_id, project_id='original',
+                                    requirement='stale', current_stage='intake', status='running'))
+            assert await index.get(archived_run.run_id) is None
 
         path.write_text(json.dumps({'projects': [
             {'id': 'replacement', 'repository': str(tmp_path / 'replacement')}
@@ -103,6 +105,9 @@ def test_postgres_archive_and_rebind_survive_checkpoint_backfill(postgres_dsn, t
             await service.backfill(saver)
             await service.backfill(saver)
             assert [item.run_id for item in (await service.list()).items] == [rebound_run.run_id]
+            assert [item.run_id for item in
+                    (await service.list(project_id='replacement')).items] == [rebound_run.run_id]
+            assert (await service.list(project_id='original')).total == 0
             page = await service.list(include_archived=True)
             assert page.total == 2
             restored = await service.get(archived_run.run_id, sync=True)
@@ -166,4 +171,4 @@ def test_postgres_namespaces_isolate_index_checkpoints_and_cleanup(postgres_name
                 'SELECT tablename FROM pg_tables WHERE schemaname=%s', (outer_schema,)
             )}
             assert {'taskhub_task_index', 'checkpoints', 'checkpoint_writes',
-                    'checkpoint_blobs', 'checkpoint_migrations'} <= tables
+                    'checkpoint_blobs', 'checkpoint_migrations', 'taskhub_task_archive'} <= tables
