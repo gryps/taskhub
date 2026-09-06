@@ -1,10 +1,19 @@
 import asyncio
+from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
+from langgraph.checkpoint.memory import InMemorySaver
 
 from taskhub_v2.api.app import create_app
 from taskhub_v2.config import Settings
+from taskhub_v2.domain.models import StartRunRequest
 from taskhub_v2.persistence.task_index import MemoryTaskIndex
+from taskhub_v2.services.runs import RunService
+from taskhub_v2.services.task_state import checkpoint_values, workflow_steps
+from taskhub_v2.workflows import build_main_graph
+from tests.fakes import RecordingProvider, RecordingWorker
+from tests.test_workflow import RecoveringPublisher
 
 
 def settings():
@@ -14,7 +23,7 @@ def settings():
 
 
 def login(client):
-    response = client.post("/api/auth/login", json={"token": "admin-secret"})
+    client.post("/api/auth/login", json={"token": "admin-secret"})
     return {"X-CSRF-Token": client.cookies.get("taskhub_v2_csrf")}
 
 
@@ -78,12 +87,6 @@ def test_task_detail_exposes_backend_action_and_ten_stage_ui():
 
 
 def test_task_center_approvals_and_recovery_do_not_repeat_completed_work():
-    from langgraph.checkpoint.memory import InMemorySaver
-    from taskhub_v2.services.runs import RunService
-    from taskhub_v2.workflows import build_main_graph
-    from tests.fakes import RecordingProvider, RecordingWorker
-    from tests.test_workflow import RecoveringPublisher
-
     app = create_app(settings())
     with TestClient(app) as client:
         provider, worker, publisher = RecordingProvider(), RecordingWorker(), RecoveringPublisher()
@@ -120,13 +123,6 @@ def test_task_center_approvals_and_recovery_do_not_repeat_completed_work():
 
 
 def test_live_index_failure_and_stale_backfill():
-    import pytest
-    from langgraph.checkpoint.memory import InMemorySaver
-    from taskhub_v2.domain.models import StartRunRequest
-    from taskhub_v2.services.runs import RunService
-    from taskhub_v2.workflows import build_main_graph
-    from tests.fakes import RecordingProvider, RecordingWorker
-
     async def scenario():
         entered, release = asyncio.Event(), asyncio.Event()
 
@@ -165,7 +161,6 @@ def test_live_index_failure_and_stale_backfill():
 
 
 def test_terminal_steps_and_pagination():
-    from taskhub_v2.services.task_state import workflow_steps
     for stage in ('failed', 'rejected'):
         steps = workflow_steps(dict(current_stage=stage, status=stage,
                                     timeline=[{'stage': 'plan_approval'}]))
@@ -183,3 +178,13 @@ def test_terminal_steps_and_pagination():
         assert len(first.items) == 50 and len(second.items) == 5
         assert len({item.run_id for item in first.items + second.items}) == 55
     asyncio.run(scenario())
+
+
+def test_legacy_string_implementation_is_projected_as_execution_result():
+    snapshot = SimpleNamespace(
+        values={"implementation": "worker=local legacy result"}, tasks=[], next=[]
+    )
+
+    values = checkpoint_values(snapshot)
+
+    assert values["implementation"].summary == "worker=local legacy result"

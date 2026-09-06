@@ -1,5 +1,5 @@
 """Project checkpoint state into task-center metadata without changing the workflow."""
-from taskhub_v2.domain.models import RunStatus
+from taskhub_v2.domain.models import ExecutionResult, RunStatus
 
 NODE_STAGES = {
     "supervisor": "supervision", "revision": "implementation",
@@ -11,6 +11,9 @@ NODE_STAGES = {
 
 def checkpoint_values(snapshot):
     values = dict(snapshot.values)
+    implementation = values.get("implementation")
+    if implementation is not None and not isinstance(implementation, dict | ExecutionResult):
+        values["implementation"] = ExecutionResult(summary=str(implementation))
     errors = [task.error for task in snapshot.tasks if task.error]
     if errors:
         values.update(status="failed", pending_action=None,
