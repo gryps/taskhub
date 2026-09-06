@@ -147,8 +147,8 @@ class PostgresTaskIndex:
             """, (values["run_id"], _summary(values.get("requirement", "")), values["project_id"],
                   production_line or "default", values["current_stage"], values["status"],
                   json.dumps(values.get("blocking_reason")),
-                  json.dumps(values.get("pending_action")), now, now, production_line,
-                  production_line, values["run_id"]))
+                  json.dumps(values.get("pending_action")), now, now, values["run_id"],
+                  production_line, production_line))
         return await self.get(values["run_id"])
 
     async def get(self, run_id: str) -> TaskSummary | None:

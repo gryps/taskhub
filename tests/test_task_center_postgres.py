@@ -16,6 +16,40 @@ from tests.fakes import RecordingProvider, RecordingWorker
 from tests.test_workflow import RecoveringPublisher
 
 
+def test_postgres_upsert_keeps_archive_lookup_separate_from_production_line(postgres_dsn):
+    async def scenario():
+        settings = Settings(checkpointer='postgres', postgres_dsn=postgres_dsn)
+        async with task_index_store(settings) as index:
+            values = dict(run_id='archived-run', project_id='original',
+                          requirement='Archived task', current_stage='planning', status='running')
+            await index.upsert(values, 'line-A')
+            archived = await index.archive(values['run_id'])
+            async with index.pool.connection() as connection:
+                await connection.execute('DELETE FROM taskhub_task_index WHERE run_id=%s',
+                                         (values['run_id'],))
+            restored = await index.upsert(values, 'line-A')
+            assert restored.archived_at == archived.archived_at
+            assert restored.production_line == 'line-A'
+            assert (await index.list()).total == 0
+            assert (await index.list(include_archived=True)).total == 1
+
+            # A line name matching another task ID must not inherit its tombstone.
+            active_values = dict(values, run_id='active-run')
+            active = await index.upsert(active_values, values['run_id'])
+            assert active.archived_at is None
+            assert active.production_line == values['run_id']
+            # Omitting the line on an identical update must preserve the row unchanged.
+            unchanged = await index.upsert(active_values)
+            assert unchanged == active
+            changed = await index.upsert(dict(active_values, status='waiting'))
+            assert changed.production_line == active.production_line
+            assert changed.created_at == active.created_at
+            assert changed.status == 'waiting'
+            assert [item.run_id for item in (await index.list()).items] == ['active-run']
+
+    asyncio.run(scenario())
+
+
 def test_postgres_index_history_repair_and_resume_after_restart(postgres_dsn):
     async def scenario():
         settings = Settings(checkpointer='postgres',
