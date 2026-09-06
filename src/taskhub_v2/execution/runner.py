@@ -86,7 +86,7 @@ class NodeRunner:
                 },
             }
         try:
-            async with self._client(timeout=5) as client:
+            async with self._client(timeout=100 if "browser_acceptance" in node.workloads else 5) as client:
                 response = await client.get(
                     f"{node.url.rstrip('/')}/api/health", headers=self._headers()
                 )

@@ -193,6 +193,7 @@ class SupervisionDecision(BaseModel):
     decision: Literal["approve", "reject"]
     summary: str
     reasons: list[str]
+    missing_evidence: list[Literal["browser"]] = Field(default_factory=list)
 
 
 class StartRunRequest(BaseModel):

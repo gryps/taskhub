@@ -64,10 +64,12 @@ def extract_workspace(archive: Path, target: Path, root: Path) -> None:
 
 
 async def run_commands(
-    workdir: Path, commands: list[list[str]], timeout: int
+    workdir: Path, commands: list[list[str]], timeout: int,
+    *, execution_environment: dict[str, str] | None = None
 ) -> list[dict]:
     results = []
     environment = dict(os.environ)
+    environment.update(execution_environment or {})
     environment["PATH"] = os.pathsep.join(
         (str(Path(sys.executable).parent), environment.get("PATH", ""))
     )

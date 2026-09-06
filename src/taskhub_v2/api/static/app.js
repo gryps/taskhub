@@ -53,7 +53,7 @@ function cookie(name) {
 function render(run) {
   byId("run").classList.remove("hidden");
   byId("run-id").textContent = run.run_id;
-  const statuses = {running: "运行中", waiting: "等待处理", completed: "已完成",
+  const statuses = {running: "运行中", waiting: "待处理", completed: "已完成",
     rejected: "已终止", blocked: "已阻塞", failed: "失败"};
   byId("status").textContent = statuses[run.status] || run.status;
   pendingAction = run.pending_action;

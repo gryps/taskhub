@@ -30,6 +30,7 @@ packages = ["src/taskhub_v2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+norecursedirs = ["e2e"]
 pythonpath = ["src"]
 
 [tool.ruff]

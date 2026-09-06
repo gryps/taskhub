@@ -2,9 +2,11 @@
 """Serve a disposable TaskHub acceptance instance with deterministic adapters."""
 
 import argparse
+import os
 from pathlib import Path
 
 import uvicorn
+from fastapi.responses import JSONResponse
 
 import taskhub_v2.api.app as app_module
 from taskhub_v2.config import Settings
@@ -57,8 +59,8 @@ class RecoveringPublisher:
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dsn", required=True)
-    parser.add_argument("--state-dir", required=True)
+    parser.add_argument("--dsn", default=os.getenv("TASKHUB_PREVIEW_DSN"))
+    parser.add_argument("--state-dir", default=os.getenv("TASKHUB_PREVIEW_STATE_DIR"))
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8324)
     return parser.parse_args()
@@ -66,6 +68,8 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if not args.dsn or not args.state_dir:
+        raise SystemExit("preview DSN and state directory are required")
     state_dir = Path(args.state_dir)
     state_dir.mkdir(parents=True, exist_ok=True)
     provider = AcceptanceProvider()
@@ -84,7 +88,15 @@ def main():
         nodes_file=str(state_dir / "nodes.json"),
         node_state_file=str(state_dir / "nodes-state.json"),
     )
-    uvicorn.run(app_module.create_app(settings), host=args.host, port=args.port, log_level="warning")
+    app = app_module.create_app(settings)
+
+    @app.middleware("http")
+    async def candidate_identity(request, call_next):
+        if request.url.path == "/api/health":
+            return JSONResponse({"status": "ok", "git_commit": os.getenv("TASKHUB_GIT_COMMIT", "")})
+        return await call_next(request)
+
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 
 if __name__ == "__main__":

@@ -161,6 +161,8 @@ class NodeScheduler:
                 )
             ]
             if not nodes:
+                if workload == "browser_acceptance" and not any(item.get("status") == "ok" for item in health):
+                    raise NodeExecutionError("Windows 验收节点离线")
                 needed = ", ".join(sorted(required)) or "basic execution"
                 prefix = "browser acceptance preflight failed" if workload == "browser_acceptance" else "no healthy execution node provides"
                 raise NodeExecutionError(f"{prefix}: {needed}")

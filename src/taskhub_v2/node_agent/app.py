@@ -8,6 +8,9 @@ import shutil
 import tempfile
 import platform
 import subprocess
+import sys
+import time
+import threading
 from datetime import UTC, datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -90,8 +93,8 @@ def create_node_app() -> FastAPI:
             "node_id": runtime.node_id,
             "cpu_count": os.cpu_count() or 1,
             "disk_free_bytes": usage.free,
-            "capabilities": detect_capabilities(),
-            "versions": browser_versions(),
+            "capabilities": await asyncio.to_thread(detect_capabilities),
+            "versions": await asyncio.to_thread(browser_versions),
             "provider_health": provider_health(),
         }
 
@@ -136,7 +139,7 @@ def create_node_app() -> FastAPI:
         authorization: str = Header(default=""),
     ) -> dict:
         runtime.authorize(authorization)
-        capabilities = detect_capabilities()
+        capabilities = await asyncio.to_thread(detect_capabilities)
         missing = sorted(
             name
             for name in payload.required_capabilities
@@ -160,7 +163,14 @@ def create_node_app() -> FastAPI:
         lock = runtime.locks.setdefault(job_id, asyncio.Lock())
         started_at = datetime.now(UTC)
         async with lock:
-            tests = await run_commands(target, payload.commands, payload.timeout_seconds)
+            tests = await run_commands(
+                target, payload.commands, payload.timeout_seconds,
+                execution_environment={
+                    "TASKHUB_PREVIEW_URL": payload.target_url,
+                    "TASKHUB_TARGET_URL": payload.target_url,
+                    "TASKHUB_GIT_COMMIT": payload.git_commit,
+                },
+            )
         artifacts = _artifact_manifest(target, payload.artifact_paths, runtime.max_upload_bytes)
         return {
             "node_id": runtime.node_id,
@@ -169,7 +179,7 @@ def create_node_app() -> FastAPI:
             "metadata": {
                 "target_url": payload.target_url,
                 "git_commit": payload.git_commit,
-                "versions": browser_versions(),
+                "versions": await asyncio.to_thread(browser_versions),
                 "started_at": started_at.isoformat(),
                 "finished_at": datetime.now(UTC).isoformat(),
             },
@@ -217,10 +227,6 @@ def create_node_app() -> FastAPI:
 def detect_capabilities() -> dict[str, bool]:
     import importlib.util
 
-    is_windows = os.name == "nt"
-    playwright = importlib.util.find_spec("playwright") is not None or bool(shutil.which("playwright"))
-    chromium = _browser_path("chromium", "chrome", "chrome.exe") is not None
-    edge = _browser_path("msedge", "msedge.exe") is not None
     return {
         "git": bool(shutil.which("git")),
         "python3": True,
@@ -228,16 +234,38 @@ def detect_capabilities() -> dict[str, bool]:
         "npm": bool(shutil.which("npm")),
         "pytest": importlib.util.find_spec("pytest") is not None,
         "coding": coding_available(),
-        # Services run in session 0. Browser acceptance requires an explicitly
-        # provisioned interactive runner; ambient shell variables are unreliable.
-        "windows_gui": is_windows and os.getenv("TASKHUB_WINDOWS_GUI", "").lower() in {"1", "true", "yes"},
-        "playwright": playwright,
-        "chromium": chromium,
-        "edge": edge,
-        "screenshot": playwright,
-        "video": playwright,
-        "trace": playwright,
+        **_probe_browsers()["capabilities"],
     }
+
+
+_probe_lock = threading.Lock()
+_probe_cache = None
+_probe_deadline = 0.0
+
+
+def _probe_browsers() -> dict:
+    global _probe_cache, _probe_deadline
+    with _probe_lock:
+        if _probe_cache is None or time.monotonic() >= _probe_deadline:
+            _probe_cache = _run_browser_probe()
+            _probe_deadline = time.monotonic() + 30
+        return _probe_cache
+
+
+def _run_browser_probe() -> dict:
+    empty = {"capabilities": dict.fromkeys(
+        ("windows_gui", "playwright", "chromium", "edge", "screenshot", "video", "trace"), False
+    ), "versions": {}}
+    if os.name != "nt":
+        return empty
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "taskhub_v2.node_agent.browser_probe"],
+            capture_output=True, text=True, timeout=90, check=True,
+        )
+        return json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return empty
 
 
 def _browser_path(*names: str) -> str | None:
@@ -258,15 +286,7 @@ def _browser_path(*names: str) -> str | None:
 
 def browser_versions() -> dict[str, str]:
     versions = {"platform": platform.platform(), "python": platform.python_version()}
-    for browser, names in {"chromium": ("chromium", "chrome", "chrome.exe"), "edge": ("msedge", "msedge.exe")}.items():
-        executable = _browser_path(*names)
-        if executable:
-            try:
-                versions[browser] = subprocess.run(
-                    [executable, "--version"], capture_output=True, text=True, timeout=5, check=False
-                ).stdout.strip()[:200]
-            except (OSError, subprocess.TimeoutExpired):
-                pass
+    versions.update(_probe_browsers()["versions"])
     return versions
 
 

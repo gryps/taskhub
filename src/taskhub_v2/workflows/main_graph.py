@@ -12,6 +12,10 @@ from taskhub_v2.workflows.acceptance_recovery import (
     recover_acceptance,
     route_acceptance_recovery,
 )
+from taskhub_v2.workflows.browser_acceptance import (
+    request_browser_acceptance,
+    route_browser_acceptance,
+)
 from taskhub_v2.workflows.implementation import build_implementation_graph
 from taskhub_v2.workflows.intake import build_intake_graph
 from taskhub_v2.workflows.manual_handoff import handle_revision_limit, route_revision_limit
@@ -248,6 +252,8 @@ def build_main_graph(
         supervision = state.get("supervision") or {}
         if supervision.get("decision") == "approve":
             return "merge_approval"
+        if "browser" in supervision.get("missing_evidence", []):
+            return "browser_acceptance"
         if int(state.get("revision_count", 0)) < int(
             state.get("max_revision_attempts", 2)
         ):
@@ -274,6 +280,12 @@ def build_main_graph(
     builder.add_node("acceptance", build_acceptance_graph(acceptance))
     builder.add_node("review", build_review_graph(provider))
     builder.add_node("risk", build_risk_graph(provider))
+    builder.add_node("browser_acceptance", request_browser_acceptance)
+    builder.add_conditional_edges(
+        "browser_acceptance",
+        route_browser_acceptance,
+        {"recovery": "acceptance_recovery", "execute": "acceptance"},
+    )
     builder.add_node("supervisor", build_supervisor_graph(provider))
     builder.add_node("supervision_recovery", recover_supervision)
     builder.add_node("revision", prepare_revision)
@@ -325,6 +337,7 @@ def build_main_graph(
         {
             "recovery": "supervision_recovery",
             "merge_approval": "merge_approval",
+            "browser_acceptance": "browser_acceptance",
             "revision": "revision",
             "revision_limit": "revision_limit",
         },

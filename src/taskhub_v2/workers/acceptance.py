@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from taskhub_v2.artifacts import ArtifactStore
 from taskhub_v2.browser import PreviewManager, load_acceptance_contract
+from taskhub_v2.browser.reports import validate_junit
 from taskhub_v2.domain.models import AcceptanceEvidence, AcceptanceResult
 from taskhub_v2.projects import ProjectRegistry
 
@@ -136,8 +137,13 @@ class ProjectAcceptanceGateway:
                 )
                 if scheduled.metadata.get("git_commit") != actual_commit:
                     raise AcceptanceExecutionError("browser evidence commit mismatch")
+                if scheduled.metadata.get("target_url") != preview.url:
+                    raise AcceptanceExecutionError("browser evidence target URL mismatch")
                 browser_artifacts = []
+                junit_reports = []
                 for item in scheduled.metadata.pop("downloaded_artifacts", []):
+                    if item["path"].endswith(".xml"):
+                        junit_reports.append(item["content"])
                     browser_artifacts.append(self.artifacts.write_bytes(
                         run_id, item["path"].replace("/", "-"), _artifact_kind(item["path"]),
                         item["content"], expected_sha256=item["sha256"],
@@ -155,17 +161,19 @@ class ProjectAcceptanceGateway:
                 if missing:
                     raise AcceptanceExecutionError("required browser artifacts missing: " + ", ".join(missing))
                 failed = [test for test in scheduled.tests if test.exit_code]
-                skipped = [test for test in scheduled.tests if " skipped" in test.output_tail.lower()]
+                try:
+                    validate_junit(junit_reports, contract.browsers,
+                                   target_url=preview.url, git_commit=actual_commit)
+                except ValueError as exc:
+                    raise AcceptanceExecutionError(str(exc)) from exc
                 records.append(AcceptanceEvidence(
                     id="windows-browser-acceptance", kind="browser",
-                    status="failed" if failed or skipped else "passed", source=scheduled.node_id,
+                    status="failed" if failed else "passed", source=scheduled.node_id,
                     summary=f"Chromium and Edge acceptance at {preview.url} for {actual_commit}",
                     tests=scheduled.tests, artifacts=browser_artifacts,
                 ))
                 if failed:
                     raise AcceptanceExecutionError(failed[0].output_tail)
-                if skipped:
-                    raise AcceptanceExecutionError("browser acceptance may not skip tests")
             finally:
                 await self.preview_manager.stop(preview_id)
         if not records:

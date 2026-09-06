@@ -556,3 +556,57 @@ def test_submitted_acceptance_evidence_reassesses_without_coding_revision():
         assert worker.calls == calls_at_limit
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("offline", [False, True])
+def test_structured_browser_rejection_never_consumes_revision(tmp_path, offline):
+    from taskhub_v2.domain.models import Workspace
+
+    (tmp_path / ".taskhub").mkdir()
+    (tmp_path / ".taskhub/acceptance.yaml").write_text("workload: browser_acceptance")
+
+    class Worker(RecordingWorker):
+        async def execute(self, *args, **kwargs):
+            self.calls += 1
+            return ExecutionResult(summary="candidate", workspace=Workspace(
+                project_id="shop", path=str(tmp_path), branch="candidate", base_commit="a" * 40
+            ))
+
+    class Provider(RecordingProvider):
+        async def supervise(self, requirement, implementation, review, risk):
+            self.supervisor_calls += 1
+            first = self.supervisor_calls == 1
+            return ModelResult(content=SupervisionDecision(
+                decision="reject" if first else "approve", summary="browser evidence",
+                reasons=[], missing_evidence=["browser"] if first else []
+            ), provider="recording", model="test")
+
+    class Acceptance:
+        calls = 0
+        async def verify(self, *args):
+            self.calls += 1
+            if self.calls == 1:
+                return AcceptanceResult(status="passed", evidence=[])
+            if offline:
+                raise RuntimeError("Windows 验收节点离线")
+            return AcceptanceResult(status="passed", evidence=[AcceptanceEvidence(
+                id="browser", kind="browser", status="passed", source="windows-gui-34",
+                summary="test fixture evidence"
+            )])
+
+    async def scenario():
+        worker, provider, acceptance = Worker(), Provider(), Acceptance()
+        service = RunService(build_main_graph(provider, worker, InMemorySaver(),
+                                              acceptance=acceptance))
+        run = await service.start(StartRunRequest(project_id="shop", requirement="Browser flow"))
+        result = await service.approve(run.run_id, ApprovalRequest(decision="approve"))
+        assert result.revision_count == 0
+        assert worker.calls == 1
+        assert acceptance.calls == 2
+        if offline:
+            assert result.status == RunStatus.BLOCKED
+            assert result.blocking_reason["detail"] == "Windows 验收节点离线"
+        else:
+            assert result.stage == Stage.MERGE_APPROVAL
+            assert provider.supervisor_calls == 2
+    asyncio.run(scenario())
