@@ -12,6 +12,7 @@ $Jobs = Join-Path $Root "jobs"
 $Secrets = Join-Path $Root "secrets"
 $TokenFile = Join-Path $Secrets "node-token.dpapi"
 $StartScript = Join-Path $Root "start-node-agent.ps1"
+$Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
 if (-not $env:TASKHUB_NODE_TOKEN) {
   throw "Set TASKHUB_NODE_TOKEN in this PowerShell session before installing"
@@ -21,6 +22,8 @@ if (-not (Test-Path $PackagePath)) {
 }
 
 New-Item -ItemType Directory -Force -Path $Jobs, $Secrets | Out-Null
+& icacls.exe $Jobs /inheritance:r /grant:r "${Identity}:(OI)(CI)M" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Failed to grant the node account workspace access" }
 & $Python -m venv $Venv
 if ($LASTEXITCODE -ne 0) { throw "Python virtual environment creation failed" }
 $VenvPython = Join-Path $Venv "Scripts\python.exe"
@@ -35,18 +38,27 @@ if ($LASTEXITCODE -ne 0 -or -not $Probe.capabilities.windows_gui `
   throw "System Chrome and Edge must both pass the interactive Playwright probe"
 }
 
-# DPAPI binds the token to the interactive Windows account that runs the task.
-$SecureToken = ConvertTo-SecureString $env:TASKHUB_NODE_TOKEN -AsPlainText -Force
-$SecureToken | ConvertFrom-SecureString | Set-Content -Encoding ascii $TokenFile
-$Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+# Machine-scoped DPAPI is stable across SSH and interactive logon sessions. The
+# file ACL still limits access to the account that runs the browser task.
+$TokenBytes = [System.Text.Encoding]::UTF8.GetBytes($env:TASKHUB_NODE_TOKEN)
+$EncryptedToken = [System.Security.Cryptography.ProtectedData]::Protect(
+  $TokenBytes,
+  $null,
+  [System.Security.Cryptography.DataProtectionScope]::LocalMachine
+)
+[System.IO.File]::WriteAllBytes($TokenFile, $EncryptedToken)
 & icacls.exe $Secrets /inheritance:r /grant:r "${Identity}:(OI)(CI)F" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Failed to protect the node token directory" }
 
 $Launch = @"
 `$ErrorActionPreference = "Stop"
-`$SecureToken = Get-Content "$TokenFile" | ConvertTo-SecureString
-`$Credential = New-Object System.Management.Automation.PSCredential("taskhub", `$SecureToken)
-`$env:TASKHUB_NODE_TOKEN = `$Credential.GetNetworkCredential().Password
+`$EncryptedToken = [System.IO.File]::ReadAllBytes("$TokenFile")
+`$TokenBytes = [System.Security.Cryptography.ProtectedData]::Unprotect(
+  `$EncryptedToken,
+  `$null,
+  [System.Security.Cryptography.DataProtectionScope]::LocalMachine
+)
+`$env:TASKHUB_NODE_TOKEN = [System.Text.Encoding]::UTF8.GetString(`$TokenBytes)
 `$env:TASKHUB_NODE_ID = "$NodeId"
 `$env:TASKHUB_NODE_WORK_ROOT = "$Jobs"
 `$env:TASKHUB_WINDOWS_GUI = "true"
