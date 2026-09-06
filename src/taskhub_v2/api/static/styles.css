@@ -144,6 +144,9 @@ h2 { margin-top: 28px; font-size: 16px; }
 .usage-cell { display: grid; gap: 10px; }
 .usage-metric > div, .balance-metric { display: flex; justify-content: space-between; gap: 12px; }
 .usage-metric progress { width: 100%; height: 7px; accent-color: #2878a6; }
+.model-cell { display: grid; gap: 5px; }
+.role-model { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 7px; }
+.role-model small { color: #66736f; }
 .usage-metric small { margin-top: 1px; }
 .balance-metric strong { white-space: nowrap; }
 .timeline { list-style: none; padding: 0; margin: 0; }

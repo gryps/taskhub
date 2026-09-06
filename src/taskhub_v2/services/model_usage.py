@@ -150,10 +150,15 @@ class ModelUsageReader:
             return ModelUsageReader._remaining_metrics(payload)
         row = rows[0]
         metrics = []
-        for key, label in (("current_interval_remaining_percent", "5 小时剩余"),
-                           ("current_weekly_remaining_percent", "周剩余")):
+        for key, label in (("current_interval_remaining_percent", "5 小时消耗"),
+                           ("current_weekly_remaining_percent", "周消耗")):
             if key in row:
-                metrics.append({"label": label, "value": row[key], "unit": "%"})
+                remaining = max(0, min(100, float(row[key])))
+                metrics.append({
+                    "label": label,
+                    "used_percent": round(100 - remaining, 2),
+                    "remaining_percent": remaining,
+                })
         return metrics
 
     @staticmethod

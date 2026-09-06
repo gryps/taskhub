@@ -69,6 +69,20 @@ class ProviderCatalog:
                 available, _ = self.health.availability(provider["id"])
                 if not available:
                     provider["status"] = f"cooldown:{record['reason']}"
+        account_roles = {
+            "planner": "account_default",
+            "coder": "account_default",
+            "supervisor": "account_default",
+        }
+        plus["role_models"] = account_roles
+        pro["role_models"] = account_roles
+        providers[2]["role_models"] = {
+            "planner": self.settings.gpt_planner_model,
+            "coder": self.settings.gpt_coder_model,
+            "supervisor": self.settings.gpt_supervisor_model,
+        }
+        providers[3]["role_models"] = {"reviewer": self.settings.deepseek_model}
+        providers[4]["role_models"] = {"risk": self.settings.minimax_model}
         return {
             "active_mode": self.settings.provider,
             "device_auth_url": DEVICE_AUTH_URL,

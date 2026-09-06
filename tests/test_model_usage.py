@@ -53,6 +53,6 @@ def test_api_balance_readers_return_remaining_only(monkeypatch):
     minimax = asyncio.run(reader.minimax_balance("secret"))
     assert deepseek["metrics"] == [{"label": "CNY", "value": "42.50", "unit": "CNY"}]
     assert minimax["metrics"] == [
-        {"label": "5 小时剩余", "value": 91, "unit": "%"},
-        {"label": "周剩余", "value": 73, "unit": "%"},
+        {"label": "5 小时消耗", "used_percent": 9.0, "remaining_percent": 91.0},
+        {"label": "周消耗", "used_percent": 27.0, "remaining_percent": 73.0},
     ]

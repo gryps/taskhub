@@ -74,6 +74,18 @@ def test_provider_status_masks_api_keys(tmp_path):
         body = response.text
         assert "abcdefghijkl" not in body
         assert "abcd********ijkl" in body
+        payload = response.json()
+        providers = {item["id"]: item for item in payload["providers"]}
+        assert providers["chatgpt_plus_account"]["role_models"] == {
+            "planner": "account_default",
+            "coder": "account_default",
+            "supervisor": "account_default",
+        }
+        assert providers["gpt_api"]["role_models"] == {
+            "planner": app_settings.gpt_planner_model,
+            "coder": app_settings.gpt_coder_model,
+            "supervisor": app_settings.gpt_supervisor_model,
+        }
 
 
 def test_mutating_api_requires_session_and_csrf():

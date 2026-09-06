@@ -167,6 +167,17 @@ function renderEvidence(run) {
   byId("decision-detail").innerHTML = supervision ? `
     <strong>${supervision.decision === "approve" ? "监督通过" : "监督拒绝"}</strong>
     <p>${escapeHtml(supervision.summary)}</p>` : "尚未裁决";
+  const modelRuns = run.model_runs || [];
+  const roleNames = {planner: "规划", coder: "施工", reviewer: "审查",
+    risk: "风险", supervisor: "监督"};
+  byId("model-run-summary").textContent = `${modelRuns.length} 次`;
+  byId("model-run-detail").innerHTML = modelRuns.length ? modelRuns.map((item) => {
+    const model = item.model === "account_default" ? "Codex 账号默认模型" : item.model;
+    const fallback = item.failed_providers?.length
+      ? `<small>已跳过：${escapeHtml(item.failed_providers.join(" · "))}</small>` : "";
+    return `<p><strong>${escapeHtml(roleNames[item.role] || item.role)} · ${escapeHtml(model)}</strong><br>
+      <span>${escapeHtml(item.provider)} · ${(item.duration_ms / 1000).toFixed(1)} 秒</span><br>${fallback}</p>`;
+  }).join("") : "尚未调用";
   const publication = run.publication;
   byId("publication-summary").textContent = publication ? "已发布" : "尚未发布";
   byId("publication-detail").innerHTML = publication ? `

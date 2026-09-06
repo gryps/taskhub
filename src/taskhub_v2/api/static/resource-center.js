@@ -3,14 +3,27 @@ function usageMetric(metric) {
     const used = Math.max(0, Math.min(100, Number(metric.used_percent)));
     const reset = metric.resets_at
       ? ` · ${new Date(metric.resets_at * 1000).toLocaleString()} 重置` : "";
+    const remaining = metric.remaining_percent !== undefined
+      ? ` · 剩余 ${Number(metric.remaining_percent)}%` : "";
     return `<div class="usage-metric">
       <div><span>${escapeHtml(metric.label)}</span><strong>${used}%</strong></div>
       <progress max="100" value="${used}">${used}%</progress>
-      <small>已使用 ${used}%${escapeHtml(reset)}</small>
+      <small>已使用 ${used}%${escapeHtml(remaining)}${escapeHtml(reset)}</small>
     </div>`;
   }
   return `<div class="balance-metric"><span>${escapeHtml(metric.label)}</span>
     <strong>${escapeHtml(metric.value)} ${escapeHtml(metric.unit || "")}</strong></div>`;
+}
+
+function roleModelsView(item) {
+  const roleNames = {planner: "规划", coder: "施工", reviewer: "审查",
+    risk: "风险", supervisor: "监督"};
+  const models = Object.entries(item.role_models || {});
+  if (!models.length) return escapeHtml(item.model);
+  return models.map(([role, model]) => {
+    const display = model === "account_default" ? "Codex 账号默认模型" : model;
+    return `<span class="role-model"><small>${escapeHtml(roleNames[role] || role)}</small>${escapeHtml(display)}</span>`;
+  }).join("");
 }
 
 function billingView(billing) {
@@ -33,7 +46,7 @@ async function loadProviders() {
       <div class="resource-row">
         <strong>${escapeHtml(item.id)}</strong>
         <span class="${item.configured ? "ok" : "bad"}">${escapeHtml(item.status)}</span>
-        <span>${escapeHtml(item.model)}<small>${escapeHtml(item.route)}</small></span>
+        <span class="model-cell">${roleModelsView(item)}<small>网络：${escapeHtml(item.route)}</small></span>
         <div class="usage-cell">${billingView(item.billing)}</div>
       </div>`).join("")}`;
   } catch (error) {
