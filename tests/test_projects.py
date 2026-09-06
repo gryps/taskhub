@@ -40,6 +40,30 @@ class FakeProvisioner:
             )
         )
 
+    async def available(self):
+        return [
+            {
+                "repository": "shop.git",
+                "name": "shop",
+                "default_branch": "main",
+                "attached": False,
+                "project_id": "shop",
+            }
+        ]
+
+    async def attach(self, repository, name, base_ref, test_commands):
+        assert repository == "shop.git"
+        return self.registry.add(
+            ProjectDefinition(
+                id="shop",
+                name=name,
+                repository=str(self.repository_path),
+                authority_remote="origin",
+                base_ref=base_ref,
+                test_commands=test_commands,
+            )
+        )
+
 
 def test_new_project_creation_uses_the_provisioner(tmp_path: Path):
     projects_file = tmp_path / "projects.json"
@@ -72,7 +96,7 @@ def test_new_project_creation_uses_the_provisioner(tmp_path: Path):
     assert response.json()["test_commands"] == [["npm", "test"]]
 
 
-def test_existing_project_can_be_attached_from_the_api(tmp_path: Path):
+def test_authority_project_can_be_selected_and_attached_from_the_api(tmp_path: Path):
     projects_file = tmp_path / "projects.json"
     app = create_app(
         Settings(
@@ -82,16 +106,18 @@ def test_existing_project_can_be_attached_from_the_api(tmp_path: Path):
         )
     )
     repo = repository(tmp_path / "shop")
+    app.state.project_provisioner = FakeProvisioner(app.state.projects, repo)
 
     with TestClient(app) as client:
         login = client.post("/api/auth/login", json={"token": "admin-secret"})
         headers = {"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]}
+        available = client.get("/api/projects/available")
         response = client.post(
             "/api/projects/attach",
             headers=headers,
             json={
                 "name": "Shop Platform",
-                "repository": str(repo),
+                "repository": "shop.git",
                 "base_ref": "main",
                 "test_commands": "python3 -m pytest -q\nnpm test",
             },
@@ -99,6 +125,8 @@ def test_existing_project_can_be_attached_from_the_api(tmp_path: Path):
         listed = client.get("/api/projects")
 
     assert response.status_code == 201
+    assert available.status_code == 200
+    assert available.json()["repositories"][0]["repository"] == "shop.git"
     assert response.json()["name"] == "Shop Platform"
     assert listed.json()["projects"][0]["repository"] == str(repo)
     assert listed.json()["projects"][0]["test_commands"] == [
@@ -108,9 +136,7 @@ def test_existing_project_can_be_attached_from_the_api(tmp_path: Path):
     assert projects_file.stat().st_mode & 0o777 == 0o600
 
 
-def test_project_registration_rejects_a_non_git_path(tmp_path: Path):
-    invalid = tmp_path / "plain"
-    invalid.mkdir()
+def test_project_registration_rejects_an_invalid_authority_repository(tmp_path: Path):
     app = create_app(
         Settings(
             admin_token="admin-secret",
@@ -124,8 +150,7 @@ def test_project_registration_rejects_a_non_git_path(tmp_path: Path):
         response = client.post(
             "/api/projects/attach",
             headers={"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]},
-            json={"name": "Invalid", "repository": str(invalid)},
+            json={"name": "Invalid", "repository": "../invalid.git"},
         )
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "指定路径不是 Git 仓库"

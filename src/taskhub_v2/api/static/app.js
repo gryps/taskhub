@@ -203,6 +203,37 @@ async function attachProject(event) {
   }
 }
 
+async function loadAvailableProjects() {
+  const select = byId("attach-project-repository");
+  const message = byId("attach-project-message");
+  select.disabled = true;
+  byId("attach-project").disabled = true;
+  select.innerHTML = '<option value="">正在读取 Git 仓库</option>';
+  message.textContent = "";
+  try {
+    const data = await request("/api/projects/available");
+    select.innerHTML = data.repositories.length
+      ? data.repositories.map((item) => `<option value="${escapeHtml(item.repository)}"
+          data-name="${escapeHtml(item.name)}" data-branch="${escapeHtml(item.default_branch)}">
+          ${escapeHtml(item.name)}${item.attached ? "（已接入）" : ""}
+        </option>`).join("")
+      : '<option value="">Git 仓库中没有项目</option>';
+    select.disabled = data.repositories.length === 0;
+    byId("attach-project").disabled = data.repositories.length === 0;
+    applySelectedRepository();
+  } catch (error) {
+    select.innerHTML = '<option value="">读取失败</option>';
+    message.textContent = error.message;
+  }
+}
+
+function applySelectedRepository() {
+  const option = byId("attach-project-repository").selectedOptions[0];
+  if (!option?.value) return;
+  byId("attach-project-name").value = option.dataset.name;
+  byId("attach-project-branch").value = option.dataset.branch || "main";
+}
+
 async function loadNodes() {
   const data = await request("/api/nodes");
   const ready = data.nodes.filter((item) => item.status === "ok").length;
@@ -295,6 +326,7 @@ byId("close-project-form").addEventListener("click", () => byId("project-form").
 byId("show-attach-project-form").addEventListener("click", () => {
   byId("project-form").classList.add("hidden");
   byId("attach-project-form").classList.remove("hidden");
+  loadAvailableProjects();
 });
 byId("close-attach-project-form").addEventListener("click", () => byId("attach-project-form").classList.add("hidden"));
 byId("project-form").addEventListener("submit", createProject);
@@ -303,5 +335,6 @@ byId("project-name").addEventListener("input", () => {
 });
 byId("project-type").addEventListener("change", applyProjectPreset);
 byId("attach-project-form").addEventListener("submit", attachProject);
+byId("attach-project-repository").addEventListener("change", applySelectedRepository);
 renderFlow();
 bootstrap().catch((error) => { byId("login-message").textContent = error.message; });

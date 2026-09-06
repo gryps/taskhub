@@ -63,14 +63,14 @@
           <h2>接入项目</h2>
           <button id="close-attach-project-form" type="button" class="icon-button secondary" title="关闭" aria-label="关闭">×</button>
         </div>
-        <p class="form-note">接入控制中心已有的 Git 工作副本。</p>
+        <p class="form-note">从 192.168.31.3 权威 Git 仓库选择项目，TaskHub 将自动创建控制中心工作副本。</p>
         <div class="form-grid">
-          <label>项目名称<input id="attach-project-name" required maxlength="100"></label>
+          <label>Git 项目<select id="attach-project-repository" required></select></label>
           <label>基准分支<input id="attach-project-branch" required value="main" maxlength="200"></label>
-          <label class="wide">控制中心 Git 路径<input id="attach-project-repository" required maxlength="500" placeholder="/home/gryps/repos/project-name"></label>
+          <label class="wide">项目名称<input id="attach-project-name" required maxlength="100"></label>
           <label class="wide">测试命令（每行一条）<textarea id="attach-project-tests" rows="3"></textarea></label>
           <div class="form-actions wide">
-            <button type="submit" class="secondary">验证并接入已有项目</button>
+            <button id="attach-project" type="submit" class="secondary">接入所选项目</button>
             <span id="attach-project-message" role="status"></span>
           </div>
         </div>

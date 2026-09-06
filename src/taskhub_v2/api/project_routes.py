@@ -1,7 +1,4 @@
-import asyncio
-import re
 import shlex
-from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -20,15 +17,10 @@ class ProjectCreateRequest(BaseModel):
 
 
 class ProjectAttachRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    repository: str = Field(min_length=1, max_length=500)
+    name: str = Field(default="", max_length=100)
+    repository: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.git$")
     base_ref: str = Field(default="main", pattern=r"^[A-Za-z0-9._/-]{1,200}$")
     test_commands: str = Field(default="", max_length=4000)
-
-
-def attached_project_id(name: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:48]
-    return slug if len(slug) >= 2 else f"project-{uuid4().hex[:8]}"
 
 
 def parse_test_commands(value: str) -> list[list[str]]:
@@ -58,6 +50,15 @@ async def projects(request: Request) -> dict:
     return {"projects": [project_view(item) for item in request.app.state.projects.list()]}
 
 
+@router.get("/available")
+async def available_projects(request: Request) -> dict:
+    try:
+        repositories = await request.app.state.project_provisioner.available()
+    except (ProjectProvisionError, OSError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"repositories": repositories}
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_project(payload: ProjectCreateRequest, request: Request) -> dict:
     try:
@@ -77,16 +78,14 @@ async def create_project(payload: ProjectCreateRequest, request: Request) -> dic
 @router.post("/attach", status_code=status.HTTP_201_CREATED)
 async def attach_project(payload: ProjectAttachRequest, request: Request) -> dict:
     try:
-        project = ProjectDefinition(
-            id=attached_project_id(payload.name),
-            name=payload.name.strip(),
-            repository=payload.repository.strip(),
-            base_ref=payload.base_ref,
-            test_commands=parse_test_commands(payload.test_commands),
+        created = await request.app.state.project_provisioner.attach(
+            payload.repository,
+            payload.name,
+            payload.base_ref,
+            parse_test_commands(payload.test_commands),
         )
-        created = await asyncio.to_thread(request.app.state.projects.add, project)
     except ProjectConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except (ValueError, OSError) as exc:
+    except (ProjectProvisionError, ValueError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return project_view(created)
