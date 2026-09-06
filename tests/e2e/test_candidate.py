@@ -27,6 +27,12 @@ def test_candidate_approval_consistency(browser_name, record_property):
     contexts = []
     result = {"browser": browser_name, "target_url": url, "git_commit": commit,
               "status": "failed"}
+    result["scenarios"] = []
+
+    def completed(scenario):
+        record_property(f"scenario.{scenario}", "passed")
+        result["scenarios"].append({"id": scenario, "status": "passed"})
+
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(
             headless=False, channel="msedge" if browser_name == "edge" else "chrome"
@@ -68,9 +74,13 @@ def test_candidate_approval_consistency(browser_name, record_property):
                 page.reload()
                 page.locator(f'tr[data-run-id="{run_id}"]').click()
                 expect(page.locator("#status")).to_have_text("待处理")
+            completed("login_status")
+            completed("refresh_consistency")
             states = [context.request.get(f"{url}/api/runs/{run_id}").json()
                       for context in contexts]
             assert states[0] == states[1]
+
+            completed("dual_context_consistency")
 
             # Exercise a recoverable failure through the real UI. The disposable
             # publisher fails once per run and then succeeds, giving both clients
@@ -88,9 +98,13 @@ def test_candidate_approval_consistency(browser_name, record_property):
             expect(pages[0].locator("#blocking-code")).to_have_text("TransientPublicationError")
             expect(pages[0].locator("#blocking-node")).to_have_text("publisher")
             expect(pages[0].locator("#blocking-model")).to_have_text("none")
+            expect(pages[0].locator("#blocking-action")).to_have_text(reason["recommended_action"])
+            completed("structured_blocking")
             expect(pages[0].locator("#approve")).to_have_text("重新检查并发布")
             expect(pages[0].locator("#reject")).to_have_text("取消任务")
             expect(pages[0].locator("#retry-countdown")).to_contain_text("自动重试")
+            initial_countdown = pages[0].locator("#retry-countdown").inner_text()
+            expect(pages[0].locator("#retry-countdown")).not_to_have_text(initial_countdown)
             pages[0].screenshot(path=str(output / "screenshots" /
                 f"{browser_name}-blocked.png"), full_page=True)
 
@@ -102,6 +116,10 @@ def test_candidate_approval_consistency(browser_name, record_property):
             recovered = [context.request.get(f"{url}/api/runs/{run_id}").json()
                          for context in contexts]
             assert recovered[0] == recovered[1]
+            completed("retry_recovery")
+            expect(pages[0].locator("#archive-task")).to_be_visible()
+            expect(pages[0].locator("#acceptance-submit")).to_be_hidden()
+            completed("action_visibility")
             result["status"] = "passed"
         finally:
             for index, context in enumerate(contexts):
@@ -121,6 +139,8 @@ def test_candidate_approval_consistency(browser_name, record_property):
                 "<!doctype html><meta charset=utf-8><title>Playwright acceptance</title>"
                 f"<h1>{escape(browser_name)}: {escape(result['status'])}</h1>"
                 f"<p>Target: {escape(url)}</p><p>Commit: <code>{escape(commit)}</code></p>"
+                "<ul>" + "".join(f"<li>{escape(item['id'])}: {escape(item['status'])}</li>"
+                                  for item in result["scenarios"]) + "</ul>"
                 f"<p>Browser version: {escape(str(result.get('version', 'unknown')))}</p>",
                 encoding="utf-8",
             )

@@ -49,3 +49,36 @@ manager process, and abrupt controller termination requires operator cleanup.
 Cross-process port leases and restart reconciliation must be completed before
 claiming concurrent/restart cleanup acceptance. The unit cancellation test mocks
 schema operations; a real PostgreSQL isolation and cleanup run remains required.
+
+## Supervisor follow-up in this worktree
+
+Base HEAD: `9243acaf908d76bed4583ab63e0c85b93153921c`. This revision is an
+uncommitted worktree patch, as requested; HEAD identifies the base and does **not**
+identify the modified candidate. Use `git diff --name-only` and `git diff` to
+review the delivered changes. No browser result for the base can validate this
+patch. The clean-commit preview guard intentionally remains enabled.
+
+The follow-up changes contract validation, JUnit scenario coverage, scheduler
+preflight, the project acceptance gateway, and the project E2E report, with
+regression tests in `tests/test_browser_acceptance.py` and `tests/test_scheduler.py`.
+JUnit now requires each manifest scenario on each declared browser. Project tests
+record completion only after their assertions pass, including a changing retry
+countdown and rendered recommended action. JSON and HTML reports list completed
+scenarios. The controller checks node eligibility before starting the preview,
+and execution repeats the health check before upload.
+
+Validation performed here: 21 browser-contract/report/preview and scheduler tests
+passed (the subprocess identity test was deselected). Compilation and
+`git diff --check` passed. Workflow test runs stalled in asynchronous waiting and
+were interrupted; the isolated structured-browser workflow run timed out.
+Explicit E2E execution failed on missing Playwright, with no skips. TCP connection
+to `192.168.31.34:8301` failed. Consequently this is not evidence of a deployed
+Windows node or a completed browser acceptance cycle.
+
+Outstanding supervisor requirements remain: actual Windows startup/listener/auth
+and resource-center evidence; full node/model-switch action coverage; real
+artifact upload through re-supervision to publication approval; PostgreSQL
+cross-process allocation and restart cleanup; and real Chromium/Edge execution
+against the eventual committed candidate. Existing at-logon deployment is not a
+Windows startup service. These must not be marked accepted using local unit
+results or a two-test pass count.

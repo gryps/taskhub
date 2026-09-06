@@ -42,7 +42,7 @@ class AcceptanceScenario(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]+$")
     description: str = Field(min_length=1)
-    browsers: set[str] = Field(default_factory=lambda: {"chromium", "edge"})
+    browsers: set[str] = Field(default_factory=lambda: {"chromium", "edge"}, min_length=1)
 
 
 class AcceptanceSuite(BaseModel):
@@ -81,7 +81,9 @@ def load_acceptance_contract(repository: str | Path) -> AcceptanceContract:
 
 
 def load_acceptance_suite(repository: str | Path, contract: AcceptanceContract) -> AcceptanceSuite:
-    path = Path(repository) / contract.suite
+    path = (Path(repository) / contract.suite).resolve()
+    if not path.is_relative_to(Path(repository).resolve()):
+        raise ValueError("acceptance suite must stay inside the repository")
     if not path.is_file():
         raise ValueError(f"project does not define {contract.suite}")
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))

@@ -5,10 +5,12 @@ import xml.etree.ElementTree as ET
 def validate_junit(
     reports: list[bytes], browsers: list[str], *,
     target_url: str | None = None, git_commit: str | None = None,
+    scenarios: dict[str, set[str]] | None = None,
 ) -> None:
     if not reports:
         raise ValueError("browser acceptance requires JUnit results")
     covered = set()
+    completed = set()
     for report in reports:
         if b"<!DOCTYPE" in report.upper() or b"<!ENTITY" in report.upper():
             raise ValueError("unsafe JUnit report")
@@ -31,9 +33,19 @@ def validate_junit(
             for key, expected in (("target_url", target_url), ("git_commit", git_commit)):
                 if expected is not None and properties.get(key) != expected:
                     raise ValueError(f"JUnit test case {key} mismatch")
+            browser = properties.get("browser")
+            for prop in case.findall("./properties/property"):
+                if prop.get("name", "").startswith("scenario.") and prop.get("value") == "passed":
+                    completed.add((prop.get("name")[9:], browser))
             # Project tests must identify their browser via a JUnit property.
             for prop in case.findall("./properties/property"):
                 if prop.get("name") == "browser":
                     covered.add(prop.get("value"))
     if set(browsers) - covered:
         raise ValueError("JUnit results missing required browser coverage")
+    required = {(scenario, browser) for scenario, matrix in (scenarios or {}).items()
+                for browser in matrix}
+    missing = required - completed
+    if missing:
+        raise ValueError("JUnit results missing required scenario coverage: " +
+                         ", ".join(f"{scenario}/{browser}" for scenario, browser in sorted(missing)))

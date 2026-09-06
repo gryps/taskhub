@@ -177,3 +177,29 @@ def test_scheduler_filters_nodes_by_workload(tmp_path):
 
     result = asyncio.run(scenario())
     assert result.node_id == "coding"
+
+
+def test_browser_preflight_does_not_execute_or_reserve_slots(tmp_path):
+    import pytest
+
+    path = tmp_path / "nodes.json"
+    path.write_text(json.dumps({"nodes": [{"id": "windows-gui-34", "kind": "remote",
+        "url": "http://192.168.31.34:8301", "workloads": ["browser_acceptance"]}]}))
+    capabilities = dict.fromkeys(["windows_gui", "playwright", "chromium", "edge",
+                                  "screenshot", "video", "trace", "python3", "pytest"], True)
+    runner = RecordingRunner(capabilities={"windows-gui-34": capabilities})
+    scheduler = NodeScheduler(NodeRegistry(str(path)), runner, str(tmp_path / "state.json"))
+
+    async def scenario():
+        await scheduler.preflight_browser([["python3", "-m", "pytest"]], {"edge"})
+        capabilities["edge"] = False
+        with pytest.raises(NodeExecutionError, match="preflight failed: edge"):
+            await scheduler.preflight_browser([], {"edge"})
+        scheduler.failed_until["windows-gui-34"] = float("inf")
+        with pytest.raises(NodeExecutionError, match="Windows 验收节点离线"):
+            await scheduler.preflight_browser([], {"edge"})
+        assert not runner.calls
+        assert not scheduler.active
+        assert not scheduler.assignments
+
+    asyncio.run(scenario())

@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from taskhub_v2.artifacts import ArtifactStore
 from taskhub_v2.browser import PreviewManager, load_acceptance_contract
+from taskhub_v2.browser.contract import load_acceptance_suite
 from taskhub_v2.browser.reports import validate_junit
 from taskhub_v2.domain.models import AcceptanceEvidence, AcceptanceResult
 from taskhub_v2.projects import ProjectRegistry
@@ -115,12 +116,14 @@ class ProjectAcceptanceGateway:
             if self.preview_manager is None:
                 raise AcceptanceExecutionError("browser preview manager is not configured")
             contract = load_acceptance_contract(implementation.workspace.path)
+            suite = load_acceptance_suite(implementation.workspace.path, contract)
             actual_commit = subprocess.run(
                 ["git", "-C", implementation.workspace.path, "rev-parse", "HEAD"],
                 capture_output=True, text=True, check=True, timeout=15,
             ).stdout.strip()
             if actual_commit != implementation.commit:
                 raise AcceptanceExecutionError("browser acceptance commit does not match workspace HEAD")
+            await self.scheduler.preflight_browser([contract.command], contract.required_capabilities)
             preview_id = f"{run_id}-{uuid4().hex[:8]}"
             preview = None
             try:
@@ -163,7 +166,8 @@ class ProjectAcceptanceGateway:
                 failed = [test for test in scheduled.tests if test.exit_code]
                 try:
                     validate_junit(junit_reports, contract.browsers,
-                                   target_url=preview.url, git_commit=actual_commit)
+                                   target_url=preview.url, git_commit=actual_commit,
+                                   scenarios={item.id: item.browsers for item in suite.scenarios})
                 except ValueError as exc:
                     raise AcceptanceExecutionError(str(exc)) from exc
                 records.append(AcceptanceEvidence(

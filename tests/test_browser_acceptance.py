@@ -152,3 +152,22 @@ def test_preview_rejects_healthy_old_version(monkeypatch):
     manager = PreviewManager("postgresql://unused")
     with pytest.raises(ValueError, match="health commit mismatch"):
         asyncio.run(manager._wait_ready("http://candidate:8400/api/health", 1, "a" * 40))
+
+
+def test_junit_browser_count_cannot_substitute_for_scenario_coverage():
+    matrix = {"refresh_consistency": {"chromium", "edge"},
+              "dual_context_consistency": {"chromium", "edge"}}
+
+    def report(browser, scenarios):
+        properties = ''.join(f'<property name="scenario.{name}" value="passed"/>'
+                             for name in scenarios)
+        return (f'<testsuite><testcase><properties><property name="browser" '
+                f'value="{browser}"/>{properties}</properties></testcase></testsuite>').encode()
+
+    incomplete = [report(browser, ["refresh_consistency"]) for browser in ("chromium", "edge")]
+    with pytest.raises(ValueError, match="dual_context_consistency/edge"):
+        validate_junit(incomplete, ["chromium", "edge"], scenarios=matrix)
+    complete = [report(browser, matrix) for browser in ("chromium", "edge")]
+    validate_junit(complete, ["chromium", "edge"], scenarios=matrix)
+    with pytest.raises(ValueError, match="scenario coverage"):
+        validate_junit([complete[0], incomplete[1]], ["chromium", "edge"], scenarios=matrix)

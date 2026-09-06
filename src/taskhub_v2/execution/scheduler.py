@@ -82,6 +82,27 @@ class NodeScheduler:
             if not [node for node in enabled if node.id not in excluded]:
                 raise NodeExecutionError("; ".join(failures))
 
+    async def preflight_browser(self, commands: list[list[str]], capabilities: set[str]) -> None:
+        """Check eligibility before creating a preview or uploading a workspace.
+
+        Execution checks again when acquiring its slot because health can change.
+        """
+        required = required_capabilities(commands) | capabilities | {
+            "windows_gui", "playwright", "screenshot", "trace"
+        }
+        nodes = [node for node in self.registry.list()
+                 if node.enabled and "browser_acceptance" in node.workloads
+                 and self.failed_until.get(node.id, 0) <= time.time()]
+        health = await asyncio.gather(*(self.runner.health(node) for node in nodes))
+        online = [item for item in health if item.get("status") == "ok"]
+        if not online:
+            raise NodeExecutionError("Windows 验收节点离线")
+        missing = [required - {name for name, available in item.get("capabilities", {}).items()
+                               if available} for item in online]
+        if all(missing):
+            raise NodeExecutionError("browser acceptance preflight failed: " +
+                                     ", ".join(sorted(min(missing, key=len))))
+
     async def status(self) -> list[dict]:
         nodes = [node for node in self.registry.list() if node.enabled]
         health = await asyncio.gather(*(self.runner.health(node) for node in nodes))
