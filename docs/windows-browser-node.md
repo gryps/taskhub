@@ -1,13 +1,17 @@
 # Windows browser acceptance node
 
-Run `deploy/windows/install-node-agent.ps1` as Administrator on `192.168.31.34`.
-The installer creates an isolated virtual environment and chooses `D:\TaskHub\jobs`,
-falling back to `C:\TaskHub\jobs`. Configure the existing `TASKHUB_NODE_TOKEN` in
-the protected Windows service environment before starting the service; never put it
-in the repository or installer arguments.
+Build the candidate package, copy it and `deploy/windows/install-node-agent.ps1` to
+`192.168.31.34`, then run the installer in the desktop account that will operate the
+browser. The installer creates an isolated environment under `C:\TaskHub`, encrypts
+the existing `TASKHUB_NODE_TOKEN` with that account's DPAPI key, and registers an
+interactive at-logon scheduled task. Never put the token in the repository or an
+installer argument.
 
-Install Playwright and both browsers in that environment, then verify
-`http://192.168.31.34:8301/api/health` with bearer authentication. The registry entry
+Install Playwright in that environment and provide system Google Chrome and Microsoft
+Edge. The installer does not download a second bundled browser; both system browsers
+must pass the interactive screenshot, video, and trace probe. First verify the isolated candidate endpoint on port
+`8391` with bearer authentication. The production endpoint remains port `8301` and
+must only be promoted after candidate acceptance. The registry entry
 must retain only the `browser_acceptance` workload. Health must report
 `windows_gui`, `playwright`, `chromium`, `edge`, `screenshot`, `video`, and `trace`.
 
@@ -32,8 +36,8 @@ Preview startup requires a clean committed worktree. The controller supplies
 `TASKHUB_GIT_COMMIT` to the test process. JUnit must repeat both values on each
 case, identify both browsers, and contain no skipped, failed or empty suites.
 
-Windows services run in session 0. The existing NSSM installer alone does not
-establish an interactive desktop: its GUI environment flag is not evidence.
+Windows services run in session 0 and cannot establish the required interactive
+desktop. The installer therefore uses an interactive at-logon scheduled task.
 Run `python -m taskhub_v2.node_agent.browser_probe` under the actual service
 identity/session. An unavailable headed desktop must leave capabilities false;
 provision an interactive runner before accepting this deployment. Restart the

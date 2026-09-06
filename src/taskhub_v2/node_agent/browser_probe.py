@@ -17,7 +17,7 @@ def probe() -> dict:
     with tempfile.TemporaryDirectory(prefix="taskhub-browser-probe-") as directory:
         root = Path(directory)
         with sync_playwright() as playwright:
-            for name, channel in (("chromium", None), ("edge", "msedge")):
+            for name, channel in (("chromium", "chrome"), ("edge", "msedge")):
                 browser = None
                 try:
                     browser = playwright.chromium.launch(headless=False, channel=channel)

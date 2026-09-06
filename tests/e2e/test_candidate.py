@@ -29,7 +29,7 @@ def test_candidate_approval_consistency(browser_name, record_property):
               "status": "failed"}
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(
-            headless=False, channel="msedge" if browser_name == "edge" else None
+            headless=False, channel="msedge" if browser_name == "edge" else "chrome"
         )
         result["version"] = browser.version
         record_property("browser_version", browser.version)
