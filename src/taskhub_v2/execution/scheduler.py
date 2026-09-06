@@ -52,6 +52,8 @@ class NodeScheduler:
         workload: str = "test",
     ) -> ScheduledTests:
         required = required_capabilities(commands)
+        if workload == "browser_acceptance":
+            required.update({"windows_gui", "playwright", "screenshot", "trace"})
         excluded: set[str] = set()
         failures = []
         while True:
@@ -136,6 +138,8 @@ class NodeScheduler:
                 and self.failed_until.get(node.id, 0) <= now
             ]
             if not candidates:
+                if workload == "browser_acceptance":
+                    raise NodeExecutionError("Windows 验收节点离线")
                 raise NodeExecutionError("no execution node is available")
             health = await asyncio.gather(*(self.runner.health(node) for node in candidates))
             nodes = [
@@ -148,7 +152,8 @@ class NodeScheduler:
             ]
             if not nodes:
                 needed = ", ".join(sorted(required)) or "basic execution"
-                raise NodeExecutionError(f"no healthy execution node provides: {needed}")
+                prefix = "browser acceptance preflight failed" if workload == "browser_acceptance" else "no healthy execution node provides"
+                raise NodeExecutionError(f"{prefix}: {needed}")
             async with self.condition:
                 preferred = self.assignments.get(sticky_key)
                 available = [node for node in nodes if self.active[node.id] < node.slots]
@@ -217,6 +222,6 @@ def required_capabilities(commands: list[list[str]]) -> set[str]:
                 required.add("pytest")
         elif executable in {"pytest", "py.test"}:
             required.add("pytest")
-        elif executable in {"node", "npm", "git"}:
-            required.add(executable)
+        elif executable in {"node", "npm", "npm.cmd", "npx", "npx.cmd", "git"}:
+            required.add(executable.removesuffix(".cmd"))
     return required

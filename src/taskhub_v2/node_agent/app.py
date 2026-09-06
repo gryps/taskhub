@@ -6,6 +6,8 @@ import os
 import re
 import shutil
 import tempfile
+import platform
+import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -27,6 +29,9 @@ class ExecuteRequest(BaseModel):
     commands: list[list[str]] = Field(max_length=30)
     timeout_seconds: int = Field(default=600, ge=1, le=3600)
     archive_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    required_capabilities: set[str] = Field(default_factory=set, max_length=20)
+    target_url: str = Field(default="", max_length=500)
+    git_commit: str = Field(default="", pattern=r"^$|^[a-fA-F0-9]{7,64}$")
 
 
 class CodingRequest(BaseModel):
@@ -83,6 +88,7 @@ def create_node_app() -> FastAPI:
             "cpu_count": os.cpu_count() or 1,
             "disk_free_bytes": usage.free,
             "capabilities": detect_capabilities(),
+            "versions": browser_versions(),
             "provider_health": provider_health(),
         }
 
@@ -127,6 +133,21 @@ def create_node_app() -> FastAPI:
         authorization: str = Header(default=""),
     ) -> dict:
         runtime.authorize(authorization)
+        capabilities = detect_capabilities()
+        missing = sorted(
+            name
+            for name in payload.required_capabilities
+            if not capabilities.get(name)
+        )
+        if missing:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "browser_capability_missing",
+                    "missing": missing,
+                    "node": runtime.node_id,
+                },
+            )
         target = runtime.job_dir(job_id)
         metadata = target / ".taskhub-workspace.json"
         if not metadata.is_file():
@@ -140,6 +161,11 @@ def create_node_app() -> FastAPI:
             "node_id": runtime.node_id,
             "job_id": job_id,
             "tests": tests,
+            "metadata": {
+                "target_url": payload.target_url,
+                "git_commit": payload.git_commit,
+                "versions": browser_versions(),
+            },
         }
 
     @app.post("/api/jobs/{job_id}/code")
@@ -174,6 +200,10 @@ def create_node_app() -> FastAPI:
 def detect_capabilities() -> dict[str, bool]:
     import importlib.util
 
+    is_windows = os.name == "nt"
+    playwright = importlib.util.find_spec("playwright") is not None or bool(shutil.which("playwright"))
+    chromium = _browser_path("chromium", "chrome", "chrome.exe") is not None
+    edge = _browser_path("msedge", "msedge.exe") is not None
     return {
         "git": bool(shutil.which("git")),
         "python3": True,
@@ -181,4 +211,41 @@ def detect_capabilities() -> dict[str, bool]:
         "npm": bool(shutil.which("npm")),
         "pytest": importlib.util.find_spec("pytest") is not None,
         "coding": coding_available(),
+        "windows_gui": is_windows and bool(os.getenv("SESSIONNAME") or os.getenv("WT_SESSION")),
+        "playwright": playwright,
+        "chromium": chromium or playwright,
+        "edge": edge,
+        "screenshot": playwright,
+        "video": playwright,
+        "trace": playwright,
     }
+
+
+def _browser_path(*names: str) -> str | None:
+    for name in names:
+        found = shutil.which(name)
+        if found:
+            return found
+    if os.name == "nt":
+        roots = [os.getenv("PROGRAMFILES"), os.getenv("PROGRAMFILES(X86)"), os.getenv("LOCALAPPDATA")]
+        relatives = ["Microsoft/Edge/Application/msedge.exe", "Google/Chrome/Application/chrome.exe"]
+        for root in filter(None, roots):
+            for relative in relatives:
+                candidate = Path(root) / relative
+                if candidate.is_file() and any(name.lower() in candidate.name.lower() for name in names):
+                    return str(candidate)
+    return None
+
+
+def browser_versions() -> dict[str, str]:
+    versions = {"platform": platform.platform(), "python": platform.python_version()}
+    for browser, names in {"chromium": ("chromium", "chrome", "chrome.exe"), "edge": ("msedge", "msedge.exe")}.items():
+        executable = _browser_path(*names)
+        if executable:
+            try:
+                versions[browser] = subprocess.run(
+                    [executable, "--version"], capture_output=True, text=True, timeout=5, check=False
+                ).stdout.strip()[:200]
+            except OSError:
+                pass
+    return versions

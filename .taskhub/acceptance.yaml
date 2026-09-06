@@ -1,0 +1,19 @@
+workload: browser_acceptance
+required_capabilities:
+  - windows_gui
+  - playwright
+  - screenshot
+  - video
+  - trace
+preview:
+  command: [python3, scripts/task-center-acceptance-server.py, --port, "{port}"]
+  health_path: /api/health
+  timeout_seconds: 120
+browsers: [chromium, edge]
+command: [python3, -m, pytest, tests/e2e, --junitxml, test-results/junit.xml]
+timeout_seconds: 900
+required_artifacts:
+  - playwright-report
+  - test-results/junit.xml
+  - test-results/screenshots
+  - test-results/trace.zip

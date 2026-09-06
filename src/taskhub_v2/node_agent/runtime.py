@@ -4,6 +4,7 @@ import shutil
 import sys
 import tarfile
 import tempfile
+import platform
 from pathlib import Path
 
 FORBIDDEN_NAMES = {".env", ".env.local", "auth.json", "credentials.json"}
@@ -19,6 +20,22 @@ PROXY_VARIABLES = (
 
 class UnsafeArchiveError(ValueError):
     pass
+
+
+WINDOWS_COMMANDS = {"python3": "python.exe", "npm": "npm.cmd", "npx": "npx.cmd"}
+
+
+def normalize_command(command: list[str], *, windows: bool | None = None) -> list[str]:
+    """Map portable project commands to Windows executables before spawning them."""
+    if not command:
+        return command
+    is_windows = os.name == "nt" if windows is None else windows
+    if not is_windows:
+        return list(command)
+    executable = WINDOWS_COMMANDS.get(Path(command[0]).name.lower(), command[0])
+    if executable == "python.exe":
+        executable = str(Path(sys.executable).resolve())
+    return [executable, *command[1:]]
 
 
 def extract_workspace(archive: Path, target: Path, root: Path) -> None:
@@ -59,6 +76,7 @@ async def run_commands(
     for command in commands:
         if not command or not command[0].strip():
             raise ValueError("empty command")
+        command = normalize_command(command)
         try:
             process = await asyncio.create_subprocess_exec(
                 *command,

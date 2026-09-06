@@ -112,7 +112,7 @@ class NodeDefinition(BaseModel):
     kind: Literal["local", "remote"]
     url: str = ""
     slots: int = Field(default=1, ge=1, le=16)
-    workloads: set[Literal["test", "build", "coding", "acceptance"]] = Field(
+    workloads: set[Literal["test", "build", "coding", "acceptance", "browser_acceptance"]] = Field(
         default_factory=lambda: {"test", "build"}
     )
     priority: int = Field(default=100, ge=0, le=10_000)
@@ -128,6 +128,8 @@ class NodeDefinition(BaseModel):
 class ScheduledTests(BaseModel):
     node_id: str
     tests: list[TestExecution]
+    artifacts: list[Artifact] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ScheduledCoding(BaseModel):
