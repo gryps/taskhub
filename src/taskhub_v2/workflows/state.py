@@ -12,6 +12,7 @@ class BaseState(TypedDict, total=False):
     status: str
     plan: dict[str, Any] | None
     implementation: str | None
+    acceptance: dict[str, Any] | None
     review: str | None
     risk: str | None
     supervision: dict[str, Any] | None

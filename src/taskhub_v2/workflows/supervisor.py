@@ -1,3 +1,5 @@
+import json
+
 from langgraph.graph import END, START, StateGraph
 
 from taskhub_v2.domain.models import RunStatus, Stage
@@ -9,7 +11,13 @@ def build_supervisor_graph(provider: ModelProvider):
     async def finalize(state: StepState) -> dict:
         result = await provider.supervise(
             state["requirement"],
-            str(state.get("implementation") or ""),
+            json.dumps(
+                {
+                    "implementation": state.get("implementation") or {},
+                    "acceptance": state.get("acceptance") or {},
+                },
+                ensure_ascii=False,
+            ),
             state.get("review") or "",
             state.get("risk") or "",
         )
@@ -39,7 +47,7 @@ def build_supervisor_graph(provider: ModelProvider):
                     {
                         "type": "revision_limit",
                         "title": "Automatic revision limit reached",
-                        "choices": ["retry", "cancel"],
+                        "choices": ["reassess", "retry", "cancel"],
                     }
                     if not revision_available
                     else None

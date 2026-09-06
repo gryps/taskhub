@@ -54,6 +54,19 @@ python scripts/task-center-edge-acceptance.py `
 验收结果必须记录实际命令、数据库编码、通过/跳过数量、浏览器名称及证据目录。
 浏览器测试被跳过时，不得宣称图形验收完成。
 
+项目可单独配置“验收命令”。这些命令只会调度到具备 `acceptance` 工作负载的节点，
+结果显示在任务详情的“验收证据”中。监督阶段因证据不足停在返工上限时，可在操作面板
+填写证据类型、来源和结果，提交后直接重新进入审查，不再调用施工模型。
+
+TaskHub 自身的 PostgreSQL 验收可运行：
+
+```bash
+python scripts/run-postgres-acceptance.py
+```
+
+脚本使用 `TASKHUB_POSTGRES_DSN`，但将验收表隔离在 `taskhub_acceptance` schema，
+不会写入生产任务表。
+
 2026-09-06 在控制节点的 UTF-8 PostgreSQL 16 临时库执行完整测试：
 **61 passed、1 skipped**；跳过项为本机浏览器测试。随后由 Windows 图形节点
 `192.168.31.34` 使用系统 Microsoft Edge 执行独立图形验收并通过，产出任务列表、

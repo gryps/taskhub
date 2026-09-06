@@ -1,7 +1,8 @@
 const stages = [
   ["intake", "需求", "自动"], ["planning", "规划", "自动"],
   ["plan_approval", "计划审批", "人工"], ["implementation", "实施", "自动"],
-  ["review", "审查", "自动"], ["risk", "风险", "自动"],
+  ["acceptance", "验收", "自动"], ["review", "审查", "自动"],
+  ["risk", "风险", "自动"],
   ["supervision", "监督", "自动"], ["merge_approval", "发布审批", "人工"],
   ["merging", "发布", "自动"], ["completed", "完成", "终态"],
 ];
@@ -14,6 +15,7 @@ let deploymentTimer;
 const byId = (id) => document.getElementById(id);
 const stageIndex = (name) => stages.findIndex(([id]) => id === (
   name === "implementation_blocked" ? "implementation" :
+  name === "acceptance_blocked" ? "acceptance" :
   name === "merge_blocked" ? "merging" : name
 ));
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({
@@ -57,10 +59,11 @@ function render(run) {
   pendingAction = run.pending_action;
   renderFlow(run.stage, run.status, run.workflow_steps);
   const normalizedStage = run.stage === "implementation_blocked" ? "implementation"
+    : run.stage === "acceptance_blocked" ? "acceptance"
     : run.stage === "merge_blocked" ? "merging" : run.stage;
   byId("current-stage").textContent = stages.find(([id]) => id === normalizedStage)?.[1] || run.stage;
   const completed = (run.workflow_steps || []).filter((item) => item.state === "completed").length;
-  byId("flow-progress").textContent = `${run.status === "completed" ? 10 : completed}/10`;
+  byId("flow-progress").textContent = `${run.status === "completed" ? stages.length : completed}/${stages.length}`;
   byId("revision-summary").textContent = `${run.revision_count}/${run.max_revision_attempts}`;
   byId("timeline-summary").textContent = `${run.timeline.length} 条`;
   byId("timeline").innerHTML = run.timeline.map((item) => `
@@ -68,8 +71,12 @@ function render(run) {
   `).join("");
   const waiting = Boolean(pendingAction || run.blocking_reason);
   const action = byId("action");
+  byId("acceptance-submit").classList.toggle(
+    "hidden", pendingAction?.type !== "revision_limit"
+  );
   const actionStages = {plan_approval: "plan_approval", implementation_recovery: "implementation",
-    merge_approval: "merge_approval", publication_recovery: "merging", revision_limit: "supervision"};
+    acceptance_recovery: "acceptance", merge_approval: "merge_approval",
+    publication_recovery: "merging", revision_limit: "supervision"};
   action.dataset.stage = actionStages[pendingAction?.type] || normalizedStage;
   action.classList.toggle("hidden", !waiting);
   if (pendingAction?.type === "plan_approval") {
@@ -84,20 +91,26 @@ function render(run) {
     byId("action-detail").textContent = run.blocking_reason?.detail || "实施节点需要处理";
     byId("approve").textContent = "重试";
     byId("reject").textContent = "取消任务";
+  } else if (pendingAction?.type === "acceptance_recovery") {
+    byId("action-stage").textContent = "第 5 环 · 验收";
+    byId("action-title").textContent = "验收执行已阻塞";
+    byId("action-detail").textContent = run.blocking_reason?.detail || "验收节点需要处理";
+    byId("approve").textContent = "重新执行验收";
+    byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "merge_approval") {
-    byId("action-stage").textContent = "第 8 环 · 发布审批";
+    byId("action-stage").textContent = "第 9 环 · 发布审批";
     byId("action-title").textContent = "需要你批准发布";
     byId("action-detail").textContent = run.supervision?.summary || "监督角色已批准代码变更";
     byId("approve").textContent = "合并到权威分支";
     byId("reject").textContent = "拒绝发布";
   } else if (pendingAction?.type === "publication_recovery") {
-    byId("action-stage").textContent = "第 9 环 · 发布";
+    byId("action-stage").textContent = "第 10 环 · 发布";
     byId("action-title").textContent = "发布已阻塞";
     byId("action-detail").textContent = run.blocking_reason?.detail || "发布环境需要处理";
     byId("approve").textContent = "重新检查并发布";
     byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "revision_limit") {
-    byId("action-stage").textContent = "第 7 环 · 监督";
+    byId("action-stage").textContent = "第 8 环 · 监督";
     byId("action-title").textContent = "返工次数已达上限";
     byId("action-detail").textContent = run.supervision?.summary || "监督仍发现未解决的问题";
     byId("approve").textContent = "批准再返工一次";
@@ -119,6 +132,7 @@ function render(run) {
 
 function stageName(stage) {
   const normalized = stage === "implementation_blocked" ? "implementation"
+    : stage === "acceptance_blocked" ? "acceptance"
     : stage === "merge_blocked" ? "merging" : stage;
   return stages.find(([id]) => id === normalized)?.[1] || stage;
 }
@@ -140,6 +154,13 @@ function renderEvidence(run) {
     <p>施工节点：${escapeHtml(implementation.coding_node || "控制中心")}</p>
     <p>执行节点：${escapeHtml(implementation.execution_node || "控制中心")}</p>
     <p>${implementation.tests.map((test) => `${escapeHtml(test.command.join(" "))}: ${test.exit_code === 0 ? "通过" : "失败"}`).join(" · ")}</p>` : "尚未实施";
+  const acceptance = run.acceptance;
+  byId("acceptance-summary").textContent = acceptance
+    ? `${acceptance.evidence.filter((item) => item.status === "passed").length}/${acceptance.evidence.length} 通过`
+    : "尚未验收";
+  byId("acceptance-detail").innerHTML = acceptance ? acceptance.evidence.map((item) => `
+    <p><strong>${item.status === "passed" ? "通过" : "失败"} · ${escapeHtml(item.id)}</strong><br>
+    ${escapeHtml(item.summary)}<br><small>来源：${escapeHtml(item.source)}</small></p>`).join("") : "尚未验收";
   const supervision = run.supervision;
   byId("decision-summary").textContent = supervision
     ? (supervision.decision === "approve" ? "已通过" : "需返工") : "尚未裁决";
@@ -238,6 +259,7 @@ async function createProject(event) {
       project_id: byId("project-id").value,
       base_ref: byId("project-branch").value,
       test_commands: byId("project-tests").value,
+      acceptance_commands: byId("project-acceptance").value,
     })});
     await loadProjects(project.id);
     byId("project-message").textContent = `${project.name} 已创建并设为当前项目`;
@@ -275,6 +297,7 @@ async function attachProject(event) {
       repository: byId("attach-project-repository").value,
       base_ref: byId("attach-project-branch").value,
       test_commands: byId("attach-project-tests").value,
+      acceptance_commands: byId("attach-project-acceptance").value,
     })});
     await loadProjects(project.id);
     message.textContent = `${project.name} 已接入并设为当前项目`;
@@ -363,15 +386,34 @@ byId("start").addEventListener("click", async () => {
 async function decide(decision) {
   const planApproval = pendingAction?.type === "plan_approval";
   const endpoint = planApproval ? "approval" : "resume";
-  const recovery = ["implementation_recovery", "publication_recovery", "revision_limit"].includes(pendingAction?.type);
+  const recovery = ["implementation_recovery", "acceptance_recovery", "publication_recovery", "revision_limit"].includes(pendingAction?.type);
   const resolved = recovery ? (decision === "approve" ? "retry" : "cancel") : decision;
   const run = await request(`/api/runs/${currentRun}/${endpoint}`, {
     method: "POST", body: JSON.stringify({decision: resolved, comment: ""}),
   });
   render(run);
 }
+
+async function submitAcceptance(event) {
+  event.preventDefault();
+  const summary = byId("acceptance-note").value.trim();
+  const kind = byId("acceptance-kind").value;
+  const source = byId("acceptance-source").value.trim();
+  const run = await request(`/api/runs/${currentRun}/acceptance`, {
+    method: "POST",
+    body: JSON.stringify({evidence: [{
+      id: `${kind}-${Date.now()}`,
+      kind,
+      status: "passed",
+      source,
+      summary,
+    }]}),
+  });
+  render(run);
+}
 byId("approve").addEventListener("click", () => decide("approve"));
 byId("reject").addEventListener("click", () => decide("reject"));
+byId("acceptance-submit").addEventListener("submit", submitAcceptance);
 byId("deploy-release").addEventListener("click", deployRelease);
 
 request("/api/health").then(() => { byId("health").textContent = "服务正常"; });

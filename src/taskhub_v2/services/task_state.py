@@ -2,6 +2,7 @@
 from taskhub_v2.domain.models import ExecutionResult, RunStatus
 
 NODE_STAGES = {
+    "acceptance": "acceptance", "acceptance_recovery": "acceptance_blocked",
     "supervisor": "supervision", "revision": "implementation",
     "revision_limit": "supervision", "publication": "merging",
     "publication_recovery": "merge_blocked",
@@ -27,11 +28,16 @@ def checkpoint_values(snapshot):
 def workflow_steps(values):
     steps = [
         ("intake", "需求"), ("planning", "规划"), ("plan_approval", "计划审批"),
-        ("implementation", "实施"), ("review", "审查"), ("risk", "风险"),
+        ("implementation", "实施"), ("acceptance", "验收"),
+        ("review", "审查"), ("risk", "风险"),
         ("supervision", "监督"), ("merge_approval", "发布审批"),
         ("merging", "发布"), ("completed", "完成"),
     ]
-    aliases = {"implementation_blocked": "implementation", "merge_blocked": "merging"}
+    aliases = {
+        "implementation_blocked": "implementation",
+        "acceptance_blocked": "acceptance",
+        "merge_blocked": "merging",
+    }
     stage, status = values["current_stage"], values["status"]
     active_id = aliases.get(stage, stage)
     ids = [step[0] for step in steps]

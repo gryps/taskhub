@@ -21,7 +21,13 @@ from taskhub_v2.providers.health import ProviderHealthStore
 from taskhub_v2.security.auth import CSRF_COOKIE, SESSION_COOKIE, AuthService
 from taskhub_v2.services import RunService
 from taskhub_v2.services.providers import ProviderCatalog
-from taskhub_v2.workers import build_coder, build_publisher, build_test_scheduler, build_worker
+from taskhub_v2.workers import (
+    build_acceptance,
+    build_coder,
+    build_publisher,
+    build_test_scheduler,
+    build_worker,
+)
 from taskhub_v2.workers.coding_router import ScheduledCodingRouter
 from taskhub_v2.workflows import build_main_graph
 
@@ -61,6 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 checkpointer,
                 build_publisher(settings, test_scheduler),
+                build_acceptance(settings, test_scheduler),
             )
             app.state.run_service = RunService(
                 graph, projects if settings.worker_mode == "git" else None, task_index

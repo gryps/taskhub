@@ -6,16 +6,16 @@ from uuid import uuid4
 
 from langgraph.types import Command
 
-from taskhub_v2.services.task_state import NODE_STAGES, checkpoint_values, workflow_steps
-
 from taskhub_v2.domain.models import (
+    AcceptanceSubmission,
     ApprovalRequest,
+    ResumeRequest,
     RunStatus,
     RunView,
-    ResumeRequest,
     Stage,
     StartRunRequest,
 )
+from taskhub_v2.services.task_state import NODE_STAGES, checkpoint_values, workflow_steps
 
 
 class RunNotFoundError(LookupError):
@@ -51,6 +51,7 @@ class RunService:
             "status": RunStatus.RUNNING.value,
             "plan": None,
             "implementation": None,
+            "acceptance": None,
             "review": None,
             "risk": None,
             "supervision": None,
@@ -97,6 +98,7 @@ class RunService:
             revision_feedback=values.get("revision_feedback", ""),
             plan=values.get("plan"),
             implementation=values.get("implementation"),
+            acceptance=values.get("acceptance"),
             review=values.get("review"),
             risk=values.get("risk"),
             supervision=values.get("supervision"),
@@ -165,6 +167,19 @@ class RunService:
         if not current.next_nodes or request.decision not in action.get("choices", []):
             raise RunConflictError("decision is not valid for the pending action")
         await self._execute(run_id, Command(resume=request.model_dump(mode="json")))
+        return await self.get(run_id, sync=True)
+
+    async def submit_acceptance(
+        self, run_id: str, request: AcceptanceSubmission
+    ) -> RunView:
+        current = await self.get(run_id)
+        if current.stage != Stage.SUPERVISION or "revision_limit" not in current.next_nodes:
+            raise RunConflictError("run is not waiting for acceptance evidence")
+        payload = {
+            "decision": "reassess",
+            "evidence": [item.model_dump(mode="json") for item in request.evidence],
+        }
+        await self._execute(run_id, Command(resume=payload))
         return await self.get(run_id, sync=True)
 
     async def history(self, run_id: str) -> list[dict[str, Any]]:

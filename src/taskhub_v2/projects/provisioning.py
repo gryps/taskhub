@@ -33,6 +33,7 @@ class ProjectProvisioner:
         project_id: str,
         base_ref: str,
         test_commands: list[list[str]],
+        acceptance_commands: list[list[str]] | None = None,
     ) -> ProjectDefinition:
         if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,63}", project_id):
             raise ProjectProvisionError("项目编号只能使用小写字母、数字、短横线和下划线")
@@ -88,6 +89,7 @@ class ProjectProvisioner:
                 authority_remote="origin",
                 base_ref=base_ref,
                 test_commands=test_commands,
+                acceptance_commands=acceptance_commands or [],
             )
             return self.registry.add(project)
         except Exception as exc:
@@ -143,6 +145,7 @@ class ProjectProvisioner:
         name: str,
         base_ref: str,
         test_commands: list[list[str]],
+        acceptance_commands: list[list[str]] | None = None,
     ) -> ProjectDefinition:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.git", repository):
             raise ProjectProvisionError("Git 仓库名称无效")
@@ -191,6 +194,7 @@ class ProjectProvisioner:
                 authority_remote="origin",
                 base_ref=base_ref,
                 test_commands=test_commands,
+                acceptance_commands=acceptance_commands or [],
             )
             return self.registry.add(project)
         except Exception:

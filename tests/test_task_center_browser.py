@@ -127,7 +127,7 @@ def test_browser_history_approvals_and_recovery(monkeypatch, tmp_path):
             page.locator("#filter-stage").select_option("plan_approval")
             rows(page, 2)
             page.locator(f'tr[data-run-id="{ids[0]}"]').click()
-            expect(page.locator("#flow .step")).to_have_count(10)
+            expect(page.locator("#flow .step")).to_have_count(11)
             expect(page.locator(".composer")).to_be_hidden()
             action(page, "plan_approval", "批准计划")
             action(page, "merge_approval", "合并到权威分支")
@@ -155,7 +155,7 @@ def test_browser_history_approvals_and_recovery(monkeypatch, tmp_path):
             page.locator(f'tr[data-run-id="{ids[0]}"]').click()
             action(page, "merging", "重新检查并发布")
             expect(page.locator("#status")).to_have_text("已完成")
-            expect(page.locator("#flow .step.done")).to_have_count(10)
+            expect(page.locator("#flow .step.done")).to_have_count(11)
             expect(page.locator("#approve")).to_be_hidden()
             completed = context.request.get(f"{url}/api/runs/{ids[0]}").json()
             assert completed["timeline"][:len(timeline)] == timeline

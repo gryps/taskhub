@@ -9,7 +9,13 @@ from taskhub_v2.workflows.state import StepState, event, model_run
 
 def build_review_graph(provider: ModelProvider):
     async def review(state: StepState) -> dict:
-        evidence = json.dumps(state["implementation"] or {}, ensure_ascii=False)
+        evidence = json.dumps(
+            {
+                "implementation": state["implementation"] or {},
+                "acceptance": state.get("acceptance") or {},
+            },
+            ensure_ascii=False,
+        )
         result = await provider.review(state["requirement"], evidence)
         return {
             "review": result.content,

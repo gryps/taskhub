@@ -63,7 +63,7 @@ def test_task_center_lists_three_tasks_and_filters_production_lines():
         assert all(item["pending_action"]["choices"] for item in filtered["items"])
 
 
-def test_task_detail_exposes_backend_action_and_ten_stage_ui():
+def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
     with TestClient(create_app(settings())) as client:
         headers = login(client)
         run = client.post("/api/runs", headers=headers, json={
@@ -71,7 +71,7 @@ def test_task_detail_exposes_backend_action_and_ten_stage_ui():
         }).json()
         detail = client.get(f"/api/runs/{run['run_id']}").json()
         assert detail["pending_action"]["choices"] == ["approve", "reject"]
-        assert len(detail["workflow_steps"]) == 10
+        assert len(detail["workflow_steps"]) == 11
         assert detail["workflow_steps"][2]["state"] == "waiting_manual"
         assert detail["created_at"] and detail["updated_at"]
         html = client.get("/").text
@@ -81,8 +81,10 @@ def test_task_detail_exposes_backend_action_and_ten_stage_ui():
         assert '<details><summary>规划方案' in html
         script = client.get("/static/app.js").text
         assert "localStorage.setItem(\"taskhub_run_id\"" not in script
-        for stage in ("intake", "planning", "plan_approval", "implementation", "review",
-                      "risk", "supervision", "merge_approval", "merging", "completed"):
+        for stage in (
+            "intake", "planning", "plan_approval", "implementation", "acceptance",
+            "review", "risk", "supervision", "merge_approval", "merging", "completed",
+        ):
             assert f'"{stage}"' in script
 
 
@@ -104,12 +106,12 @@ def test_task_center_approvals_and_recovery_do_not_repeat_completed_work():
         assert client.get(base).json()['workflow_steps'][2]['state'] == 'waiting_manual'
         approved = client.post(base + '/approval', headers=headers,
                                json={'decision': 'approve'}).json()
-        assert approved['workflow_steps'][7]['state'] == 'waiting_manual'
+        assert approved['workflow_steps'][8]['state'] == 'waiting_manual'
         blocked = client.post(base + '/resume', headers=headers,
                               json={'decision': 'approve'}).json()
         assert blocked['blocking_reason']['detail'] == 'temporary publication failure'
         assert blocked['pending_action']['choices'] == ['retry', 'cancel']
-        assert blocked['workflow_steps'][8]['state'] == 'blocked'
+        assert blocked['workflow_steps'][9]['state'] == 'blocked'
         assert client.get('/api/runs?status=blocked').json()['total'] == 1
         assert client.post(base + '/resume', headers=headers,
                            json={'decision': 'approve'}).status_code == 409

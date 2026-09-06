@@ -73,6 +73,7 @@
           <label>项目编号（自动生成）<input id="project-id" required readonly></label>
           <label>基准分支<input id="project-branch" required value="main" maxlength="200"></label>
           <label class="wide">测试命令（每行一条）<textarea id="project-tests" rows="3" placeholder="python3 -m pytest -q"></textarea></label>
+          <label class="wide">验收命令（每行一条，可选）<textarea id="project-acceptance" rows="3" placeholder="python3 -m pytest tests/acceptance -q"></textarea></label>
         </div>
         <div class="form-actions">
           <button id="create-project" type="submit">创建并接入</button>
@@ -90,6 +91,7 @@
           <label>基准分支<input id="attach-project-branch" required value="main" maxlength="200"></label>
           <label class="wide">项目名称<input id="attach-project-name" required maxlength="100"></label>
           <label class="wide">测试命令（每行一条）<textarea id="attach-project-tests" rows="3"></textarea></label>
+          <label class="wide">验收命令（每行一条，可选）<textarea id="attach-project-acceptance" rows="3"></textarea></label>
           <div class="form-actions wide">
             <button id="attach-project" type="submit" class="secondary">接入所选项目</button>
             <span id="attach-project-message" role="status"></span>
@@ -128,6 +130,17 @@
           <button id="approve">批准计划</button>
           <button id="reject" class="secondary">拒绝</button>
         </div>
+        <form id="acceptance-submit" class="acceptance-submit hidden">
+          <select id="acceptance-kind" aria-label="证据类型">
+            <option value="browser">浏览器验收</option>
+            <option value="database">数据库验收</option>
+            <option value="test">自动化测试</option>
+            <option value="manual">人工验收</option>
+          </select>
+          <input id="acceptance-source" required maxlength="200" placeholder="证据来源，例如 windows-gui-34">
+          <textarea id="acceptance-note" required maxlength="4000" rows="3" placeholder="填写验收范围、结果和产物位置"></textarea>
+          <button type="submit">提交证据并重新审查</button>
+        </form>
       </aside>
       <aside id="deployment-action" class="action deployment-action hidden">
         <strong>部署已发布版本</strong>
@@ -142,6 +155,7 @@
       <div class="evidence-list">
         <details><summary>规划方案 <span id="plan-summary">尚未生成</span></summary><div id="plan-detail" class="evidence">尚未生成</div></details>
         <details><summary>代码与测试 <span id="change-summary">尚未实施</span></summary><div id="change-detail" class="evidence">尚未实施</div></details>
+        <details><summary>验收证据 <span id="acceptance-summary">尚未验收</span></summary><div id="acceptance-detail" class="evidence">尚未验收</div></details>
         <details><summary>监督裁决 <span id="decision-summary">尚未裁决</span></summary><div id="decision-detail" class="evidence">尚未裁决</div></details>
         <details><summary>权威发布 <span id="publication-summary">尚未发布</span></summary><div id="publication-detail" class="evidence">尚未发布</div></details>
         <details><summary>执行记录 <span id="timeline-summary">0 条</span></summary><ol id="timeline" class="timeline"></ol></details>

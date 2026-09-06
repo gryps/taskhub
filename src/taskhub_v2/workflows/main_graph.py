@@ -3,8 +3,10 @@ from langgraph.types import interrupt
 
 from taskhub_v2.domain.models import ExecutionResult, RunStatus, Stage
 from taskhub_v2.providers.base import ModelProvider
-from taskhub_v2.workers.base import PublisherGateway, WorkerGateway
+from taskhub_v2.workers.acceptance import LocalAcceptanceGateway
+from taskhub_v2.workers.base import AcceptanceGateway, PublisherGateway, WorkerGateway
 from taskhub_v2.workers.publisher import LocalPublisher
+from taskhub_v2.workflows.acceptance import build_acceptance_graph
 from taskhub_v2.workflows.implementation import build_implementation_graph
 from taskhub_v2.workflows.intake import build_intake_graph
 from taskhub_v2.workflows.planning import build_planning_graph
@@ -19,8 +21,10 @@ def build_main_graph(
     worker: WorkerGateway,
     checkpointer,
     publisher: PublisherGateway | None = None,
+    acceptance: AcceptanceGateway | None = None,
 ):
     publisher = publisher or LocalPublisher()
+    acceptance = acceptance or LocalAcceptanceGateway()
 
     async def request_plan_approval(state: CodingState) -> dict:
         response = interrupt(
@@ -82,6 +86,30 @@ def build_main_graph(
             ),
         }
 
+    async def recover_acceptance(state: CodingState) -> dict:
+        response = interrupt(
+            {
+                "type": "acceptance_recovery",
+                "run_id": state["run_id"],
+                "reason": state.get("blocking_reason"),
+                "choices": ["retry", "cancel"],
+            }
+        )
+        decision = response.get("decision") if isinstance(response, dict) else response
+        retry = decision == "retry"
+        return {
+            "decision": decision,
+            "pending_action": None,
+            "blocking_reason": None if retry else state.get("blocking_reason"),
+            "current_stage": Stage.ACCEPTANCE.value if retry else Stage.REJECTED.value,
+            "status": RunStatus.RUNNING.value if retry else RunStatus.REJECTED.value,
+            "timeline": event(
+                Stage.ACCEPTANCE_BLOCKED,
+                "Acceptance retry requested" if retry else "Run cancelled",
+                "owner",
+            ),
+        }
+
     async def request_merge_approval(state: CodingState) -> dict:
         response = interrupt(
             {
@@ -118,6 +146,7 @@ def build_main_graph(
             "revision_count": revision,
             "revision_feedback": feedback,
             "implementation": state.get("implementation"),
+            "acceptance": None,
             "review": None,
             "risk": None,
             "supervision": None,
@@ -139,11 +168,15 @@ def build_main_graph(
                 "run_id": state["run_id"],
                 "revision_count": state.get("revision_count", 0),
                 "supervision": state.get("supervision"),
-                "choices": ["retry", "cancel"],
+                "choices": ["reassess", "retry", "cancel"],
             }
         )
         decision = response.get("decision") if isinstance(response, dict) else response
         retry = decision == "retry"
+        reassess = decision == "reassess"
+        submitted = response.get("evidence", []) if isinstance(response, dict) else []
+        existing = (state.get("acceptance") or {}).get("evidence", [])
+        combined = [*existing, *submitted]
         return {
             "decision": decision,
             "max_revision_attempts": (
@@ -151,14 +184,38 @@ def build_main_graph(
                 if retry
                 else int(state.get("max_revision_attempts", 2))
             ),
+            "acceptance": (
+                {
+                    "status": (
+                        "passed"
+                        if combined and all(item.get("status") == "passed" for item in combined)
+                        else "failed"
+                    ),
+                    "evidence": combined,
+                }
+                if reassess
+                else state.get("acceptance")
+            ),
             "pending_action": None,
             "current_stage": (
-                Stage.IMPLEMENTATION.value if retry else Stage.REJECTED.value
+                Stage.REVIEW.value
+                if reassess
+                else Stage.IMPLEMENTATION.value
+                if retry
+                else Stage.REJECTED.value
             ),
-            "status": RunStatus.RUNNING.value if retry else RunStatus.REJECTED.value,
+            "status": (
+                RunStatus.RUNNING.value if retry or reassess else RunStatus.REJECTED.value
+            ),
             "timeline": event(
                 Stage.SUPERVISION,
-                "Extra revision approved" if retry else "Run cancelled",
+                (
+                    "Acceptance evidence submitted"
+                    if reassess
+                    else "Extra revision approved"
+                    if retry
+                    else "Run cancelled"
+                ),
                 "owner",
                 response.get("comment", "") if isinstance(response, dict) else "",
             ),
@@ -228,6 +285,9 @@ def build_main_graph(
         return "implementation" if state.get("decision") == "approve" else "reject"
 
     def route_implementation(state: CodingState) -> str:
+        return "recovery" if state.get("status") == RunStatus.BLOCKED else "acceptance"
+
+    def route_acceptance(state: CodingState) -> str:
         return "recovery" if state.get("status") == RunStatus.BLOCKED else "review"
 
     def route_recovery(state: CodingState) -> str:
@@ -244,6 +304,8 @@ def build_main_graph(
         return "revision_limit"
 
     def route_revision_override(state: CodingState) -> str:
+        if state.get("decision") == "reassess":
+            return "review"
         return "revision" if state.get("decision") == "retry" else "reject"
 
     def route_merge_approval(state: CodingState) -> str:
@@ -260,6 +322,7 @@ def build_main_graph(
     builder.add_node("planning", build_planning_graph(provider))
     builder.add_node("plan_approval", request_plan_approval)
     builder.add_node("implementation", build_implementation_graph(worker))
+    builder.add_node("acceptance", build_acceptance_graph(acceptance))
     builder.add_node("review", build_review_graph(provider))
     builder.add_node("risk", build_risk_graph(provider))
     builder.add_node("supervisor", build_supervisor_graph(provider))
@@ -269,6 +332,7 @@ def build_main_graph(
     builder.add_node("publication", publish)
     builder.add_node("publication_recovery", recover_publication)
     builder.add_node("implementation_recovery", recover_implementation)
+    builder.add_node("acceptance_recovery", recover_acceptance)
     builder.add_node("reject", reject)
 
     builder.add_edge(START, "intake")
@@ -280,12 +344,22 @@ def build_main_graph(
     builder.add_conditional_edges(
         "implementation",
         route_implementation,
-        {"recovery": "implementation_recovery", "review": "review"},
+        {"recovery": "implementation_recovery", "acceptance": "acceptance"},
     )
     builder.add_conditional_edges(
         "implementation_recovery",
         route_recovery,
         {"implementation": "implementation", "reject": "reject"},
+    )
+    builder.add_conditional_edges(
+        "acceptance",
+        route_acceptance,
+        {"recovery": "acceptance_recovery", "review": "review"},
+    )
+    builder.add_conditional_edges(
+        "acceptance_recovery",
+        route_recovery,
+        {"implementation": "acceptance", "reject": "reject"},
     )
     builder.add_edge("review", "risk")
     builder.add_edge("risk", "supervisor")
@@ -302,7 +376,7 @@ def build_main_graph(
     builder.add_conditional_edges(
         "revision_limit",
         route_revision_override,
-        {"revision": "revision", "reject": "reject"},
+        {"review": "review", "revision": "revision", "reject": "reject"},
     )
     builder.add_conditional_edges(
         "merge_approval",

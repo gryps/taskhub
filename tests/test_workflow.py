@@ -4,6 +4,9 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
 from taskhub_v2.domain.models import (
+    AcceptanceEvidence,
+    AcceptanceResult,
+    AcceptanceSubmission,
     ApprovalRequest,
     ExecutionResult,
     ModelResult,
@@ -88,6 +91,40 @@ class RevisionRecordingWorker(RecordingWorker):
         return ExecutionResult(summary=f"revision={revision}")
 
 
+class RecoveringAcceptance:
+    def __init__(self):
+        self.calls = 0
+
+    async def verify(self, run_id, project_id, implementation):
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("browser unavailable")
+        return AcceptanceResult(
+            status="passed",
+            evidence=[
+                AcceptanceEvidence(
+                    id="browser", kind="browser", status="passed",
+                    source="windows-gui-34", summary="Edge passed",
+                )
+            ],
+        )
+
+
+class EvidenceAwareProvider(RecordingProvider):
+    async def supervise(self, requirement, implementation, review, risk):
+        self.supervisor_calls += 1
+        approved = "windows-gui-34" in implementation
+        return ModelResult(
+            content=SupervisionDecision(
+                decision="approve" if approved else "reject",
+                summary="accepted" if approved else "Browser evidence required",
+                reasons=["Edge evidence present" if approved else "Run Edge acceptance"],
+            ),
+            provider="recording",
+            model="test",
+        )
+
+
 def make_service(checkpointer=None):
     provider = RecordingProvider()
     worker = RecordingWorker()
@@ -138,6 +175,7 @@ def test_run_pauses_for_plan_approval_then_completes():
             "Plan created",
             "Plan approved",
             "Worker completed",
+            "Acceptance evidence collected",
             "Review completed",
             "Risk assessed",
             "Change accepted",
@@ -329,5 +367,70 @@ def test_revision_limit_requires_owner_decision():
             limited.run_id, ResumeRequest(decision="cancel", comment="Stop")
         )
         assert rejected.status == RunStatus.REJECTED
+
+    asyncio.run(scenario())
+
+
+def test_acceptance_failure_has_its_own_recovery_without_rerunning_worker():
+    async def scenario():
+        provider = RecordingProvider()
+        worker = RecordingWorker()
+        acceptance = RecoveringAcceptance()
+        service = RunService(
+            build_main_graph(
+                provider, worker, InMemorySaver(), acceptance=acceptance
+            )
+        )
+        waiting = await service.start(
+            StartRunRequest(project_id="shop", requirement="Verify in Edge")
+        )
+        blocked = await service.approve(
+            waiting.run_id, ApprovalRequest(decision="approve")
+        )
+        assert blocked.stage == Stage.ACCEPTANCE_BLOCKED
+        assert blocked.pending_action["type"] == "acceptance_recovery"
+
+        publishing = await service.resume(
+            blocked.run_id, ResumeRequest(decision="retry")
+        )
+        assert publishing.stage == Stage.MERGE_APPROVAL
+        assert acceptance.calls == 2
+        assert worker.calls == 1
+
+    asyncio.run(scenario())
+
+
+def test_submitted_acceptance_evidence_reassesses_without_coding_revision():
+    async def scenario():
+        provider = EvidenceAwareProvider()
+        worker = RecordingWorker()
+        service = RunService(build_main_graph(provider, worker, InMemorySaver()))
+        waiting = await service.start(
+            StartRunRequest(project_id="shop", requirement="Require browser evidence")
+        )
+        limited = await service.approve(
+            waiting.run_id, ApprovalRequest(decision="approve")
+        )
+        # Two automatic revisions are expected before the configured limit.
+        calls_at_limit = worker.calls
+        assert limited.pending_action["type"] == "revision_limit"
+
+        reassessed = await service.submit_acceptance(
+            limited.run_id,
+            AcceptanceSubmission(
+                evidence=[
+                    AcceptanceEvidence(
+                        id="edge",
+                        kind="browser",
+                        status="passed",
+                        source="windows-gui-34",
+                        summary="Microsoft Edge workflow passed",
+                    )
+                ]
+            ),
+        )
+        assert reassessed.stage == Stage.MERGE_APPROVAL
+        assert reassessed.acceptance.evidence[-1].source == "windows-gui-34"
+        assert worker.calls == calls_at_limit
 
     asyncio.run(scenario())

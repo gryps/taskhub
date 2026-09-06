@@ -44,6 +44,19 @@ api -> services -> workflows -> domain
 persistence -> LangGraph checkpoint implementation
 ```
 
+## Acceptance Evidence
+
+Implementation tests and delivery acceptance are separate gates. A project can
+declare `acceptance_commands`; TaskHub schedules them with the `acceptance`
+workload against the task workspace and persists command output plus artifact
+digests in LangGraph state. Review, risk, and supervision receive both the code
+change and structured acceptance evidence.
+
+An acceptance failure pauses at `acceptance_recovery` without rerunning the
+coding model. At the revision limit, authenticated operators can submit database,
+browser, or manual evidence through `POST /api/runs/{run_id}/acceptance`; the graph
+then returns directly to review. API handlers never patch checkpoint state.
+
 Project-specific paths, build commands, and product names are forbidden in
 platform source and checked by an architecture test.
 

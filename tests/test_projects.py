@@ -28,7 +28,9 @@ class FakeProvisioner:
         self.registry = registry
         self.repository_path = repository_path
 
-    async def create(self, name, project_id, base_ref, test_commands):
+    async def create(
+        self, name, project_id, base_ref, test_commands, acceptance_commands=None
+    ):
         return self.registry.add(
             ProjectDefinition(
                 id=project_id,
@@ -37,6 +39,7 @@ class FakeProvisioner:
                 authority_remote="origin",
                 base_ref=base_ref,
                 test_commands=test_commands,
+                acceptance_commands=acceptance_commands or [],
             )
         )
 
@@ -51,7 +54,9 @@ class FakeProvisioner:
             }
         ]
 
-    async def attach(self, repository, name, base_ref, test_commands):
+    async def attach(
+        self, repository, name, base_ref, test_commands, acceptance_commands=None
+    ):
         assert repository == "shop.git"
         return self.registry.add(
             ProjectDefinition(
@@ -61,6 +66,7 @@ class FakeProvisioner:
                 authority_remote="origin",
                 base_ref=base_ref,
                 test_commands=test_commands,
+                acceptance_commands=acceptance_commands or [],
             )
         )
 
@@ -87,6 +93,7 @@ def test_new_project_creation_uses_the_provisioner(tmp_path: Path):
                 "project_id": "new-shop",
                 "base_ref": "main",
                 "test_commands": "npm test",
+                "acceptance_commands": "python3 accept.py",
             },
         )
 
@@ -94,6 +101,7 @@ def test_new_project_creation_uses_the_provisioner(tmp_path: Path):
     assert response.json()["id"] == "new-shop"
     assert response.json()["name"] == "New Shop"
     assert response.json()["test_commands"] == [["npm", "test"]]
+    assert response.json()["acceptance_commands"] == [["python3", "accept.py"]]
 
 
 def test_authority_project_can_be_selected_and_attached_from_the_api(tmp_path: Path):

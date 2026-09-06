@@ -6,10 +6,17 @@ from fastapi.responses import StreamingResponse
 
 from taskhub_v2.api.dependencies import get_run_service
 from taskhub_v2.domain.models import (
-    ApprovalRequest, ResumeRequest, RunStatus, RunView, Stage, StartRunRequest, TaskPage,
+    AcceptanceSubmission,
+    ApprovalRequest,
+    ResumeRequest,
+    RunStatus,
+    RunView,
+    Stage,
+    StartRunRequest,
+    TaskPage,
 )
-from taskhub_v2.services.runs import RunConflictError, RunNotFoundError, RunService
 from taskhub_v2.projects import ProjectNotFoundError
+from taskhub_v2.services.runs import RunConflictError, RunNotFoundError, RunService
 
 router = APIRouter(prefix="/api")
 Service = Annotated[RunService, Depends(get_run_service)]
@@ -66,6 +73,18 @@ async def approve_run(run_id: str, payload: ApprovalRequest, service: Service) -
 async def resume_run(run_id: str, payload: ResumeRequest, service: Service) -> RunView:
     try:
         return await service.resume(run_id, payload)
+    except RunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="run not found") from exc
+    except RunConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/runs/{run_id}/acceptance", response_model=RunView)
+async def submit_acceptance(
+    run_id: str, payload: AcceptanceSubmission, service: Service
+) -> RunView:
+    try:
+        return await service.submit_acceptance(run_id, payload)
     except RunNotFoundError as exc:
         raise HTTPException(status_code=404, detail="run not found") from exc
     except RunConflictError as exc:

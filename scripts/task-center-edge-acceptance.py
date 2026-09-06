@@ -84,7 +84,7 @@ def run_acceptance(url, output):
         page.locator("#filter-stage").select_option("plan_approval")
         rows(page, 2)
         page.locator(f'tr[data-run-id="{ids[0]}"]').click()
-        expect(page.locator("#flow .step")).to_have_count(10)
+        expect(page.locator("#flow .step")).to_have_count(11)
         action(page, "plan_approval", "批准计划")
         action(page, "merge_approval", "合并到权威分支")
         expect(page.locator("#status")).to_have_text("已阻塞")
@@ -107,7 +107,7 @@ def run_acceptance(url, output):
         page.locator(f'tr[data-run-id="{ids[0]}"]').click()
         action(page, "merging", "重新检查并发布")
         expect(page.locator("#status")).to_have_text("已完成")
-        expect(page.locator("#flow .step.done")).to_have_count(10)
+        expect(page.locator("#flow .step.done")).to_have_count(11)
         completed = context.request.get(f"{url}/api/runs/{ids[0]}").json()
         assert completed["timeline"][:len(timeline)] == timeline
         page.screenshot(path=str(output / "task-recovered.png"), full_page=True)

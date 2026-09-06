@@ -13,6 +13,8 @@ class Stage(StrEnum):
     PLAN_APPROVAL = "plan_approval"
     IMPLEMENTATION = "implementation"
     IMPLEMENTATION_BLOCKED = "implementation_blocked"
+    ACCEPTANCE = "acceptance"
+    ACCEPTANCE_BLOCKED = "acceptance_blocked"
     REVIEW = "review"
     RISK = "risk"
     SUPERVISION = "supervision"
@@ -85,6 +87,7 @@ class ProjectDefinition(BaseModel):
     authority_remote: str = ""
     base_ref: str = "main"
     test_commands: list[list[str]] = Field(default_factory=list)
+    acceptance_commands: list[list[str]] = Field(default_factory=list)
     test_timeout_seconds: int = Field(default=600, ge=1, le=3600)
     max_revision_attempts: int = Field(default=2, ge=0, le=10)
 
@@ -109,7 +112,7 @@ class NodeDefinition(BaseModel):
     kind: Literal["local", "remote"]
     url: str = ""
     slots: int = Field(default=1, ge=1, le=16)
-    workloads: set[Literal["test", "build", "coding"]] = Field(
+    workloads: set[Literal["test", "build", "coding", "acceptance"]] = Field(
         default_factory=lambda: {"test", "build"}
     )
     priority: int = Field(default=100, ge=0, le=10_000)
@@ -143,6 +146,25 @@ class ExecutionResult(BaseModel):
     execution_node: str = ""
     coding_node: str = ""
     model_run: ModelRun | None = None
+
+
+class AcceptanceEvidence(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    kind: Literal["test", "database", "browser", "manual", "other"] = "other"
+    status: Literal["passed", "failed"]
+    source: str = Field(min_length=1, max_length=200)
+    summary: str = Field(min_length=1, max_length=4000)
+    tests: list[TestExecution] = Field(default_factory=list)
+    artifacts: list[Artifact] = Field(default_factory=list)
+
+
+class AcceptanceResult(BaseModel):
+    status: Literal["passed", "failed"]
+    evidence: list[AcceptanceEvidence] = Field(default_factory=list)
+
+
+class AcceptanceSubmission(BaseModel):
+    evidence: list[AcceptanceEvidence] = Field(min_length=1, max_length=20)
 
 
 class PublicationResult(BaseModel):
@@ -209,6 +231,7 @@ class RunView(BaseModel):
     revision_feedback: str = ""
     plan: Plan | None = None
     implementation: ExecutionResult | None = None
+    acceptance: AcceptanceResult | None = None
     review: str | None = None
     risk: str | None = None
     supervision: SupervisionDecision | None = None

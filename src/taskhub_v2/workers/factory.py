@@ -7,6 +7,7 @@ from taskhub_v2.git import GitWorkspaceManager
 from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.providers.codex_account import CodexAccountProvider
 from taskhub_v2.providers.health import ProviderHealthStore
+from taskhub_v2.workers.acceptance import LocalAcceptanceGateway, ProjectAcceptanceGateway
 from taskhub_v2.workers.base import PublisherGateway, WorkerGateway
 from taskhub_v2.workers.coding_router import CodexCodingRouter
 from taskhub_v2.workers.git_coder import GitCodingWorker
@@ -64,6 +65,16 @@ def build_publisher(settings: Settings, test_scheduler=None) -> PublisherGateway
         return LocalPublisher()
     return GitPublisher(
         ProjectRegistry(settings.projects_file), settings.workspace_root, test_scheduler
+    )
+
+
+def build_acceptance(settings: Settings, test_scheduler=None):
+    if settings.worker_mode == "local":
+        return LocalAcceptanceGateway()
+    return ProjectAcceptanceGateway(
+        ProjectRegistry(settings.projects_file),
+        test_scheduler or build_test_scheduler(settings),
+        ArtifactStore(settings.artifact_root),
     )
 
 
