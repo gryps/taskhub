@@ -9,6 +9,7 @@ let currentRun = localStorage.getItem("taskhub_run_id");
 let currentProjectId = localStorage.getItem("taskhub_project_id");
 let eventSource;
 let pendingAction;
+let deploymentTimer;
 
 const byId = (id) => document.getElementById(id);
 const stageIndex = (name) => stages.findIndex(([id]) => id === (
@@ -77,6 +78,7 @@ function render(run) {
     byId("reject").textContent = "终止任务";
   }
   renderEvidence(run);
+  refreshDeployment(run);
 }
 
 function renderEvidence(run) {
@@ -101,6 +103,51 @@ function renderEvidence(run) {
     <strong>已发布到 ${escapeHtml(publication.authority_ref)}</strong>
     <p><code>${escapeHtml(publication.published_commit)}</code>${publication.rebased ? " · 已同步最新基线" : ""}</p>
     <p>发布验证节点：${escapeHtml(publication.execution_node || "控制中心")}</p>` : "尚未发布";
+}
+
+async function refreshDeployment(run) {
+  clearTimeout(deploymentTimer);
+  const panel = byId("deployment-action");
+  if (!run.publication || run.status !== "completed") {
+    panel.classList.add("hidden");
+    return;
+  }
+  try {
+    const state = await request(`/api/deployment/status?run_id=${encodeURIComponent(run.run_id)}`);
+    panel.classList.toggle("hidden", !state.eligible);
+    if (!state.eligible) return;
+    const labels = {
+      idle: "尚未部署", queued: "等待部署执行器", validating: "正在校验权威提交",
+      testing: "正在执行部署前测试", deploying: "正在替换应用文件",
+      restarting: "正在重启并检查服务", completed: "部署完成，服务运行正常",
+      failed: "部署失败", rolled_back: "部署失败，已自动回滚",
+      rollback_failed: "部署和自动回滚均失败", unknown: "部署状态未知",
+    };
+    const label = labels[state.status] || state.status;
+    byId("deployment-detail").textContent = `${label}${state.detail ? `：${state.detail}` : ""}`;
+    const activeStates = ["queued", "validating", "testing", "deploying", "restarting"];
+    const active = activeStates.includes(state.status);
+    byId("deploy-release").disabled = active;
+    if (active) deploymentTimer = setTimeout(() => refreshDeployment(run), 1500);
+  } catch (error) {
+    panel.classList.remove("hidden");
+    byId("deployment-detail").textContent = `正在等待控制中心恢复：${error.message}`;
+    deploymentTimer = setTimeout(() => refreshDeployment(run), 2000);
+  }
+}
+
+async function deployRelease() {
+  const button = byId("deploy-release");
+  button.disabled = true;
+  byId("deployment-detail").textContent = "正在启动独立部署执行器";
+  try {
+    await request(`/api/deployment/${currentRun}`, {method: "POST"});
+    const run = await request(`/api/runs/${currentRun}`);
+    refreshDeployment(run);
+  } catch (error) {
+    byId("deployment-detail").textContent = error.message;
+    button.disabled = false;
+  }
 }
 
 async function request(path, options = {}) {
@@ -311,6 +358,7 @@ async function decide(decision) {
 }
 byId("approve").addEventListener("click", () => decide("approve"));
 byId("reject").addEventListener("click", () => decide("reject"));
+byId("deploy-release").addEventListener("click", deployRelease);
 
 request("/api/health").then(() => { byId("health").textContent = "服务正常"; });
 byId("login-button").addEventListener("click", login);

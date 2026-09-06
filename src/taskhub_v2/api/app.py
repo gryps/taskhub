@@ -6,11 +6,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from taskhub_v2.api.auth_routes import router as auth_router
+from taskhub_v2.api.deployment_routes import router as deployment_router
 from taskhub_v2.api.node_routes import router as node_router
 from taskhub_v2.api.project_routes import router as project_router
 from taskhub_v2.api.provider_routes import router as provider_router
 from taskhub_v2.api.routes import router
 from taskhub_v2.config import Settings, get_settings
+from taskhub_v2.deployment import DeploymentManager
 from taskhub_v2.persistence.checkpoints import checkpoint_store
 from taskhub_v2.projects import ProjectProvisioner, ProjectRegistry
 from taskhub_v2.providers import build_provider
@@ -73,20 +75,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.auth = auth
     app.state.projects = projects
     app.state.project_provisioner = project_provisioner
+    app.state.deployment_manager = DeploymentManager(settings)
     app.include_router(router)
     app.include_router(provider_router)
     app.include_router(auth_router)
     app.include_router(project_router)
     app.include_router(node_router)
+    app.include_router(deployment_router)
 
     @app.middleware("http")
     async def require_authentication(request, call_next):
         path = request.url.path
-        public = path == "/" or path.startswith("/static/") or path in {
-            "/api/health",
-            "/api/auth/status",
-            "/api/auth/login",
-        }
+        public = (
+            path == "/"
+            or path.startswith("/static/")
+            or path
+            in {
+                "/api/health",
+                "/api/auth/status",
+                "/api/auth/login",
+            }
+        )
         if public:
             return await call_next(request)
         session = auth.read_session(request.cookies.get(SESSION_COOKIE))

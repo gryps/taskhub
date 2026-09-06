@@ -72,6 +72,7 @@ button:disabled { opacity: .55; cursor: wait; }
 .step.active { border-color: #d58c1d; background: #fff1d6; }
 .action { padding: 16px; border-left: 4px solid #d58c1d; background: #fff8e9; }
 .action p { margin: 6px 0 14px; color: #5f5540; }
+.deployment-action { margin-top: 12px; border-left-color: #167455; background: #e8f3ef; }
 .actions { display: flex; gap: 8px; }
 .evidence-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
 .evidence-grid section { min-width: 0; border-bottom: 1px solid #dce2df; }

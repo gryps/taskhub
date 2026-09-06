@@ -159,13 +159,17 @@ class ProjectProvisioner:
 
         remote_path = self.authority_root / repository
         remote_url = f"ssh://{self.authority_host}{remote_path}"
+        bare_check = (
+            f"test -d {shlex.quote(str(remote_path))} && "
+            f"git --git-dir={shlex.quote(str(remote_path))} "
+            "rev-parse --is-bare-repository | grep -qx true"
+        )
         await self._run(
             "ssh",
             "-o",
             "BatchMode=yes",
             self.authority_host,
-            f"test -d {shlex.quote(str(remote_path))} && "
-            f"test \"$(git --git-dir={shlex.quote(str(remote_path))} rev-parse --is-bare-repository)\" = true",
+            bare_check,
             error_prefix="所选权威 Git 仓库不存在",
         )
         try:

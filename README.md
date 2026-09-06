@@ -46,6 +46,19 @@ Managed projects record an `authority_remote`. Publication fetches that remote,
 rebases and retests when necessary, then pushes with a lease after owner approval.
 A rejected push is a visible recoverable block and is never reported as successful.
 
+## Governed Self Deployment
+
+Self deployment is disabled by default and can be bound to exactly one registered
+project with `TASKHUB_SELF_DEPLOY_PROJECT_ID`. After that project's run completes
+authority publication, the run view exposes **Deploy and restart**. Deployment runs
+in an independent user systemd unit so the control-plane restart cannot terminate it.
+
+The executor verifies that the requested commit is the current authority branch,
+requires non-empty project test commands, tests an archived release candidate, keeps
+`.env` and `.venv`, restarts the configured service, and checks the health endpoint.
+An unhealthy release restores the prior application files and restarts the service.
+Deployment state is persisted outside the application directory.
+
 ## Run Locally
 
 ```bash
