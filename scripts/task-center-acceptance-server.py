@@ -117,6 +117,7 @@ def main():
         node_state_file=str(state_dir / "nodes-state.json"),
         artifact_root=str(state_dir / "artifacts"),
         node_token=os.getenv("TASKHUB_NODE_TOKEN", ""),
+        test_runner="scheduled",
     )
     provider = AcceptanceProvider()
     worker = AcceptanceWorker(settings.artifact_root)
