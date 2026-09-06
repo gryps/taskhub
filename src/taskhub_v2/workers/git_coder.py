@@ -9,7 +9,6 @@ from taskhub_v2.git import GitWorkspaceManager
 from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.workers.coding_router import CodexCodingRouter
 
-
 FORBIDDEN_FILES = {".env", ".env.local", "auth.json", "credentials.json"}
 GENERATED_PARTS = {"__pycache__", ".pytest_cache", "node_modules", "dist", "build"}
 GENERATED_SUFFIXES = {".pyc", ".pyo", ".coverage"}
@@ -78,6 +77,10 @@ class GitCodingWorker:
         )
         changed_files = await self._changed_files(workspace.path)
         if not changed_files:
+            if revision and await self._has_implementation(workspace.path, workspace.base_commit):
+                return await self._evidence_only_result(
+                    run_id, revision, workspace, project, model_result
+                )
             raise WorkerExecutionError("no_changes", "coding model produced no file changes")
         forbidden = [name for name in changed_files if Path(name).name in FORBIDDEN_FILES]
         if forbidden:
@@ -131,6 +134,52 @@ class GitCodingWorker:
             changed_files=changed_files,
             artifacts=[artifact],
             tests=tests,
+            execution_node=scheduled.node_id,
+            coding_node=str(model_result.usage.get("coding_node", "controller-31")),
+            model_run=ModelRun(
+                role="coder",
+                provider=model_result.provider,
+                model=model_result.model,
+                duration_ms=model_result.duration_ms,
+                failed_providers=model_result.failed_providers,
+            ),
+        )
+
+    async def _has_implementation(self, workdir: str, base_commit: str) -> bool:
+        head = (await self._git(workdir, "rev-parse", "HEAD")).strip()
+        return head != base_commit
+
+    async def _evidence_only_result(
+        self, run_id, revision, workspace, project, model_result
+    ) -> ExecutionResult:
+        scheduled = await self.test_scheduler.run(
+            f"{run_id}-r{revision}",
+            run_id,
+            project.test_commands,
+            project.test_timeout_seconds,
+            workspace.path,
+        )
+        failed = [test for test in scheduled.tests if test.exit_code]
+        if failed:
+            raise WorkerExecutionError("tests_failed", failed[0].output_tail)
+        commit = (await self._git(workspace.path, "rev-parse", "HEAD")).strip()
+        diff = await self._git(
+            workspace.path, "diff", "--binary", f"{workspace.base_commit}..{commit}"
+        )
+        changed = await self._git(
+            workspace.path, "diff", "--name-only", f"{workspace.base_commit}..{commit}"
+        )
+        artifact = self.artifacts.write_text(
+            run_id, self._artifact_name(revision), "git_diff", diff
+        )
+        return ExecutionResult(
+            summary=model_result.content.summary,
+            evidence=diff[-50_000:],
+            workspace=workspace,
+            commit=commit,
+            changed_files=[line for line in changed.splitlines() if line],
+            artifacts=[artifact],
+            tests=scheduled.tests,
             execution_node=scheduled.node_id,
             coding_node=str(model_result.usage.get("coding_node", "controller-31")),
             model_run=ModelRun(

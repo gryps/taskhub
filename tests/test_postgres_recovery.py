@@ -35,8 +35,10 @@ def test_postgres_checkpoint_survives_runtime_recreation():
             second_graph = build_main_graph(RecordingProvider(), second_worker, second_store)
             service = RunService(second_graph)
 
-            restored = await service.get(waiting.run_id)
-            assert restored.status == RunStatus.WAITING
+            restored = await asyncio.gather(
+                *(service.get(waiting.run_id) for _ in range(12))
+            )
+            assert all(item.status == RunStatus.WAITING for item in restored)
 
             publication_waiting = await service.approve(
                 waiting.run_id, ApprovalRequest(decision="approve")

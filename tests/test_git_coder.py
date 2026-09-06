@@ -7,7 +7,7 @@ from taskhub_v2.artifacts import ArtifactStore
 from taskhub_v2.domain.models import CodeChangeSummary, ModelResult, Plan
 from taskhub_v2.git import GitWorkspaceManager
 from taskhub_v2.projects import ProjectRegistry
-from taskhub_v2.workers.git_coder import GitCodingWorker
+from taskhub_v2.workers.git_coder import GitCodingWorker, WorkerExecutionError
 
 
 def git(path: Path, *args: str) -> str:
@@ -45,6 +45,16 @@ class PythonWritingCoder(FileWritingCoder):
         )
 
 
+class NoChangeCoder(FileWritingCoder):
+    async def modify(self, requirement, plan, workdir, feedback=""):
+        self.calls += 1
+        return ModelResult(
+            content=CodeChangeSummary(summary="Validated existing implementation", tests=[]),
+            provider="fake_coder",
+            model="test",
+        )
+
+
 def test_git_worker_changes_tests_artifacts_and_commits(tmp_path: Path):
     repository = tmp_path / "authority"
     repository.mkdir()
@@ -63,7 +73,12 @@ def test_git_worker_changes_tests_artifacts_and_commits(tmp_path: Path):
                         "id": "demo",
                         "repository": str(repository),
                         "test_commands": [
-                            ["python3", "-c", "from pathlib import Path; assert Path('feature.txt').read_text() == 'implemented\\n'"]
+                            [
+                                "python3",
+                                "-c",
+                                "from pathlib import Path; "
+                                "assert Path('feature.txt').read_text() == 'implemented\\n'",
+                            ]
                         ],
                     }
                 ]
@@ -202,3 +217,67 @@ def test_git_worker_creates_and_recovers_revision_commit(tmp_path: Path):
     assert git(Path(revised.workspace.path), "log", "-1", "--format=%B").endswith(
         "TaskHub-Revision: 1"
     )
+
+
+def test_git_worker_accepts_evidence_only_revision_but_not_empty_initial_work(tmp_path: Path):
+    repository = tmp_path / "authority"
+    repository.mkdir()
+    git(repository, "init", "-b", "main")
+    git(repository, "config", "user.email", "test@taskhub.local")
+    git(repository, "config", "user.name", "TaskHub Test")
+    (repository / "feature.txt").write_text("base\n", encoding="utf-8")
+    git(repository, "add", "feature.txt")
+    git(repository, "commit", "-m", "initial")
+    projects_file = tmp_path / "projects.json"
+    projects_file.write_text(
+        json.dumps(
+            {
+                "projects": [
+                    {
+                        "id": "demo",
+                        "repository": str(repository),
+                        "test_commands": [["python3", "-c", "assert True"]],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan = Plan(summary="Plan", steps=["validate"], acceptance=["tests pass"])
+    workspaces = GitWorkspaceManager(str(tmp_path / "workspaces"))
+    initial_worker = GitCodingWorker(
+        ProjectRegistry(str(projects_file)), workspaces, NoChangeCoder(),
+        ArtifactStore(str(tmp_path / "artifacts")),
+    )
+
+    try:
+        asyncio.run(initial_worker.execute("empty", "demo", "Do work", plan))
+    except WorkerExecutionError as exc:
+        assert exc.reason == "no_changes"
+    else:
+        raise AssertionError("initial no-change implementation must be blocked")
+
+    writing_worker = GitCodingWorker(
+        ProjectRegistry(str(projects_file)), workspaces, FileWritingCoder(),
+        ArtifactStore(str(tmp_path / "artifacts")),
+    )
+    first = asyncio.run(writing_worker.execute("evidence", "demo", "Do work", plan))
+    evidence_worker = GitCodingWorker(
+        ProjectRegistry(str(projects_file)), workspaces, NoChangeCoder(),
+        ArtifactStore(str(tmp_path / "artifacts")),
+    )
+    revised = asyncio.run(
+        evidence_worker.execute(
+            "evidence",
+            "demo",
+            "Do work",
+            plan,
+            revision=1,
+            feedback="Provide test evidence",
+        )
+    )
+
+    assert revised.commit == first.commit
+    assert revised.tests[0].exit_code == 0
+    assert revised.changed_files == ["feature.txt"]
+    assert revised.artifacts[0].sha256

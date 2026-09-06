@@ -14,7 +14,9 @@ from tests.fakes import RecordingProvider, RecordingWorker
 from tests.test_workflow import RecoveringPublisher
 
 
-@pytest.mark.skipif(not os.getenv('TASKHUB_TEST_POSTGRES_DSN'), reason='PostgreSQL DSN not configured')
+@pytest.mark.skipif(
+    not os.getenv('TASKHUB_TEST_POSTGRES_DSN'), reason='PostgreSQL DSN not configured'
+)
 def test_postgres_index_history_repair_and_resume_after_restart():
     async def scenario():
         settings = Settings(checkpointer='postgres',
@@ -34,9 +36,10 @@ def test_postgres_index_history_repair_and_resume_after_restart():
             # Simulate a stale row and an absent row after an interrupted index write.
             await index.upsert(dict(run_id=target, project_id='pg-history', requirement='stale',
                                     current_stage='intake', status='running'))
-            await index.connection.execute('DELETE FROM taskhub_task_index WHERE run_id=%s',
-                                           (runs[1].run_id,))
-            await index.connection.commit()
+            async with index.pool.connection() as connection:
+                await connection.execute(
+                    'DELETE FROM taskhub_task_index WHERE run_id=%s', (runs[1].run_id,)
+                )
 
         async with checkpoint_store(settings) as saver, task_index_store(settings) as index:
             service = RunService(build_main_graph(provider, worker, saver, publisher),
