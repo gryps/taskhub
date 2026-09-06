@@ -231,6 +231,8 @@ def test_worker_failure_blocks_with_reason_and_can_retry():
         assert completed.status == RunStatus.COMPLETED
         assert worker.calls == 2
 
+    asyncio.run(scenario())
+
 
 def test_publication_can_be_rejected_after_supervision():
     async def scenario():
@@ -327,7 +329,5 @@ def test_revision_limit_requires_owner_decision():
             limited.run_id, ResumeRequest(decision="cancel", comment="Stop")
         )
         assert rejected.status == RunStatus.REJECTED
-
-    asyncio.run(scenario())
 
     asyncio.run(scenario())

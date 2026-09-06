@@ -10,19 +10,27 @@ function taskDetailText(task) {
   return "—";
 }
 
+let taskPage = 1;
+let taskRequest = 0;
+
 function taskQuery() {
   const params = new URLSearchParams();
   [["project_id", "filter-project"], ["production_line", "filter-line"],
     ["status", "filter-status"], ["stage", "filter-stage"]].forEach(([key, id]) => {
     if (byId(id).value) params.set(key, byId(id).value);
   });
+  params.set("page", taskPage);
   return params.toString();
 }
 
 async function loadTaskCenter() {
+  const requestId = ++taskRequest;
   try {
     const page = await request(`/api/runs?${taskQuery()}`);
-    byId("task-message").textContent = page.total ? `共 ${page.total} 个任务` : "暂无任务";
+    if (requestId !== taskRequest) return;
+    byId("task-message").textContent = `共 ${page.total} 个任务 · 第 ${page.page} / ${Math.max(1, Math.ceil(page.total / page.page_size))} 页`;
+    byId("previous-tasks").disabled = page.page <= 1;
+    byId("next-tasks").disabled = page.page * page.page_size >= page.total;
     byId("task-rows").innerHTML = page.items.map((task) => `
       <tr tabindex="0" data-run-id="${escapeHtml(task.run_id)}">
         <td><strong>${escapeHtml(task.requirement_summary)}</strong><small>${escapeHtml(task.run_id)}</small></td>
@@ -66,9 +74,12 @@ const stageFilter = byId("filter-stage");
 stages.forEach(([id, label]) => stageFilter.insertAdjacentHTML("beforeend",
   `<option value="${id}">${label}</option>`));
 [["filter-project", "input"], ["filter-line", "input"], ["filter-status", "change"],
-  ["filter-stage", "change"]].forEach(([id, event]) => byId(id).addEventListener(event, loadTaskCenter));
+  ["filter-stage", "change"]].forEach(([id, event]) => byId(id).addEventListener(event, () => { taskPage = 1; loadTaskCenter(); }));
 byId("refresh-tasks").addEventListener("click", loadTaskCenter);
 byId("nav-tasks").addEventListener("click", () => showPage("tasks"));
 byId("nav-workflow").addEventListener("click", () => showPage("workflow"));
 window.loadTaskCenter = loadTaskCenter;
 window.showTaskDetail = showTaskDetail;
+
+byId("previous-tasks").addEventListener("click", () => { taskPage--; loadTaskCenter(); });
+byId("next-tasks").addEventListener("click", () => { taskPage++; loadTaskCenter(); });

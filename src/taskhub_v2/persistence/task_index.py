@@ -20,7 +20,7 @@ class MemoryTaskIndex:
             run_id=values["run_id"],
             requirement_summary=_summary(values.get("requirement", "")),
             project_id=values["project_id"],
-            production_line=production_line
+            production_line=production_line or values.get("production_line")
             or (previous.production_line if previous else "default"),
             stage=values["current_stage"],
             status=values["status"],
@@ -29,6 +29,10 @@ class MemoryTaskIndex:
             created_at=previous.created_at if previous else now,
             updated_at=now,
         )
+        if previous and item.model_dump(exclude={"updated_at"}) == previous.model_dump(
+            exclude={"updated_at"}
+        ):
+            return previous
         self._items[item.run_id] = item
         return item
 
@@ -40,7 +44,7 @@ class MemoryTaskIndex:
             item for item in self._items.values()
             if all(not value or getattr(item, key) == value for key, value in filters.items())
         ]
-        items.sort(key=lambda item: item.updated_at, reverse=True)
+        items.sort(key=lambda item: (item.updated_at, item.run_id), reverse=True)
         start = (page - 1) * page_size
         return TaskPage(items=items[start:start + page_size], total=len(items), page=page,
                         page_size=page_size)
@@ -67,6 +71,7 @@ class PostgresTaskIndex:
         await self.connection.commit()
 
     async def upsert(self, values: dict[str, Any], production_line: str | None = None):
+        production_line = production_line or values.get("production_line")
         now = datetime.now(UTC)
         await self.connection.execute("""
             INSERT INTO taskhub_task_index
@@ -80,10 +85,17 @@ class PostgresTaskIndex:
               stage=EXCLUDED.stage, status=EXCLUDED.status,
               blocking_reason=EXCLUDED.blocking_reason,
               pending_action=EXCLUDED.pending_action, updated_at=EXCLUDED.updated_at
+            WHERE (taskhub_task_index.requirement_summary, taskhub_task_index.project_id,
+                   taskhub_task_index.production_line, taskhub_task_index.stage,
+                   taskhub_task_index.status, taskhub_task_index.blocking_reason,
+                   taskhub_task_index.pending_action) IS DISTINCT FROM
+                  (EXCLUDED.requirement_summary, EXCLUDED.project_id,
+                   COALESCE(%s, taskhub_task_index.production_line), EXCLUDED.stage,
+                   EXCLUDED.status, EXCLUDED.blocking_reason, EXCLUDED.pending_action)
         """, (values["run_id"], _summary(values.get("requirement", "")), values["project_id"],
               production_line or "default", values["current_stage"], values["status"],
               json.dumps(values.get("blocking_reason")), json.dumps(values.get("pending_action")),
-              now, now, production_line))
+              now, now, production_line, production_line))
         await self.connection.commit()
         return await self.get(values["run_id"])
 
@@ -106,7 +118,7 @@ class PostgresTaskIndex:
         )
         total = (await count.fetchone())["count"]
         cursor = await self.connection.execute(
-            f"SELECT * FROM taskhub_task_index{where} ORDER BY updated_at DESC LIMIT %s OFFSET %s",
+            f"SELECT * FROM taskhub_task_index{where} ORDER BY updated_at DESC, run_id DESC LIMIT %s OFFSET %s",
             [*params, page_size, (page - 1) * page_size],
         )
         return TaskPage(items=[TaskSummary.model_validate(dict(row)) async for row in cursor],

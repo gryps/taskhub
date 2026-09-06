@@ -4,7 +4,7 @@ import os
 import pytest
 
 from taskhub_v2.config import Settings
-from taskhub_v2.domain.models import ApprovalRequest, RunStatus, StartRunRequest
+from taskhub_v2.domain.models import ApprovalRequest, ResumeRequest, RunStatus, StartRunRequest
 from taskhub_v2.persistence.checkpoints import checkpoint_store
 from taskhub_v2.services.runs import RunService
 from taskhub_v2.workflows import build_main_graph
@@ -38,9 +38,11 @@ def test_postgres_checkpoint_survives_runtime_recreation():
             restored = await service.get(waiting.run_id)
             assert restored.status == RunStatus.WAITING
 
-            completed = await service.approve(
+            publication_waiting = await service.approve(
                 waiting.run_id, ApprovalRequest(decision="approve")
             )
+            assert publication_waiting.stage == "merge_approval"
+            completed = await service.resume(waiting.run_id, ResumeRequest(decision="approve"))
             assert completed.status == RunStatus.COMPLETED
             assert second_worker.calls == 1
 

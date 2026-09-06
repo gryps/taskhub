@@ -72,3 +72,111 @@ def test_task_detail_exposes_backend_action_and_ten_stage_ui():
         for stage in ("intake", "planning", "plan_approval", "implementation", "review",
                       "risk", "supervision", "merge_approval", "merging", "completed"):
             assert f'"{stage}"' in script
+
+
+def test_task_center_approvals_and_recovery_do_not_repeat_completed_work():
+    from langgraph.checkpoint.memory import InMemorySaver
+    from taskhub_v2.services.runs import RunService
+    from taskhub_v2.workflows import build_main_graph
+    from tests.fakes import RecordingProvider, RecordingWorker
+    from tests.test_workflow import RecoveringPublisher
+
+    app = create_app(settings())
+    with TestClient(app) as client:
+        provider, worker, publisher = RecordingProvider(), RecordingWorker(), RecoveringPublisher()
+        app.state.run_service = RunService(
+            build_main_graph(provider, worker, InMemorySaver(), publisher),
+            task_index=MemoryTaskIndex(),
+        )
+        headers = login(client)
+        run = client.post('/api/runs', headers=headers, json={
+            'project_id': 'demo', 'requirement': 'Publish with recovery', 'production_line': 'A'
+        }).json()
+        run_id = client.get('/api/runs').json()['items'][0]['run_id']
+        assert run_id == run['run_id']
+        base = f'/api/runs/{run_id}'
+        assert client.get(base).json()['workflow_steps'][2]['state'] == 'waiting_manual'
+        approved = client.post(base + '/approval', headers=headers,
+                               json={'decision': 'approve'}).json()
+        assert approved['workflow_steps'][7]['state'] == 'waiting_manual'
+        blocked = client.post(base + '/resume', headers=headers,
+                              json={'decision': 'approve'}).json()
+        assert blocked['blocking_reason']['detail'] == 'temporary publication failure'
+        assert blocked['pending_action']['choices'] == ['retry', 'cancel']
+        assert blocked['workflow_steps'][8]['state'] == 'blocked'
+        assert client.get('/api/runs?status=blocked').json()['total'] == 1
+        assert client.post(base + '/resume', headers=headers,
+                           json={'decision': 'approve'}).status_code == 409
+        completed = client.post(base + '/resume', headers=headers,
+                                json={'decision': 'retry'}).json()
+        assert completed['status'] == 'completed'
+        assert provider.plan_calls == provider.review_calls == provider.risk_calls == 1
+        assert provider.supervisor_calls == worker.calls == 1
+        assert publisher.calls == 2
+        assert sum(e['title'] == 'Plan approved' for e in completed['timeline']) == 1
+
+
+def test_live_index_failure_and_stale_backfill():
+    import pytest
+    from langgraph.checkpoint.memory import InMemorySaver
+    from taskhub_v2.domain.models import StartRunRequest
+    from taskhub_v2.services.runs import RunService
+    from taskhub_v2.workflows import build_main_graph
+    from tests.fakes import RecordingProvider, RecordingWorker
+
+    async def scenario():
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        class PausedProvider(RecordingProvider):
+            async def create_plan(self, requirement):
+                entered.set()
+                await release.wait()
+                raise RuntimeError('planner unavailable')
+
+        index, saver = MemoryTaskIndex(), InMemorySaver()
+        service = RunService(build_main_graph(PausedProvider(), RecordingWorker(), saver),
+                             task_index=index)
+        task = asyncio.create_task(service.start(StartRunRequest(
+            project_id='demo', requirement='Failure during planning', production_line='B')))
+        await asyncio.wait_for(entered.wait(), 5)
+        live = (await index.list()).items[0]
+        assert live.status == 'running' and live.stage == 'planning'
+        release.set()
+        with pytest.raises(RuntimeError, match='planner unavailable'):
+            await task
+        failed = await service.get(live.run_id)
+        assert failed.status == 'failed'
+        assert 'planner unavailable' in failed.blocking_reason['detail']
+        assert failed.pending_action is None
+        assert failed.workflow_steps[1]['state'] == 'blocked'
+        assert failed.workflow_steps[2]['state'] == 'not_started'
+        assert (await index.get(live.run_id)).status == 'failed'
+        await index.upsert(dict(run_id=live.run_id, project_id='demo', requirement='stale',
+                                current_stage='intake', status='running'))
+        await service.backfill(saver)
+        repaired = await index.get(live.run_id)
+        assert repaired.status == 'failed' and repaired.production_line == 'B'
+        await service.backfill(saver)
+        assert (await index.get(live.run_id)).updated_at == repaired.updated_at
+    asyncio.run(scenario())
+
+
+def test_terminal_steps_and_pagination():
+    from taskhub_v2.services.task_state import workflow_steps
+    for stage in ('failed', 'rejected'):
+        steps = workflow_steps(dict(current_stage=stage, status=stage,
+                                    timeline=[{'stage': 'plan_approval'}]))
+        assert steps[2]['state'] == 'blocked'
+        assert all(step['state'] == 'not_started' for step in steps[3:])
+    assert all(step['state'] == 'not_started' for step in workflow_steps(
+        dict(current_stage='failed', status='failed')))
+
+    async def scenario():
+        index = MemoryTaskIndex()
+        for number in range(55):
+            await index.upsert(dict(run_id=str(number), project_id='demo', requirement='task',
+                                    current_stage='planning', status='running'))
+        first, second = await index.list(), await index.list(page=2)
+        assert len(first.items) == 50 and len(second.items) == 5
+        assert len({item.run_id for item in first.items + second.items}) == 55
+    asyncio.run(scenario())

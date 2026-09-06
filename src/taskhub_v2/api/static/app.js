@@ -62,7 +62,7 @@ function render(run) {
   byId("timeline").innerHTML = run.timeline.map((item) => `
     <li><small>${item.stage}</small><strong>${item.title}</strong><span>${item.detail || item.actor}</span></li>
   `).join("");
-  const waiting = Boolean(pendingAction);
+  const waiting = Boolean(pendingAction || run.blocking_reason);
   byId("action").classList.toggle("hidden", !waiting);
   if (pendingAction?.type === "plan_approval") {
     byId("action-title").textContent = "需要你审批计划";
@@ -89,6 +89,10 @@ function render(run) {
     byId("action-detail").textContent = run.supervision?.summary || "监督仍发现未解决的问题";
     byId("approve").textContent = "批准再返工一次";
     byId("reject").textContent = "终止任务";
+  }
+  if (run.blocking_reason && !pendingAction) {
+    byId("action-title").textContent = "任务无法继续";
+    byId("action-detail").textContent = `${run.blocking_reason.detail || run.blocking_reason.code}。当前无可用恢复操作`;
   }
   const choices = pendingAction?.choices || [];
   byId("approve").classList.toggle("hidden", !choices.some((choice) =>
