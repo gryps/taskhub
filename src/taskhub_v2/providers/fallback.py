@@ -74,5 +74,7 @@ class FallbackModelProvider:
                 reason = getattr(exc, "reason", exc.__class__.__name__)
                 if self.health:
                     self.health.record_failure(provider_id, reason)
-                failures.append(f"{provider_id}:{reason}")
+                diagnostic = " ".join(str(getattr(exc, "diagnostic", "")).split())[:500]
+                suffix = f" ({diagnostic})" if diagnostic else ""
+                failures.append(f"{provider_id}:{reason}{suffix}")
         raise ProvidersExhaustedError(role, failures)

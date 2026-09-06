@@ -4,6 +4,7 @@ from taskhub_v2.domain.models import ExecutionResult, RunStatus
 NODE_STAGES = {
     "acceptance": "acceptance", "acceptance_recovery": "acceptance_blocked",
     "supervisor": "supervision", "revision": "implementation",
+    "supervision_recovery": "supervision",
     "acceptance_revision": "implementation",
     "revision_limit": "supervision", "publication": "merging",
     "publication_recovery": "merge_blocked",

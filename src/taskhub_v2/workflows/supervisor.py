@@ -4,23 +4,49 @@ from langgraph.graph import END, START, StateGraph
 
 from taskhub_v2.domain.models import RunStatus, Stage
 from taskhub_v2.providers.base import ModelProvider
+from taskhub_v2.providers.fallback import ProvidersExhaustedError
 from taskhub_v2.workflows.state import StepState, event, model_run
 
 
 def build_supervisor_graph(provider: ModelProvider):
     async def finalize(state: StepState) -> dict:
-        result = await provider.supervise(
-            state["requirement"],
-            json.dumps(
-                {
-                    "implementation": state.get("implementation") or {},
-                    "acceptance": state.get("acceptance") or {},
+        try:
+            result = await provider.supervise(
+                state["requirement"],
+                json.dumps(
+                    {
+                        "implementation": state.get("implementation") or {},
+                        "acceptance": state.get("acceptance") or {},
+                    },
+                    ensure_ascii=False,
+                ),
+                state.get("review") or "",
+                state.get("risk") or "",
+            )
+        except ProvidersExhaustedError as exc:
+            detail = str(exc)[:1200]
+            return {
+                "current_stage": Stage.SUPERVISION.value,
+                "status": RunStatus.BLOCKED.value,
+                "blocking_reason": {
+                    "code": "model_resources_unavailable",
+                    "detail": detail,
+                    "role": exc.role,
+                    "failures": exc.failures,
                 },
-                ensure_ascii=False,
-            ),
-            state.get("review") or "",
-            state.get("risk") or "",
-        )
+                "pending_action": {
+                    "type": "supervision_recovery",
+                    "title": "Supervisor model resources are unavailable",
+                    "choices": ["retry", "cancel"],
+                },
+                "model_runs": [],
+                "timeline": event(
+                    Stage.SUPERVISION,
+                    "Supervisor model resources blocked",
+                    "supervisor",
+                    detail,
+                ),
+            }
         decision = result.content
         approved = decision.decision == "approve"
         revision_available = int(state.get("revision_count", 0)) < int(
@@ -28,6 +54,7 @@ def build_supervisor_graph(provider: ModelProvider):
         )
         return {
             "supervision": decision.model_dump(),
+            "blocking_reason": None,
             "current_stage": (
                 Stage.MERGE_APPROVAL.value if approved else Stage.SUPERVISION.value
             ),

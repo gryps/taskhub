@@ -92,6 +92,33 @@ def build_main_graph(
             ),
         }
 
+    async def recover_supervision(state: CodingState) -> dict:
+        response = interrupt(
+            {
+                "type": "supervision_recovery",
+                "run_id": state["run_id"],
+                "reason": state.get("blocking_reason"),
+                "choices": ["retry", "cancel"],
+            }
+        )
+        decision = response.get("decision") if isinstance(response, dict) else response
+        retry = decision == "retry"
+        return {
+            "decision": decision,
+            "pending_action": None,
+            "blocking_reason": None if retry else state.get("blocking_reason"),
+            "current_stage": (
+                Stage.SUPERVISION.value if retry else Stage.REJECTED.value
+            ),
+            "status": RunStatus.RUNNING.value if retry else RunStatus.REJECTED.value,
+            "timeline": event(
+                Stage.SUPERVISION,
+                "Supervisor retry requested" if retry else "Run cancelled",
+                "owner",
+                response.get("comment", "") if isinstance(response, dict) else "",
+            ),
+        }
+
     async def request_merge_approval(state: CodingState) -> dict:
         response = interrupt(
             {
@@ -216,6 +243,8 @@ def build_main_graph(
         return "implementation" if state.get("decision") == "retry" else "reject"
 
     def route_supervisor(state: CodingState) -> str:
+        if state.get("status") == RunStatus.BLOCKED:
+            return "recovery"
         supervision = state.get("supervision") or {}
         if supervision.get("decision") == "approve":
             return "merge_approval"
@@ -224,6 +253,9 @@ def build_main_graph(
         ):
             return "revision"
         return "revision_limit"
+
+    def route_supervision_recovery(state: CodingState) -> str:
+        return "supervisor" if state.get("decision") == "retry" else "reject"
 
     def route_merge_approval(state: CodingState) -> str:
         return "publication" if state.get("decision") == "approve" else "reject"
@@ -243,6 +275,7 @@ def build_main_graph(
     builder.add_node("review", build_review_graph(provider))
     builder.add_node("risk", build_risk_graph(provider))
     builder.add_node("supervisor", build_supervisor_graph(provider))
+    builder.add_node("supervision_recovery", recover_supervision)
     builder.add_node("revision", prepare_revision)
     builder.add_node("revision_limit", handle_revision_limit)
     builder.add_node("merge_approval", request_merge_approval)
@@ -290,10 +323,16 @@ def build_main_graph(
         "supervisor",
         route_supervisor,
         {
+            "recovery": "supervision_recovery",
             "merge_approval": "merge_approval",
             "revision": "revision",
             "revision_limit": "revision_limit",
         },
+    )
+    builder.add_conditional_edges(
+        "supervision_recovery",
+        route_supervision_recovery,
+        {"supervisor": "supervisor", "reject": "reject"},
     )
     builder.add_edge("revision", "implementation")
     builder.add_conditional_edges(

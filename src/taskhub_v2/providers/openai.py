@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from typing import Any
 
@@ -9,6 +10,14 @@ from taskhub_v2.domain.models import ModelResult, Plan, SupervisionDecision
 
 class ProviderConfigurationError(ValueError):
     pass
+
+
+class OpenAIRequestError(RuntimeError):
+    def __init__(self, status_code: int, reason: str, diagnostic: str):
+        super().__init__(diagnostic)
+        self.status_code = status_code
+        self.reason = reason
+        self.diagnostic = diagnostic
 
 
 class OpenAIResponsesProvider:
@@ -132,8 +141,46 @@ class OpenAIResponsesProvider:
             headers={"Authorization": f"Bearer {self.api_key}"},
             json={"model": model or self.model, "input": input_value, **extra},
         )
-        response.raise_for_status()
+        if not response.is_success:
+            reason, diagnostic = self._http_failure(response)
+            raise OpenAIRequestError(response.status_code, reason, diagnostic)
         return response.json()
+
+    @staticmethod
+    def _http_failure(response: httpx.Response) -> tuple[str, str]:
+        status = response.status_code
+        message = "request failed"
+        error_code = ""
+        try:
+            payload = response.json()
+            error = payload.get("error", payload) if isinstance(payload, dict) else {}
+            if isinstance(error, dict):
+                message = str(error.get("message") or message)
+                error_code = str(error.get("code") or error.get("type") or "")
+        except (ValueError, TypeError):
+            if response.text.strip():
+                message = response.text.strip()
+
+        combined = f"{error_code} {message}".lower()
+        if status == 429 and any(value in combined for value in ("quota", "billing")):
+            reason = "quota_exceeded"
+        elif status == 429:
+            reason = "rate_limited"
+        elif status == 401:
+            reason = "authentication_failed"
+        elif status == 403:
+            reason = "forbidden"
+        elif status == 404 and "model" in combined:
+            reason = "model_not_found"
+        elif status >= 500:
+            reason = "provider_unavailable"
+        else:
+            reason = f"http_{status}"
+
+        safe = re.sub(r"sk-[A-Za-z0-9_-]+", "sk-***", message)
+        safe = re.sub(r"(?i)(authorization[:=]\s*bearer\s+)\S+", r"\1***", safe)
+        safe = " ".join(safe.split())[:500]
+        return reason, f"HTTP {status}: {safe}"
 
     @staticmethod
     def _output_text(payload: dict[str, Any]) -> str:

@@ -18,6 +18,7 @@ from taskhub_v2.domain.models import (
     SupervisionDecision,
 )
 from taskhub_v2.persistence.task_index import MemoryTaskIndex
+from taskhub_v2.providers.fallback import ProvidersExhaustedError
 from taskhub_v2.services.runs import RunConflictError, RunService
 from taskhub_v2.workflows import build_main_graph
 from tests.fakes import RecordingProvider, RecordingWorker
@@ -73,6 +74,23 @@ class AlwaysRejectProvider(RejectOnceProvider):
                 decision="reject",
                 summary="A material defect remains",
                 reasons=["Fix the defect"],
+            ),
+            provider="recording",
+            model="test",
+        )
+
+
+class RecoveringSupervisorProvider(RecordingProvider):
+    async def supervise(self, requirement, implementation, review, risk):
+        self.supervisor_calls += 1
+        if self.supervisor_calls == 1:
+            raise ProvidersExhaustedError(
+                "supervisor",
+                ["gpt_api:model_not_found (HTTP 404: requested model was not found)"],
+            )
+        return ModelResult(
+            content=SupervisionDecision(
+                decision="approve", summary="accepted", reasons=["tests pass"]
             ),
             provider="recording",
             model="test",
@@ -340,6 +358,43 @@ def test_supervisor_rejection_automatically_returns_to_worker():
         assert worker.revisions[1][0] == 1
         assert "boundary test" in worker.revisions[1][1]
         assert provider.review_calls == 2
+        assert provider.supervisor_calls == 2
+
+    asyncio.run(scenario())
+
+
+def test_supervisor_model_exhaustion_blocks_and_retries_only_supervision():
+    async def scenario():
+        provider = RecoveringSupervisorProvider()
+        worker = RecordingWorker()
+        service = RunService(build_main_graph(provider, worker, InMemorySaver()))
+        waiting = await service.start(
+            StartRunRequest(project_id="shop", requirement="Preserve acceptance evidence")
+        )
+        blocked = await service.approve(
+            waiting.run_id, ApprovalRequest(decision="approve")
+        )
+
+        assert blocked.status == RunStatus.BLOCKED
+        assert blocked.stage == Stage.SUPERVISION
+        assert blocked.next_nodes == ["supervision_recovery"]
+        assert blocked.pending_action["type"] == "supervision_recovery"
+        assert blocked.pending_action["choices"] == ["retry", "cancel"]
+        assert blocked.blocking_reason["code"] == "model_resources_unavailable"
+        assert "HTTP 404" in blocked.blocking_reason["detail"]
+        implementation = blocked.implementation
+        acceptance = blocked.acceptance
+
+        publishing = await service.resume(
+            blocked.run_id, ResumeRequest(decision="retry")
+        )
+        assert publishing.stage == Stage.MERGE_APPROVAL
+        assert publishing.status == RunStatus.WAITING
+        assert publishing.implementation == implementation
+        assert publishing.acceptance == acceptance
+        assert worker.calls == 1
+        assert provider.review_calls == 1
+        assert provider.risk_calls == 1
         assert provider.supervisor_calls == 2
 
     asyncio.run(scenario())

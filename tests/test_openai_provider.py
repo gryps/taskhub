@@ -3,7 +3,11 @@ import asyncio
 import httpx
 import pytest
 
-from taskhub_v2.providers.openai import OpenAIResponsesProvider, ProviderConfigurationError
+from taskhub_v2.providers.openai import (
+    OpenAIRequestError,
+    OpenAIResponsesProvider,
+    ProviderConfigurationError,
+)
 
 
 def test_openai_provider_requires_proxy():
@@ -49,5 +53,32 @@ def test_openai_provider_parses_structured_plan():
         await client.aclose()
         assert plan.content.summary == "Do it"
         assert plan.content.steps == ["code"]
+
+    asyncio.run(scenario())
+
+
+def test_openai_provider_preserves_sanitized_http_failure():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            404,
+            json={"error": {"code": "model_not_found", "message": "Model missing; sk-secret"}},
+        )
+
+    async def scenario():
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        provider = OpenAIResponsesProvider(
+            base_url="https://api.openai.com/v1",
+            api_key="secret",
+            model="missing-model",
+            proxy_url="http://proxy.local:7893",
+            client=client,
+        )
+        with pytest.raises(OpenAIRequestError) as caught:
+            await provider.review("requirement", "implementation")
+        await client.aclose()
+        assert caught.value.status_code == 404
+        assert caught.value.reason == "model_not_found"
+        assert caught.value.diagnostic == "HTTP 404: Model missing; sk-***"
+        assert "sk-secret" not in str(caught.value)
 
     asyncio.run(scenario())

@@ -81,7 +81,7 @@ function render(run) {
   const actionStages = {plan_approval: "plan_approval", implementation_recovery: "implementation",
     acceptance_recovery: "acceptance", merge_approval: "merge_approval",
     publication_recovery: "merging", revision_limit: "supervision",
-    manual_intervention: "supervision"};
+    manual_intervention: "supervision", supervision_recovery: "supervision"};
   action.dataset.stage = actionStages[pendingAction?.type] || normalizedStage;
   action.classList.toggle("hidden", !waiting);
   if (pendingAction?.type === "plan_approval") {
@@ -123,6 +123,12 @@ function render(run) {
     byId("action-detail").textContent = run.supervision?.summary || "监督仍发现未解决的问题";
     byId("approve").textContent = "批准再返工一次";
     byId("reject").textContent = "终止任务";
+  } else if (pendingAction?.type === "supervision_recovery") {
+    byId("action-stage").textContent = "第 8 环 · 监督";
+    byId("action-title").textContent = "监督模型资源暂不可用";
+    byId("action-detail").textContent = run.blocking_reason?.detail || "等待模型资源恢复后重试";
+    byId("approve").textContent = "重试监督";
+    byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "manual_intervention") {
     byId("action-stage").textContent = "第 8 环 · 人工处理";
     byId("action-title").textContent = "任务已转人工处理";
@@ -417,7 +423,7 @@ byId("start").addEventListener("click", async () => {
 async function decide(decision) {
   const planApproval = pendingAction?.type === "plan_approval";
   const endpoint = planApproval ? "approval" : "resume";
-  const recovery = ["implementation_recovery", "acceptance_recovery", "publication_recovery", "revision_limit", "manual_intervention"].includes(pendingAction?.type);
+  const recovery = ["implementation_recovery", "acceptance_recovery", "publication_recovery", "supervision_recovery", "revision_limit", "manual_intervention"].includes(pendingAction?.type);
   const resolved = recovery
     ? (decision === "manual" ? "manual" : decision === "approve" ? "retry" : decision === "revise" ? "revise" : "cancel")
     : decision;
