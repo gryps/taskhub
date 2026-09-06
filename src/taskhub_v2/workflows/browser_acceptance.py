@@ -18,7 +18,13 @@ async def request_browser_acceptance(state: CodingState) -> dict:
     return {
         "status": RunStatus.BLOCKED.value,
         "current_stage": Stage.ACCEPTANCE_BLOCKED.value,
-        "blocking_reason": {"code": "browser_evidence_missing", "detail": detail},
+        "blocking_reason": {
+            "code": "browser_evidence_missing",
+            "detail": detail,
+            "responsible_node": "windows-gui-34",
+            "model": "none",
+            "recommended_action": "在 .34 执行浏览器验收",
+        },
         "pending_action": {
             "type": "acceptance_recovery",
             "choices": ["retry", "cancel"],

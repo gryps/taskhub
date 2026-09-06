@@ -10,6 +10,7 @@ preview:
   health_path: /api/health
   timeout_seconds: 120
 browsers: [chromium, edge]
+suite: tests/e2e/acceptance.yaml
 command: [python3, -m, pytest, tests/e2e, -o, junit_family=xunit1, --junitxml, test-results/junit.xml]
 timeout_seconds: 900
 required_artifacts:

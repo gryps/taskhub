@@ -1,0 +1,13 @@
+scenarios:
+  - id: login_status
+    description: 登录后展示任务状态，人工审批显示待处理而非已阻塞
+  - id: structured_blocking
+    description: 结构化阻塞原因、责任节点、模型和建议操作正确显示
+  - id: refresh_consistency
+    description: 页面刷新后任务状态保持一致
+  - id: dual_context_consistency
+    description: 两个独立浏览器上下文看到一致状态
+  - id: retry_recovery
+    description: 自动重试提示及恢复后的页面状态正确
+  - id: action_visibility
+    description: 重试、更换节点或模型、补充证据、取消和归档操作按状态显示

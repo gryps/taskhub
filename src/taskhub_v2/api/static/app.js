@@ -7,6 +7,7 @@ const stages = [
   ["merging", "发布", "自动"], ["completed", "完成", "终态"],
 ];
 let currentRun = null;
+let retryCountdownTimer = null;
 let currentProjectId = localStorage.getItem("taskhub_project_id");
 let eventSource;
 let pendingAction;
@@ -51,6 +52,8 @@ function cookie(name) {
 }
 
 function render(run) {
+  if (retryCountdownTimer) clearInterval(retryCountdownTimer);
+  retryCountdownTimer = null;
   byId("run").classList.remove("hidden");
   byId("run-id").textContent = run.run_id;
   const statuses = {running: "运行中", waiting: "待处理", completed: "已完成",
@@ -74,6 +77,29 @@ function render(run) {
     <li><small>${escapeHtml(stageName(item.stage))}</small><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail || item.actor)}</span></li>
   `).join("");
   const waiting = Boolean(pendingAction || run.blocking_reason);
+  const reason = run.blocking_reason;
+  byId("blocking-metadata").classList.toggle("hidden", !reason);
+  byId("blocking-code").textContent = reason?.code || "—";
+  byId("blocking-node").textContent = reason?.responsible_node || "—";
+  byId("blocking-model").textContent = reason?.model || "—";
+  byId("blocking-action").textContent = reason?.recommended_action || "—";
+  const countdown = byId("retry-countdown");
+  countdown.classList.add("hidden");
+  const retryAfter = Number(reason?.retry_after_seconds || 0);
+  if (pendingAction?.type === "publication_recovery" && retryAfter > 0) {
+    let remaining = retryAfter;
+    countdown.classList.remove("hidden");
+    countdown.textContent = `${remaining} 秒后自动重试`;
+    retryCountdownTimer = setInterval(async () => {
+      remaining -= 1;
+      countdown.textContent = `${Math.max(remaining, 0)} 秒后自动重试`;
+      if (remaining <= 0) {
+        clearInterval(retryCountdownTimer);
+        retryCountdownTimer = null;
+        try { await decide("approve"); } catch (error) { countdown.textContent = error.message; }
+      }
+    }, 1000);
+  }
   const action = byId("action");
   byId("acceptance-submit").classList.toggle(
     "hidden", pendingAction?.type !== "manual_intervention"

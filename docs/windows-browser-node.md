@@ -21,10 +21,10 @@ The current workspace cannot connect to `192.168.31.34:8301` and has no
 Playwright installation. No Windows deployment, authenticated online status,
 autostart, Edge/Chromium pass, or production task evidence is claimed.
 The dedicated E2E command fails on missing dependencies; it does not skip.
-The new scenarios cover login, pending approval, refresh, and two independent
-contexts. Structured blocker fields, automatic retry countdown/recovery, and the
-full node/model/action matrix still require implementation and real Windows runs.
-The deterministic preview adapters do not prove a real model supervision cycle.
+The project suite manifest covers login and pending approval, structured blocker
+metadata, refresh and two independent contexts, automatic retry recovery, and
+state-dependent actions. These checks still require a real Windows run; the
+deterministic preview adapters do not prove a real model supervision cycle.
 
 Preview startup requires a clean committed worktree. The controller supplies
 `TASKHUB_PREVIEW_DSN` (with a schema-only search path) and

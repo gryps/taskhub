@@ -171,3 +171,7 @@ h2 { margin-top: 28px; font-size: 16px; }
   .timeline li span:last-child { grid-column: 1 / -1; }
   .task-filters { grid-template-columns: 1fr 1fr; }
 }
+.blocking-metadata { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .5rem; margin: .75rem 0; }
+.blocking-metadata div { padding: .5rem; background: var(--surface, #fff); border-radius: .4rem; }
+.blocking-metadata dt { color: #667085; font-size: .75rem; }
+.blocking-metadata dd { margin: .2rem 0 0; overflow-wrap: anywhere; }

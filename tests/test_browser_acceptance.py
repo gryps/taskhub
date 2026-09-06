@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from taskhub_v2.artifacts.store import ArtifactStore
-from taskhub_v2.browser.contract import load_acceptance_contract
+from taskhub_v2.browser.contract import load_acceptance_contract, load_acceptance_suite
 from taskhub_v2.node_agent.runtime import normalize_command
 from taskhub_v2.node_agent.runtime import run_commands
 from taskhub_v2.browser.reports import validate_junit
@@ -73,6 +73,17 @@ command: [npx, playwright, test]
     contract = load_acceptance_contract(tmp_path)
     assert contract.workload == "browser_acceptance"
     assert {"chromium", "edge", "windows_gui", "trace"} <= contract.required_capabilities
+
+
+def test_project_e2e_suite_definition_is_loaded_and_complete():
+    repository = Path(__file__).parents[1]
+    contract = load_acceptance_contract(repository)
+    suite = load_acceptance_suite(repository, contract)
+    assert {scenario.id for scenario in suite.scenarios} == {
+        "login_status", "structured_blocking", "refresh_consistency",
+        "dual_context_consistency", "retry_recovery", "action_visibility",
+    }
+    assert all(scenario.browsers == {"chromium", "edge"} for scenario in suite.scenarios)
 
 
 def test_artifact_store_verifies_agent_digest_and_size(tmp_path):

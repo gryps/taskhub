@@ -137,6 +137,13 @@
         <span id="action-stage" class="action-stage"></span>
         <strong id="action-title"></strong>
         <p id="action-detail"></p>
+        <p id="retry-countdown" class="muted hidden" role="status"></p>
+        <dl id="blocking-metadata" class="blocking-metadata hidden">
+          <div><dt>原因代码</dt><dd id="blocking-code"></dd></div>
+          <div><dt>责任节点</dt><dd id="blocking-node"></dd></div>
+          <div><dt>模型</dt><dd id="blocking-model"></dd></div>
+          <div><dt>建议操作</dt><dd id="blocking-action"></dd></div>
+        </dl>
         <div class="actions">
           <button id="approve">批准计划</button>
           <button id="manual" class="secondary hidden">转人工处理</button>

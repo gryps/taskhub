@@ -40,14 +40,20 @@ class AcceptanceWorker:
         return ExecutionResult(summary=f"artifact:{run_id}:{project_id}")
 
 
+class TransientPublicationError(RuntimeError):
+    retry_after_seconds = 2
+
+
 class RecoveringPublisher:
     def __init__(self):
         self.calls = 0
+        self.attempted = set()
 
     async def publish(self, run_id, project_id, implementation):
         self.calls += 1
-        if self.calls == 1:
-            raise RuntimeError("temporary publication failure")
+        if run_id not in self.attempted:
+            self.attempted.add(run_id)
+            raise TransientPublicationError("temporary publication failure")
         return PublicationResult(
             project_id=project_id,
             authority_ref="main",

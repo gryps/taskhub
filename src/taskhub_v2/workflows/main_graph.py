@@ -186,7 +186,9 @@ def build_main_graph(
             return {
                 "current_stage": Stage.MERGE_BLOCKED.value,
                 "status": RunStatus.BLOCKED.value,
-                "blocking_reason": {"code": reason, "detail": detail},
+                "blocking_reason": dict(
+                    code=reason, detail=detail, responsible_node=implementation.execution_node or "publisher",
+                    model=implementation.model_run.model if implementation.model_run else "none", recommended_action="retry publication or cancel the task", retry_after_seconds=max(0, int(getattr(exc, "retry_after_seconds", 0)))),
                 "pending_action": {
                     "type": "publication_recovery",
                     "title": "Publication needs attention",
