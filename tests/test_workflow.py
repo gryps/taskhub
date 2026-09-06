@@ -17,6 +17,7 @@ from taskhub_v2.domain.models import (
     StartRunRequest,
     SupervisionDecision,
 )
+from taskhub_v2.persistence.task_index import MemoryTaskIndex
 from taskhub_v2.services.runs import RunConflictError, RunService
 from taskhub_v2.workflows import build_main_graph
 from tests.fakes import RecordingProvider, RecordingWorker
@@ -409,7 +410,7 @@ def test_acceptance_failure_can_return_to_worker_from_legacy_checkpoint_at_limit
         graph = build_main_graph(
             provider, worker, checkpointer, acceptance=acceptance
         )
-        service = RunService(graph)
+        service = RunService(graph, task_index=MemoryTaskIndex())
         waiting = await service.start(
             StartRunRequest(project_id="shop", requirement="Repair acceptance defect")
         )
