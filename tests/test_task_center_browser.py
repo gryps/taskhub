@@ -41,10 +41,9 @@ def serve(app, port):
         assert not thread.is_alive(), "Acceptance server did not stop"
 
 
-def test_browser_history_approvals_and_recovery(monkeypatch, tmp_path):
+def test_browser_history_approvals_and_recovery(monkeypatch, tmp_path, postgres_dsn):
     from playwright.sync_api import expect, sync_playwright
 
-    dsn = os.environ["TASKHUB_TEST_POSTGRES_DSN"]
     app_module = importlib.import_module("taskhub_v2.api.app")
     provider, worker, publisher = RecordingProvider(), RecordingWorker(), RecoveringPublisher()
     # Only external execution adapters are deterministic; routes, graph, checkpoints,
@@ -53,7 +52,7 @@ def test_browser_history_approvals_and_recovery(monkeypatch, tmp_path):
     monkeypatch.setattr(app_module, "build_worker", lambda *args: worker)
     monkeypatch.setattr(app_module, "build_publisher", lambda *args: publisher)
     settings = Settings(
-        checkpointer="postgres", postgres_dsn=dsn,
+        checkpointer="postgres", postgres_dsn=postgres_dsn,
         admin_token="acceptance-only", session_secret="acceptance-only-session",
         projects_file=str(tmp_path / "projects.json"),
         provider_health_file=str(tmp_path / "health.json"),

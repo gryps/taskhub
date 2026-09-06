@@ -13,9 +13,13 @@ TASKHUB_TEST_POSTGRES_DSN='postgresql://localhost/taskhub_acceptance' \
 `initdb --encoding=UTF8 --no-locale`。`SQL_ASCII` 会使 checkpoint 文本标识被
 驱动读取为字节串，导致 LangGraph 中断恢复无法匹配。
 
-此入口执行全套 pytest，并强制启用浏览器验收。缺少数据库、Playwright 或浏览器时会失败，不会将其跳过后视为验收通过。数据库中会保留测试任务，请勿使用生产数据库。无需修改环境文件或凭据文件。
+此入口执行全套 pytest，并强制启用浏览器验收。缺少数据库、Playwright 或浏览器时会失败，不会将其跳过后视为验收通过。所有 PostgreSQL pytest（含浏览器测试）通过 `tests/conftest.py` 每例分配唯一的 `taskhub_test_<uuid>` schema；连接的 search_path 不包含 public，任务索引、checkpoint 及迁移表均隔离。fixture 在成功或失败后 DROP SCHEMA CASCADE 并检查清理结果。测试账号需要 CREATE SCHEMA 权限；进程被强制终止时，需清理残留的该前缀 schema。无需修改环境文件或凭据文件。
 
 `test_task_center_postgres.py` 验证三任务持久化、缺失/过期索引修复、幂等回填、A/B 筛选，以及重新连接后的 checkpoint 恢复和无重复执行。`test_postgres_recovery.py` 验证运行时重建后仍可审批并完成工作流。
+
+`test_task_lifecycle.py` 使用真实 HTTP 路由和内存 LangGraph，验证孤儿识别、归档隐藏、无效重绑定、各恢复入口的 409 拦截且零执行命令，以及重绑定后 worker/发布步骤使用新项目。每例创建新的内存索引、checkpoint 和临时项目配置。
+
+PostgreSQL 测试还覆盖归档及绑定元数据在连接池重建、过期行修复和重复 checkpoint 回填后保留；双 schema 测试验证任务与 checkpoint 相互不可见，并模拟测试异常验证清理。
 
 `test_task_center_browser.py` 使用真实 Chromium/Firefox、HTTP API、认证、LangGraph 和 PostgreSQL；仅以确定性适配器替代外部模型、施工和发布服务，不拦截或伪造浏览器 API 响应。覆盖：
 
@@ -64,8 +68,7 @@ TaskHub 自身的 PostgreSQL 验收可运行：
 python scripts/run-postgres-acceptance.py
 ```
 
-脚本使用 `TASKHUB_POSTGRES_DSN`，但将验收表隔离在 `taskhub_acceptance` schema，
-不会写入生产任务表。
+脚本将 `TASKHUB_POSTGRES_DSN` 传给 pytest，由同一 fixture 为每例测试建立并清理独立 schema，不再建立固定的 `taskhub_acceptance` schema。
 
 2026-09-06 在控制节点的 UTF-8 PostgreSQL 16 临时库执行完整测试：
 **61 passed、1 skipped**；跳过项为本机浏览器测试。随后由 Windows 图形节点

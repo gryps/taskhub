@@ -1,7 +1,4 @@
 import asyncio
-import os
-
-import pytest
 
 from taskhub_v2.config import Settings
 from taskhub_v2.domain.models import ApprovalRequest, ResumeRequest, RunStatus, StartRunRequest
@@ -11,15 +8,11 @@ from taskhub_v2.workflows import build_main_graph
 from tests.fakes import RecordingProvider, RecordingWorker
 
 
-@pytest.mark.skipif(
-    not os.getenv("TASKHUB_TEST_POSTGRES_DSN"),
-    reason="TASKHUB_TEST_POSTGRES_DSN is not configured",
-)
-def test_postgres_checkpoint_survives_runtime_recreation():
+def test_postgres_checkpoint_survives_runtime_recreation(postgres_dsn):
     async def scenario():
         settings = Settings(
             checkpointer="postgres",
-            postgres_dsn=os.environ["TASKHUB_TEST_POSTGRES_DSN"],
+            postgres_dsn=postgres_dsn,
         )
 
         async with checkpoint_store(settings) as first_store:

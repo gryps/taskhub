@@ -5,22 +5,15 @@ import os
 import subprocess
 import sys
 
-import psycopg
-from psycopg.conninfo import conninfo_to_dict, make_conninfo
-
 
 def main() -> int:
     dsn = os.environ.get("TASKHUB_POSTGRES_DSN", "")
     if not dsn:
         print("TASKHUB_POSTGRES_DSN is not configured", file=sys.stderr)
         return 2
-    schema = "taskhub_acceptance"
-    with psycopg.connect(dsn, autocommit=True) as connection:
-        connection.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-    parameters = conninfo_to_dict(dsn)
-    parameters["options"] = f"-c search_path={schema}"
+    # pytest fixtures allocate and clean a unique schema for each test.
     environment = dict(os.environ)
-    environment["TASKHUB_TEST_POSTGRES_DSN"] = make_conninfo(**parameters)
+    environment["TASKHUB_TEST_POSTGRES_DSN"] = dsn
     return subprocess.run(
         [
             sys.executable,
