@@ -133,6 +133,7 @@ def test_candidate_approval_consistency(browser_name, record_property):
             )
             assert owner_response.status == 201, owner_response.text()
             owner_run_id = owner_response.json()["run_id"]
+            pages[0].locator("#nav-tasks").click()
             pages[0].locator("#refresh-tasks").click()
             pages[0].locator(f'tr[data-run-id="{owner_run_id}"]').click()
             pages[0].locator("#approve").click()
