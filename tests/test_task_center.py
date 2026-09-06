@@ -116,11 +116,13 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="nav-resources"' in html and "系统资源" in html
         assert 'id="revise"' in html and "退回实施" in html
         assert 'id="manual"' in html and "转人工处理" in html
+        assert html.count('id="archive-task"') == 1
         assert '<details><summary>规划方案' in html
         script = client.get("/static/app.js").text
         assert "localStorage.setItem(\"taskhub_run_id\"" not in script
         assert 'decision === "revise" ? "revise"' in script
         assert 'decision === "manual" ? "manual"' in script
+        assert '["completed", "rejected", "failed"].includes(run.status)' in script
         for stage in (
             "intake", "planning", "plan_approval", "implementation", "acceptance",
             "review", "risk", "supervision", "merge_approval", "merging", "completed",

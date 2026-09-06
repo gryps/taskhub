@@ -62,6 +62,10 @@ function render(run) {
   pendingAction = run.pending_action;
   const orphanPanel = byId("orphan-action");
   orphanPanel.classList.toggle("hidden", !run.project_missing || Boolean(run.archived_at));
+  const terminal = ["completed", "rejected", "failed"].includes(run.status);
+  byId("archive-task").classList.toggle(
+    "hidden", Boolean(run.archived_at) || (!run.project_missing && !terminal)
+  );
   byId("approve").disabled = run.project_missing || Boolean(run.archived_at);
   if (run.project_missing && !run.archived_at) populateRebindProjects();
   renderFlow(run.stage, run.status, run.workflow_steps);
