@@ -57,6 +57,10 @@ function render(run) {
     rejected: "已终止", blocked: "已阻塞", failed: "失败"};
   byId("status").textContent = statuses[run.status] || run.status;
   pendingAction = run.pending_action;
+  const orphanPanel = byId("orphan-action");
+  orphanPanel.classList.toggle("hidden", !run.project_missing || Boolean(run.archived_at));
+  byId("approve").disabled = run.project_missing || Boolean(run.archived_at);
+  if (run.project_missing && !run.archived_at) populateRebindProjects();
   renderFlow(run.stage, run.status, run.workflow_steps);
   const normalizedStage = run.stage === "implementation_blocked" ? "implementation"
     : run.stage === "acceptance_blocked" ? "acceptance"
@@ -413,6 +417,26 @@ async function decide(decision) {
   render(run);
 }
 
+async function populateRebindProjects() {
+  const data = await request("/api/projects");
+  byId("rebind-project").innerHTML = data.projects.map((project) =>
+    `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`).join("");
+  byId("rebind-task").disabled = data.projects.length === 0;
+}
+
+async function archiveTask() {
+  await request(`/api/runs/${currentRun}/archive`, {method: "POST"});
+  eventSource?.close();
+  showPage("tasks");
+}
+
+async function rebindTask() {
+  const run = await request(`/api/runs/${currentRun}/rebind`, {method: "POST",
+    body: JSON.stringify({project_id: byId("rebind-project").value})});
+  byId("orphan-message").textContent = "项目已重新绑定，可以重试";
+  render(run);
+}
+
 async function submitAcceptance(event) {
   event.preventDefault();
   const summary = byId("acceptance-note").value.trim();
@@ -435,6 +459,8 @@ byId("revise").addEventListener("click", () => decide("revise"));
 byId("reject").addEventListener("click", () => decide("reject"));
 byId("acceptance-submit").addEventListener("submit", submitAcceptance);
 byId("deploy-release").addEventListener("click", deployRelease);
+byId("archive-task").addEventListener("click", archiveTask);
+byId("rebind-task").addEventListener("click", rebindTask);
 
 request("/api/health").then(() => { byId("health").textContent = "服务正常"; });
 byId("login-button").addEventListener("click", login);

@@ -46,6 +46,25 @@ def test_memory_task_index_filters_and_preserves_created_time():
     asyncio.run(exercise())
 
 
+def test_archived_tasks_are_hidden_and_upsert_does_not_revive_them():
+    async def exercise():
+        index = MemoryTaskIndex()
+        values = {
+            "run_id": "archived", "requirement": "Old task", "project_id": "gone",
+            "current_stage": "implementation_blocked", "status": "blocked",
+        }
+        await index.upsert(values)
+        archived = await index.archive("archived")
+        assert archived.archived_at is not None
+        await index.upsert(dict(values, status="running"))
+        assert (await index.list()).total == 0
+        visible = await index.list(include_archived=True)
+        assert visible.total == 1
+        assert visible.items[0].archived_at == archived.archived_at
+
+    asyncio.run(exercise())
+
+
 def test_task_center_lists_three_tasks_and_filters_production_lines():
     with TestClient(create_app(settings())) as client:
         headers = login(client)

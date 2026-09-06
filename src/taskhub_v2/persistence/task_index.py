@@ -28,6 +28,8 @@ class MemoryTaskIndex:
             pending_action=values.get("pending_action"),
             created_at=previous.created_at if previous else now,
             updated_at=now,
+            archived_at=previous.archived_at if previous else None,
+            rebound_project_id=previous.rebound_project_id if previous else None,
         )
         if previous and item.model_dump(exclude={"updated_at"}) == previous.model_dump(
             exclude={"updated_at"}
@@ -40,14 +42,33 @@ class MemoryTaskIndex:
         return self._items.get(run_id)
 
     async def list(self, *, page=1, page_size=50, **filters) -> TaskPage:
+        include_archived = filters.pop("include_archived", False)
         items = [
             item for item in self._items.values()
-            if all(not value or getattr(item, key) == value for key, value in filters.items())
+            if (include_archived or item.archived_at is None)
+            and all(not value or getattr(item, key) == value for key, value in filters.items())
         ]
         items.sort(key=lambda item: (item.updated_at, item.run_id), reverse=True)
         start = (page - 1) * page_size
         return TaskPage(items=items[start:start + page_size], total=len(items), page=page,
                         page_size=page_size)
+
+    async def archive(self, run_id: str) -> TaskSummary | None:
+        item = self._items.get(run_id)
+        if item and item.archived_at is None:
+            now = datetime.now(UTC)
+            item = item.model_copy(update={"archived_at": now, "updated_at": now})
+            self._items[run_id] = item
+        return item
+
+    async def rebind(self, run_id: str, project_id: str) -> TaskSummary | None:
+        item = self._items.get(run_id)
+        if item:
+            item = item.model_copy(
+                update={"rebound_project_id": project_id, "updated_at": datetime.now(UTC)}
+            )
+            self._items[run_id] = item
+        return item
 
 
 class PostgresTaskIndex:
@@ -64,6 +85,12 @@ class PostgresTaskIndex:
                   pending_action JSONB, created_at TIMESTAMPTZ NOT NULL,
                   updated_at TIMESTAMPTZ NOT NULL)
             """)
+            await connection.execute(
+                "ALTER TABLE taskhub_task_index ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ"
+            )
+            await connection.execute(
+                "ALTER TABLE taskhub_task_index ADD COLUMN IF NOT EXISTS rebound_project_id TEXT"
+            )
             for column in ("project_id", "production_line", "status", "stage", "updated_at"):
                 await connection.execute(
                     f"CREATE INDEX IF NOT EXISTS taskhub_task_index_{column} "
@@ -109,7 +136,8 @@ class PostgresTaskIndex:
         return TaskSummary.model_validate(dict(row)) if row else None
 
     async def list(self, *, page=1, page_size=50, **filters) -> TaskPage:
-        clauses, params = [], []
+        include_archived = filters.pop("include_archived", False)
+        clauses, params = ([] if include_archived else ["archived_at IS NULL"]), []
         for key, value in filters.items():
             if value:
                 clauses.append(f"{key}=%s")
@@ -127,6 +155,25 @@ class PostgresTaskIndex:
             )
             items = [TaskSummary.model_validate(dict(row)) async for row in cursor]
         return TaskPage(items=items, total=total, page=page, page_size=page_size)
+
+    async def archive(self, run_id: str) -> TaskSummary | None:
+        async with self.pool.connection() as connection:
+            await connection.execute(
+                """UPDATE taskhub_task_index
+                   SET archived_at=COALESCE(archived_at, now()), updated_at=now()
+                   WHERE run_id=%s""",
+                (run_id,),
+            )
+        return await self.get(run_id)
+
+    async def rebind(self, run_id: str, project_id: str) -> TaskSummary | None:
+        async with self.pool.connection() as connection:
+            await connection.execute(
+                """UPDATE taskhub_task_index
+                   SET rebound_project_id=%s, updated_at=now() WHERE run_id=%s""",
+                (project_id, run_id),
+            )
+        return await self.get(run_id)
 
 
 def _summary(requirement: str) -> str:

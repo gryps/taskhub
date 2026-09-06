@@ -9,11 +9,13 @@ from taskhub_v2.domain.models import (
     AcceptanceSubmission,
     ApprovalRequest,
     ResumeRequest,
+    RebindProjectRequest,
     RunStatus,
     RunView,
     Stage,
     StartRunRequest,
     TaskPage,
+    TaskSummary,
 )
 from taskhub_v2.projects import ProjectNotFoundError
 from taskhub_v2.services.runs import RunConflictError, RunNotFoundError, RunService
@@ -44,11 +46,31 @@ async def list_runs(
     stage: Stage | None = None,
     page: int = 1,
     page_size: int = 50,
+    include_archived: bool = False,
 ) -> TaskPage:
     if page < 1 or not 1 <= page_size <= 200:
         raise HTTPException(status_code=422, detail="invalid pagination")
     return await service.list(project_id=project_id, production_line=production_line,
-                              status=status, stage=stage, page=page, page_size=page_size)
+                              status=status, stage=stage, page=page, page_size=page_size,
+                              include_archived=include_archived)
+
+
+@router.post("/runs/{run_id}/archive", response_model=TaskSummary)
+async def archive_run(run_id: str, service: Service):
+    try:
+        return await service.archive(run_id)
+    except RunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="run not found") from exc
+
+
+@router.post("/runs/{run_id}/rebind", response_model=RunView)
+async def rebind_run(run_id: str, payload: RebindProjectRequest, service: Service):
+    try:
+        return await service.rebind(run_id, payload.project_id)
+    except RunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="run not found") from exc
+    except RunConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/runs/{run_id}", response_model=RunView)

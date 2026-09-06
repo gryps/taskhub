@@ -214,6 +214,10 @@ class ResumeRequest(BaseModel):
     comment: str = Field(default="", max_length=2_000)
 
 
+class RebindProjectRequest(BaseModel):
+    project_id: str = Field(min_length=1, max_length=80)
+
+
 class RunView(BaseModel):
     run_id: str
     project_id: str
@@ -239,6 +243,11 @@ class RunView(BaseModel):
     model_runs: list[ModelRun] = Field(default_factory=list)
     timeline: list[TimelineEvent] = Field(default_factory=list)
     workflow_steps: list[dict[str, str]] = Field(default_factory=list)
+    archived_at: datetime | None = None
+    original_project_id: str | None = None
+    orphaned: bool = False
+    project_missing: bool = False
+    allowed_actions: list[str] = Field(default_factory=list)
 
 
 class TaskSummary(BaseModel):
@@ -252,6 +261,12 @@ class TaskSummary(BaseModel):
     pending_action: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
+    archived_at: datetime | None = None
+    rebound_project_id: str | None = None
+    original_project_id: str | None = None
+    orphaned: bool = False
+    project_missing: bool = False
+    allowed_actions: list[str] = Field(default_factory=list)
 
 
 class TaskPage(BaseModel):

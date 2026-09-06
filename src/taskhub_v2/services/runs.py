@@ -79,9 +79,18 @@ class RunService:
         indexed = await self.task_index.get(run_id) if self.task_index else None
         if self.task_index and (sync or indexed is None):
             indexed = await self.task_index.upsert(values, production_line)
+        effective_project = (
+            indexed.rebound_project_id
+            if indexed and indexed.rebound_project_id
+            else values["project_id"]
+        )
+        missing = self._project_missing(effective_project)
         return RunView(
             run_id=run_id,
-            project_id=values["project_id"],
+            project_id=effective_project,
+            original_project_id=(
+                values["project_id"] if effective_project != values["project_id"] else None
+            ),
             requirement=values["requirement"],
             production_line=values.get("production_line") or (
                 indexed.production_line if indexed else "default"
@@ -106,10 +115,50 @@ class RunService:
             model_runs=values.get("model_runs", []),
             timeline=values.get("timeline", []),
             workflow_steps=workflow_steps(values),
+            archived_at=indexed.archived_at if indexed else None,
+            orphaned=missing,
+            project_missing=missing,
+            allowed_actions=["archive", "rebind_project"] if missing else [],
         )
 
     async def list(self, **filters):
-        return await self.task_index.list(**filters)
+        page = await self.task_index.list(**filters)
+        return page.model_copy(update={"items": [self._project_task(item) for item in page.items]})
+
+    def _project_missing(self, project_id: str) -> bool:
+        if self.projects is None:
+            return False
+        try:
+            self.projects.get(project_id)
+            return False
+        except LookupError:
+            return True
+
+    def _project_task(self, item):
+        effective = item.rebound_project_id or item.project_id
+        missing = self._project_missing(effective)
+        return item.model_copy(update={
+            "project_id": effective,
+            "original_project_id": item.project_id if effective != item.project_id else None,
+            "orphaned": missing, "project_missing": missing,
+            "allowed_actions": ["archive", "rebind_project"] if missing else [],
+        })
+
+    async def archive(self, run_id: str):
+        await self.get(run_id)
+        item = await self.task_index.archive(run_id)
+        if item is None:
+            raise RunNotFoundError(run_id)
+        return self._project_task(item)
+
+    async def rebind(self, run_id: str, project_id: str) -> RunView:
+        current = await self.get(run_id)
+        if current.archived_at:
+            raise RunConflictError("task is archived; project rebinding is disabled")
+        if self.projects is None or self._project_missing(project_id):
+            raise RunConflictError("target project is not registered")
+        await self.task_index.rebind(run_id, project_id)
+        return await self.get(run_id)
 
     async def backfill(self, checkpointer) -> None:
         """Repair missing and stale rows from authoritative latest checkpoints."""
@@ -151,6 +200,12 @@ class RunService:
 
     async def approve(self, run_id: str, request: ApprovalRequest) -> RunView:
         current = await self.get(run_id)
+        if current.archived_at:
+            raise RunConflictError("task is archived; workflow actions are disabled")
+        if request.decision == "approve" and current.project_missing:
+            raise RunConflictError(
+                "project is not registered; archive the task or rebind it to an existing project"
+            )
         choices = (current.pending_action or {}).get("choices", [])
         if (
             current.stage != Stage.PLAN_APPROVAL
@@ -158,11 +213,20 @@ class RunService:
             or request.decision not in choices
         ):
             raise RunConflictError("run is not waiting for plan approval")
-        await self._execute(run_id, Command(resume=request.model_dump(mode="json")))
+        update = {"project_id": current.project_id} if current.original_project_id else None
+        await self._execute(
+            run_id, Command(resume=request.model_dump(mode="json"), update=update)
+        )
         return await self.get(run_id, sync=True)
 
     async def resume(self, run_id: str, request: ResumeRequest) -> RunView:
         current = await self.get(run_id)
+        if current.archived_at:
+            raise RunConflictError("task is archived; workflow actions are disabled")
+        if request.decision in {"retry", "approve", "reassess"} and current.project_missing:
+            raise RunConflictError(
+                "project is not registered; archive the task or rebind it to an existing project"
+            )
         action = current.pending_action or {}
         choices = list(action.get("choices", []))
         # Checkpoints created before acceptance revisions existed only contain
@@ -171,20 +235,28 @@ class RunService:
             choices.append("revise")
         if not current.next_nodes or request.decision not in choices:
             raise RunConflictError("decision is not valid for the pending action")
-        await self._execute(run_id, Command(resume=request.model_dump(mode="json")))
+        update = {"project_id": current.project_id} if current.original_project_id else None
+        await self._execute(run_id, Command(resume=request.model_dump(mode="json"), update=update))
         return await self.get(run_id, sync=True)
 
     async def submit_acceptance(
         self, run_id: str, request: AcceptanceSubmission
     ) -> RunView:
         current = await self.get(run_id)
+        if current.archived_at:
+            raise RunConflictError("task is archived; workflow actions are disabled")
+        if current.project_missing:
+            raise RunConflictError(
+                "project is not registered; archive the task or rebind it to an existing project"
+            )
         if current.stage != Stage.SUPERVISION or "revision_limit" not in current.next_nodes:
             raise RunConflictError("run is not waiting for acceptance evidence")
         payload = {
             "decision": "reassess",
             "evidence": [item.model_dump(mode="json") for item in request.evidence],
         }
-        await self._execute(run_id, Command(resume=payload))
+        update = {"project_id": current.project_id} if current.original_project_id else None
+        await self._execute(run_id, Command(resume=payload, update=update))
         return await self.get(run_id, sync=True)
 
     async def history(self, run_id: str) -> list[dict[str, Any]]:
