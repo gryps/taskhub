@@ -14,6 +14,7 @@ from taskhub_v2.workflows.acceptance_recovery import (
 )
 from taskhub_v2.workflows.implementation import build_implementation_graph
 from taskhub_v2.workflows.intake import build_intake_graph
+from taskhub_v2.workflows.manual_handoff import handle_revision_limit, route_revision_limit
 from taskhub_v2.workflows.planning import build_planning_graph
 from taskhub_v2.workflows.review import build_review_graph
 from taskhub_v2.workflows.risk import build_risk_graph
@@ -142,66 +143,6 @@ def build_main_graph(
             ),
         }
 
-    async def request_revision_override(state: CodingState) -> dict:
-        response = interrupt(
-            {
-                "type": "revision_limit",
-                "run_id": state["run_id"],
-                "revision_count": state.get("revision_count", 0),
-                "supervision": state.get("supervision"),
-                "choices": ["reassess", "retry", "cancel"],
-            }
-        )
-        decision = response.get("decision") if isinstance(response, dict) else response
-        retry = decision == "retry"
-        reassess = decision == "reassess"
-        submitted = response.get("evidence", []) if isinstance(response, dict) else []
-        existing = (state.get("acceptance") or {}).get("evidence", [])
-        combined = [*existing, *submitted]
-        return {
-            "decision": decision,
-            "max_revision_attempts": (
-                int(state.get("max_revision_attempts", 2)) + 1
-                if retry
-                else int(state.get("max_revision_attempts", 2))
-            ),
-            "acceptance": (
-                {
-                    "status": (
-                        "passed"
-                        if combined and all(item.get("status") == "passed" for item in combined)
-                        else "failed"
-                    ),
-                    "evidence": combined,
-                }
-                if reassess
-                else state.get("acceptance")
-            ),
-            "pending_action": None,
-            "current_stage": (
-                Stage.REVIEW.value
-                if reassess
-                else Stage.IMPLEMENTATION.value
-                if retry
-                else Stage.REJECTED.value
-            ),
-            "status": (
-                RunStatus.RUNNING.value if retry or reassess else RunStatus.REJECTED.value
-            ),
-            "timeline": event(
-                Stage.SUPERVISION,
-                (
-                    "Acceptance evidence submitted"
-                    if reassess
-                    else "Extra revision approved"
-                    if retry
-                    else "Run cancelled"
-                ),
-                "owner",
-                response.get("comment", "") if isinstance(response, dict) else "",
-            ),
-        }
-
     async def publish(state: CodingState) -> dict:
         implementation = ExecutionResult.model_validate(state["implementation"])
         try:
@@ -284,11 +225,6 @@ def build_main_graph(
             return "revision"
         return "revision_limit"
 
-    def route_revision_override(state: CodingState) -> str:
-        if state.get("decision") == "reassess":
-            return "review"
-        return "revision" if state.get("decision") == "retry" else "reject"
-
     def route_merge_approval(state: CodingState) -> str:
         return "publication" if state.get("decision") == "approve" else "reject"
 
@@ -308,7 +244,7 @@ def build_main_graph(
     builder.add_node("risk", build_risk_graph(provider))
     builder.add_node("supervisor", build_supervisor_graph(provider))
     builder.add_node("revision", prepare_revision)
-    builder.add_node("revision_limit", request_revision_override)
+    builder.add_node("revision_limit", handle_revision_limit)
     builder.add_node("merge_approval", request_merge_approval)
     builder.add_node("publication", publish)
     builder.add_node("publication_recovery", recover_publication)
@@ -362,8 +298,13 @@ def build_main_graph(
     builder.add_edge("revision", "implementation")
     builder.add_conditional_edges(
         "revision_limit",
-        route_revision_override,
-        {"review": "review", "revision": "revision", "reject": "reject"},
+        route_revision_limit,
+        {
+            "manual": "revision_limit",
+            "review": "review",
+            "revision": "revision",
+            "reject": "reject",
+        },
     )
     builder.add_conditional_edges(
         "merge_approval",

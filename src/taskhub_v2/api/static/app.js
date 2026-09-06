@@ -76,11 +76,12 @@ function render(run) {
   const waiting = Boolean(pendingAction || run.blocking_reason);
   const action = byId("action");
   byId("acceptance-submit").classList.toggle(
-    "hidden", pendingAction?.type !== "revision_limit"
+    "hidden", pendingAction?.type !== "manual_intervention"
   );
   const actionStages = {plan_approval: "plan_approval", implementation_recovery: "implementation",
     acceptance_recovery: "acceptance", merge_approval: "merge_approval",
-    publication_recovery: "merging", revision_limit: "supervision"};
+    publication_recovery: "merging", revision_limit: "supervision",
+    manual_intervention: "supervision"};
   action.dataset.stage = actionStages[pendingAction?.type] || normalizedStage;
   action.classList.toggle("hidden", !waiting);
   if (pendingAction?.type === "plan_approval") {
@@ -122,6 +123,12 @@ function render(run) {
     byId("action-detail").textContent = run.supervision?.summary || "监督仍发现未解决的问题";
     byId("approve").textContent = "批准再返工一次";
     byId("reject").textContent = "终止任务";
+  } else if (pendingAction?.type === "manual_intervention") {
+    byId("action-stage").textContent = "第 8 环 · 人工处理";
+    byId("action-title").textContent = "任务已转人工处理";
+    byId("action-detail").textContent = "完成候选环境操作后，提交真实验收证据以重新审查";
+    byId("approve").textContent = "返回自动返工";
+    byId("reject").textContent = "终止任务";
   }
   if (run.blocking_reason && !pendingAction) {
     byId("action-stage").textContent = `当前环节 · ${stageName(run.stage)}`;
@@ -135,6 +142,9 @@ function render(run) {
     ["reject", "cancel"].includes(choice)));
   byId("revise").classList.toggle(
     "hidden", pendingAction?.type !== "acceptance_recovery"
+  );
+  byId("manual").classList.toggle(
+    "hidden", pendingAction?.type !== "revision_limit"
   );
   renderEvidence(run);
   refreshDeployment(run);
@@ -407,9 +417,9 @@ byId("start").addEventListener("click", async () => {
 async function decide(decision) {
   const planApproval = pendingAction?.type === "plan_approval";
   const endpoint = planApproval ? "approval" : "resume";
-  const recovery = ["implementation_recovery", "acceptance_recovery", "publication_recovery", "revision_limit"].includes(pendingAction?.type);
+  const recovery = ["implementation_recovery", "acceptance_recovery", "publication_recovery", "revision_limit", "manual_intervention"].includes(pendingAction?.type);
   const resolved = recovery
-    ? (decision === "approve" ? "retry" : decision === "revise" ? "revise" : "cancel")
+    ? (decision === "manual" ? "manual" : decision === "approve" ? "retry" : decision === "revise" ? "revise" : "cancel")
     : decision;
   const run = await request(`/api/runs/${currentRun}/${endpoint}`, {
     method: "POST", body: JSON.stringify({decision: resolved, comment: ""}),
@@ -455,6 +465,7 @@ async function submitAcceptance(event) {
   render(run);
 }
 byId("approve").addEventListener("click", () => decide("approve"));
+byId("manual").addEventListener("click", () => decide("manual"));
 byId("revise").addEventListener("click", () => decide("revise"));
 byId("reject").addEventListener("click", () => decide("reject"));
 byId("acceptance-submit").addEventListener("submit", submitAcceptance);

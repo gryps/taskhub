@@ -362,10 +362,19 @@ def test_revision_limit_requires_owner_decision():
         assert limited.status == RunStatus.WAITING
         assert limited.stage == Stage.SUPERVISION
         assert limited.pending_action["type"] == "revision_limit"
+        assert "manual" in limited.pending_action["choices"]
         assert limited.revision_count == 2
         assert worker.calls == 3
+        manual = await service.resume(
+            limited.run_id, ResumeRequest(decision="manual", comment="Bootstrap a node")
+        )
+        assert manual.status == RunStatus.WAITING
+        assert manual.stage == Stage.SUPERVISION
+        assert manual.pending_action["type"] == "manual_intervention"
+        assert manual.next_nodes == ["revision_limit"]
+        assert worker.calls == 3
         rejected = await service.resume(
-            limited.run_id, ResumeRequest(decision="cancel", comment="Stop")
+            manual.run_id, ResumeRequest(decision="cancel", comment="Stop")
         )
         assert rejected.status == RunStatus.REJECTED
 

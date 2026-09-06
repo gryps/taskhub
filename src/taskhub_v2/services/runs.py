@@ -233,6 +233,8 @@ class RunService:
         # retry/cancel. Allow them to use the new recovery route after deployment.
         if action.get("type") == "acceptance_recovery" and "revise" not in choices:
             choices.append("revise")
+        if action.get("type") == "revision_limit" and "manual" not in choices:
+            choices.append("manual")
         if not current.next_nodes or request.decision not in choices:
             raise RunConflictError("decision is not valid for the pending action")
         update = {"project_id": current.project_id} if current.original_project_id else None

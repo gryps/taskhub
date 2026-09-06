@@ -47,7 +47,7 @@ def build_supervisor_graph(provider: ModelProvider):
                     {
                         "type": "revision_limit",
                         "title": "Automatic revision limit reached",
-                        "choices": ["reassess", "retry", "cancel"],
+                        "choices": ["reassess", "retry", "manual", "cancel"],
                     }
                     if not revision_available
                     else None
