@@ -88,11 +88,10 @@ def test_candidate_approval_consistency(browser_name, record_property):
             pages[0].locator("#approve").click()
             expect(pages[0].locator("#approve")).to_have_text("合并到权威分支")
             pages[0].locator("#acceptance-detail").evaluate("element => element.parentElement.open = true")
-            with pages[0].context.expect_page() as artifact_page_info:
+            with pages[0].expect_download() as artifact_download_info:
                 pages[0].locator("#acceptance-detail a").click()
-            artifact_page = artifact_page_info.value
-            expect(artifact_page.locator("h1")).to_have_text("Candidate artifact available")
-            artifact_page.close()
+            artifact_download = artifact_download_info.value
+            assert "Candidate artifact available" in Path(artifact_download.path()).read_text()
             completed("artifact_view")
             pages[0].locator("#approve").click()
             expect(pages[0].locator("#status")).to_have_text("已阻塞")
