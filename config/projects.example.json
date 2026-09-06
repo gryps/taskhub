@@ -1,0 +1,12 @@
+{
+  "projects": [
+    {
+      "id": "example",
+      "repository": "/home/gryps/repos/example",
+      "base_ref": "main",
+      "test_commands": [["python3", "-m", "pytest", "-q"]],
+      "test_timeout_seconds": 600,
+      "max_revision_attempts": 2
+    }
+  ]
+}

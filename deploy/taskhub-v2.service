@@ -1,0 +1,17 @@
+[Unit]
+Description=TaskHub V2 LangGraph Control Plane
+After=network-online.target postgresql@16-main.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/gryps/apps/taskhub-v2
+EnvironmentFile=/home/gryps/apps/taskhub-v2/.env
+EnvironmentFile=-/home/gryps/.config/taskhub-v2/providers.env
+Environment=PYTHONPATH=/home/gryps/apps/taskhub-v2/src
+ExecStart=/home/gryps/apps/taskhub-v2/.venv/bin/python -m uvicorn taskhub_v2.api.app:create_app --factory --host 0.0.0.0 --port 8200
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

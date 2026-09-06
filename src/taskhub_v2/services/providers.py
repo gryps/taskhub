@@ -1,0 +1,115 @@
+import asyncio
+from pathlib import Path
+from typing import Any
+
+from taskhub_v2.config import Settings
+from taskhub_v2.providers.codex_account import CodexAccountProvider
+from taskhub_v2.providers.health import ProviderHealthStore
+from taskhub_v2.security import mask_secret
+
+
+DEVICE_AUTH_URL = "https://auth.openai.com/codex/device"
+
+
+class ProviderCatalog:
+    def __init__(self, settings: Settings, health: ProviderHealthStore | None = None):
+        self.settings = settings
+        self.health = health
+
+    async def status(self) -> dict[str, Any]:
+        plus, pro = await asyncio.gather(
+            self._account("chatgpt_plus_account", "plus", self.settings.codex_plus_home),
+            self._account("chatgpt_pro_account", "pro", self.settings.codex_pro_home),
+        )
+        providers = [
+            plus,
+            pro,
+            self._api(
+                "gpt_api",
+                self.settings.gpt_api_key,
+                self.settings.gpt_base_url,
+                self.settings.gpt_model,
+                "proxy",
+            ),
+            self._api(
+                "deepseek_api",
+                self.settings.deepseek_api_key,
+                self.settings.deepseek_base_url,
+                self.settings.deepseek_model,
+                "direct",
+            ),
+            self._api(
+                "minimax_api",
+                self.settings.minimax_api_key,
+                self.settings.minimax_base_url,
+                self.settings.minimax_model,
+                "direct",
+            ),
+        ]
+        health = self.health.snapshot() if self.health else {}
+        for provider in providers:
+            record = health.get(provider["id"])
+            if record:
+                provider["runtime_health"] = record
+                available, _ = self.health.availability(provider["id"])
+                if not available:
+                    provider["status"] = f"cooldown:{record['reason']}"
+        return {
+            "active_mode": self.settings.provider,
+            "device_auth_url": DEVICE_AUTH_URL,
+            "proxy": {
+                "required_for": ["chatgpt_plus_account", "chatgpt_pro_account", "gpt_api"],
+                "configured": bool(self.settings.openai_proxy_url),
+                "route": self.settings.openai_proxy_url,
+                "direct": ["deepseek_api", "minimax_api"],
+            },
+            "providers": providers,
+            "role_models": {
+                "planner": self.settings.gpt_planner_model,
+                "coder": self.settings.gpt_coder_model,
+                "supervisor": self.settings.gpt_supervisor_model,
+                "reviewer": self.settings.deepseek_model,
+                "risk": self.settings.minimax_model,
+            },
+        }
+
+    async def _account(self, provider_id: str, account: str, home: str) -> dict[str, Any]:
+        provider = CodexAccountProvider(
+            provider_id=provider_id,
+            codex_bin=self.settings.codex_cli_bin,
+            codex_home=home,
+            proxy_url=self.settings.openai_proxy_url,
+            workdir=self.settings.provider_workdir,
+        )
+        state = await provider.status()
+        auth_file = Path(home) / "auth.json"
+        return {
+            "id": provider_id,
+            "kind": "account",
+            "configured": state["authenticated"],
+            "status": state["status"],
+            "model": "account_default",
+            "route": "proxy",
+            "credential_ref": str(auth_file),
+            "credential_present": auth_file.is_file(),
+            "login_command": (
+                "ssh -p 8022 -t gryps@192.168.31.31 "
+                f"'/home/gryps/apps/taskhub-v2/scripts/codex_account_login.sh {account}'"
+            ),
+            "device_auth_url": DEVICE_AUTH_URL,
+        }
+
+    @staticmethod
+    def _api(
+        provider_id: str, api_key: str, base_url: str, model: str, route: str
+    ) -> dict[str, Any]:
+        return {
+            "id": provider_id,
+            "kind": "api",
+            "configured": bool(api_key),
+            "status": "configured" if api_key else "not_configured",
+            "api_key_mask": mask_secret(api_key),
+            "base_url": base_url,
+            "model": model,
+            "route": route,
+        }

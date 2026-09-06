@@ -1,0 +1,12 @@
+{
+  "projects": [
+    {
+      "id": "calculator-demo",
+      "repository": "/home/gryps/repos/taskhub-v2-calculator-demo",
+      "base_ref": "main",
+      "test_commands": [["python3", "-m", "unittest", "-q"]],
+      "test_timeout_seconds": 120,
+      "max_revision_attempts": 2
+    }
+  ]
+}

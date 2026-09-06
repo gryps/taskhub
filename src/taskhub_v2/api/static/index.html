@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TaskHub V2</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header>
+    <div>
+      <strong>TaskHub V2</strong>
+      <span>LangGraph 控制台</span>
+    </div>
+    <div class="header-actions">
+      <span id="health" class="badge">检查服务</span>
+      <button id="logout" class="header-button hidden">退出</button>
+    </div>
+  </header>
+  <main>
+    <section id="login" class="login">
+      <label>管理口令<input id="admin-token" type="password" autocomplete="current-password"></label>
+      <button id="login-button">登录</button>
+      <p id="login-message" role="status"></p>
+    </section>
+    <div id="workspace" class="hidden">
+    <section class="project-tools">
+      <div class="project-toolbar">
+        <div>
+          <h2>项目</h2>
+          <span id="active-project" class="muted">请先创建或接入项目</span>
+        </div>
+        <div class="project-actions">
+          <button id="show-project-form">创建项目</button>
+          <button id="show-attach-project-form" class="secondary">接入项目</button>
+        </div>
+      </div>
+      <form id="project-form" class="project-form hidden">
+        <div class="section-head">
+          <h2>创建项目</h2>
+          <button id="close-project-form" type="button" class="icon-button secondary" title="关闭" aria-label="关闭">×</button>
+        </div>
+        <p class="form-note">TaskHub 将自动创建权威 Git 仓库、控制中心工作副本并完成接入。</p>
+        <div class="form-grid">
+          <label>项目名称<input id="project-name" required maxlength="100" placeholder="例如：移动电商平台"></label>
+          <label>项目类型<select id="project-type">
+            <option value="general">通用项目</option>
+            <option value="python">Python</option>
+            <option value="node">Node.js</option>
+            <option value="mixed">Python + Node.js</option>
+          </select></label>
+          <label>项目编号（自动生成）<input id="project-id" required readonly></label>
+          <label>基准分支<input id="project-branch" required value="main" maxlength="200"></label>
+          <label class="wide">测试命令（每行一条）<textarea id="project-tests" rows="3" placeholder="python3 -m pytest -q"></textarea></label>
+        </div>
+        <div class="form-actions">
+          <button id="create-project" type="submit">创建并接入</button>
+          <span id="project-message" role="status"></span>
+        </div>
+      </form>
+      <form id="attach-project-form" class="project-form hidden">
+        <div class="section-head">
+          <h2>接入项目</h2>
+          <button id="close-attach-project-form" type="button" class="icon-button secondary" title="关闭" aria-label="关闭">×</button>
+        </div>
+        <p class="form-note">接入控制中心已有的 Git 工作副本。</p>
+        <div class="form-grid">
+          <label>项目名称<input id="attach-project-name" required maxlength="100"></label>
+          <label>基准分支<input id="attach-project-branch" required value="main" maxlength="200"></label>
+          <label class="wide">控制中心 Git 路径<input id="attach-project-repository" required maxlength="500" placeholder="/home/gryps/repos/project-name"></label>
+          <label class="wide">测试命令（每行一条）<textarea id="attach-project-tests" rows="3"></textarea></label>
+          <div class="form-actions wide">
+            <button type="submit" class="secondary">验证并接入已有项目</button>
+            <span id="attach-project-message" role="status"></span>
+          </div>
+        </div>
+      </form>
+    </section>
+    <section class="composer">
+      <label>开发需求<textarea id="requirement" rows="4" placeholder="输入需要实现的功能"></textarea></label>
+      <button id="start">开始流程</button>
+      <p id="message" role="status"></p>
+    </section>
+    <section class="process-overview" aria-labelledby="process-title">
+      <div class="section-head">
+        <h2 id="process-title">开发流程</h2>
+        <span class="muted">计划审批、发布审批需要人工处理</span>
+      </div>
+      <div id="flow" class="flow" aria-label="任务处理流程"></div>
+    </section>
+    <section id="run" class="run hidden">
+      <div class="run-head">
+        <div><span class="label">运行编号</span><code id="run-id"></code></div>
+        <span id="status" class="badge"></span>
+      </div>
+      <aside id="action" class="action hidden">
+        <strong id="action-title"></strong>
+        <p id="action-detail"></p>
+        <div class="actions">
+          <button id="approve">批准计划</button>
+          <button id="reject" class="secondary">拒绝</button>
+        </div>
+      </aside>
+      <div class="evidence-grid">
+        <section><h2>规划方案</h2><div id="plan-detail" class="evidence">尚未生成</div></section>
+        <section><h2>代码与测试</h2><div id="change-detail" class="evidence">尚未实施</div></section>
+        <section><h2>监督裁决</h2><div id="decision-detail" class="evidence">尚未裁决</div></section>
+        <section><h2>权威发布</h2><div id="publication-detail" class="evidence">尚未发布</div></section>
+      </div>
+      <h2>执行记录</h2>
+      <ol id="timeline" class="timeline"></ol>
+    </section>
+    <section class="providers-section">
+      <div class="section-head">
+        <h2>模型资源</h2>
+        <button id="refresh-providers" class="icon-button" title="刷新模型状态" aria-label="刷新模型状态">↻</button>
+      </div>
+      <p id="provider-summary" class="muted">正在检查</p>
+      <div id="providers" class="providers"></div>
+    </section>
+    <section class="providers-section">
+      <div class="section-head">
+        <h2>执行节点</h2>
+        <button id="refresh-nodes" class="icon-button" title="刷新节点状态" aria-label="刷新节点状态">↻</button>
+      </div>
+      <p id="node-summary" class="muted">正在检查</p>
+      <div id="nodes" class="providers"></div>
+    </section>
+    </div>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

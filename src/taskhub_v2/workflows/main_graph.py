@@ -1,0 +1,323 @@
+from langgraph.graph import END, START, StateGraph
+from langgraph.types import interrupt
+
+from taskhub_v2.domain.models import ExecutionResult, RunStatus, Stage
+from taskhub_v2.providers.base import ModelProvider
+from taskhub_v2.workers.base import PublisherGateway, WorkerGateway
+from taskhub_v2.workers.publisher import LocalPublisher
+from taskhub_v2.workflows.implementation import build_implementation_graph
+from taskhub_v2.workflows.intake import build_intake_graph
+from taskhub_v2.workflows.planning import build_planning_graph
+from taskhub_v2.workflows.review import build_review_graph
+from taskhub_v2.workflows.risk import build_risk_graph
+from taskhub_v2.workflows.state import CodingState, event
+from taskhub_v2.workflows.supervisor import build_supervisor_graph
+
+
+def build_main_graph(
+    provider: ModelProvider,
+    worker: WorkerGateway,
+    checkpointer,
+    publisher: PublisherGateway | None = None,
+):
+    publisher = publisher or LocalPublisher()
+
+    async def request_plan_approval(state: CodingState) -> dict:
+        response = interrupt(
+            {
+                "type": "plan_approval",
+                "run_id": state["run_id"],
+                "plan": state["plan"],
+                "prompt": "Approve this implementation plan?",
+            }
+        )
+        decision = response.get("decision") if isinstance(response, dict) else response
+        approved = decision == "approve"
+        return {
+            "decision": decision,
+            "pending_action": None,
+            "current_stage": (
+                Stage.IMPLEMENTATION.value if approved else Stage.REJECTED.value
+            ),
+            "status": RunStatus.RUNNING.value if approved else RunStatus.REJECTED.value,
+            "timeline": event(
+                Stage.PLAN_APPROVAL,
+                "Plan approved" if approved else "Plan rejected",
+                "owner",
+                response.get("comment", "") if isinstance(response, dict) else "",
+            ),
+        }
+
+    async def reject(state: CodingState) -> dict:
+        return {
+            "current_stage": Stage.REJECTED.value,
+            "status": RunStatus.REJECTED.value,
+            "timeline": event(Stage.REJECTED, "Run stopped", "system"),
+        }
+
+    async def recover_implementation(state: CodingState) -> dict:
+        response = interrupt(
+            {
+                "type": "implementation_recovery",
+                "run_id": state["run_id"],
+                "reason": state.get("blocking_reason"),
+                "choices": ["retry", "cancel"],
+            }
+        )
+        decision = response.get("decision") if isinstance(response, dict) else response
+        retry = decision == "retry"
+        return {
+            "decision": decision,
+            "attempt": int(state.get("attempt", 0)) + (1 if retry else 0),
+            "pending_action": None,
+            "blocking_reason": None if retry else state.get("blocking_reason"),
+            "current_stage": (
+                Stage.IMPLEMENTATION.value if retry else Stage.REJECTED.value
+            ),
+            "status": RunStatus.RUNNING.value if retry else RunStatus.REJECTED.value,
+            "timeline": event(
+                Stage.IMPLEMENTATION_BLOCKED,
+                "Implementation retry requested" if retry else "Run cancelled",
+                "owner",
+            ),
+        }
+
+    async def request_merge_approval(state: CodingState) -> dict:
+        response = interrupt(
+            {
+                "type": "merge_approval",
+                "run_id": state["run_id"],
+                "implementation": state.get("implementation"),
+                "supervision": state.get("supervision"),
+                "choices": ["approve", "reject"],
+            }
+        )
+        decision = response.get("decision") if isinstance(response, dict) else response
+        approved = decision == "approve"
+        return {
+            "decision": decision,
+            "pending_action": None,
+            "current_stage": Stage.MERGING.value if approved else Stage.REJECTED.value,
+            "status": RunStatus.RUNNING.value if approved else RunStatus.REJECTED.value,
+            "timeline": event(
+                Stage.MERGE_APPROVAL,
+                "Publication approved" if approved else "Publication rejected",
+                "owner",
+                response.get("comment", "") if isinstance(response, dict) else "",
+            ),
+        }
+
+    async def prepare_revision(state: CodingState) -> dict:
+        supervision = state.get("supervision") or {}
+        reasons = supervision.get("reasons") or []
+        feedback = "\n".join(
+            [supervision.get("summary", "Supervisor requested changes"), *reasons]
+        )
+        revision = int(state.get("revision_count", 0)) + 1
+        return {
+            "revision_count": revision,
+            "revision_feedback": feedback,
+            "implementation": state.get("implementation"),
+            "review": None,
+            "risk": None,
+            "supervision": None,
+            "current_stage": Stage.IMPLEMENTATION.value,
+            "status": RunStatus.RUNNING.value,
+            "pending_action": None,
+            "timeline": event(
+                Stage.IMPLEMENTATION,
+                f"Revision {revision} started",
+                "system",
+                feedback[:500],
+            ),
+        }
+
+    async def request_revision_override(state: CodingState) -> dict:
+        response = interrupt(
+            {
+                "type": "revision_limit",
+                "run_id": state["run_id"],
+                "revision_count": state.get("revision_count", 0),
+                "supervision": state.get("supervision"),
+                "choices": ["retry", "cancel"],
+            }
+        )
+        decision = response.get("decision") if isinstance(response, dict) else response
+        retry = decision == "retry"
+        return {
+            "decision": decision,
+            "max_revision_attempts": (
+                int(state.get("max_revision_attempts", 2)) + 1
+                if retry
+                else int(state.get("max_revision_attempts", 2))
+            ),
+            "pending_action": None,
+            "current_stage": (
+                Stage.IMPLEMENTATION.value if retry else Stage.REJECTED.value
+            ),
+            "status": RunStatus.RUNNING.value if retry else RunStatus.REJECTED.value,
+            "timeline": event(
+                Stage.SUPERVISION,
+                "Extra revision approved" if retry else "Run cancelled",
+                "owner",
+                response.get("comment", "") if isinstance(response, dict) else "",
+            ),
+        }
+
+    async def publish(state: CodingState) -> dict:
+        implementation = ExecutionResult.model_validate(state["implementation"])
+        try:
+            result = await publisher.publish(
+                state["run_id"], state["project_id"], implementation
+            )
+        except Exception as exc:
+            reason = getattr(exc, "reason", exc.__class__.__name__)
+            detail = getattr(exc, "detail", str(exc))[:500]
+            return {
+                "current_stage": Stage.MERGE_BLOCKED.value,
+                "status": RunStatus.BLOCKED.value,
+                "blocking_reason": {"code": reason, "detail": detail},
+                "pending_action": {
+                    "type": "publication_recovery",
+                    "title": "Publication needs attention",
+                    "choices": ["retry", "cancel"],
+                },
+                "timeline": event(
+                    Stage.MERGE_BLOCKED, "Publication blocked", "publisher", detail
+                ),
+            }
+        return {
+            "publication": result.model_dump(mode="json"),
+            "current_stage": Stage.COMPLETED.value,
+            "status": RunStatus.COMPLETED.value,
+            "blocking_reason": None,
+            "pending_action": None,
+            "timeline": event(
+                Stage.COMPLETED,
+                "Published to authority",
+                "publisher",
+                f"{result.authority_ref} -> {result.published_commit[:12]}",
+            ),
+        }
+
+    async def recover_publication(state: CodingState) -> dict:
+        response = interrupt(
+            {
+                "type": "publication_recovery",
+                "run_id": state["run_id"],
+                "reason": state.get("blocking_reason"),
+                "choices": ["retry", "cancel"],
+            }
+        )
+        decision = response.get("decision") if isinstance(response, dict) else response
+        retry = decision == "retry"
+        return {
+            "decision": decision,
+            "pending_action": None,
+            "blocking_reason": None if retry else state.get("blocking_reason"),
+            "current_stage": Stage.MERGING.value if retry else Stage.REJECTED.value,
+            "status": RunStatus.RUNNING.value if retry else RunStatus.REJECTED.value,
+            "timeline": event(
+                Stage.MERGE_BLOCKED,
+                "Publication retry requested" if retry else "Run cancelled",
+                "owner",
+            ),
+        }
+
+    def route_approval(state: CodingState) -> str:
+        return "implementation" if state.get("decision") == "approve" else "reject"
+
+    def route_implementation(state: CodingState) -> str:
+        return "recovery" if state.get("status") == RunStatus.BLOCKED else "review"
+
+    def route_recovery(state: CodingState) -> str:
+        return "implementation" if state.get("decision") == "retry" else "reject"
+
+    def route_supervisor(state: CodingState) -> str:
+        supervision = state.get("supervision") or {}
+        if supervision.get("decision") == "approve":
+            return "merge_approval"
+        if int(state.get("revision_count", 0)) < int(
+            state.get("max_revision_attempts", 2)
+        ):
+            return "revision"
+        return "revision_limit"
+
+    def route_revision_override(state: CodingState) -> str:
+        return "revision" if state.get("decision") == "retry" else "reject"
+
+    def route_merge_approval(state: CodingState) -> str:
+        return "publication" if state.get("decision") == "approve" else "reject"
+
+    def route_publication(state: CodingState) -> str:
+        return "recovery" if state.get("status") == RunStatus.BLOCKED else "done"
+
+    def route_publication_recovery(state: CodingState) -> str:
+        return "publication" if state.get("decision") == "retry" else "reject"
+
+    builder = StateGraph(CodingState)
+    builder.add_node("intake", build_intake_graph())
+    builder.add_node("planning", build_planning_graph(provider))
+    builder.add_node("plan_approval", request_plan_approval)
+    builder.add_node("implementation", build_implementation_graph(worker))
+    builder.add_node("review", build_review_graph(provider))
+    builder.add_node("risk", build_risk_graph(provider))
+    builder.add_node("supervisor", build_supervisor_graph(provider))
+    builder.add_node("revision", prepare_revision)
+    builder.add_node("revision_limit", request_revision_override)
+    builder.add_node("merge_approval", request_merge_approval)
+    builder.add_node("publication", publish)
+    builder.add_node("publication_recovery", recover_publication)
+    builder.add_node("implementation_recovery", recover_implementation)
+    builder.add_node("reject", reject)
+
+    builder.add_edge(START, "intake")
+    builder.add_edge("intake", "planning")
+    builder.add_edge("planning", "plan_approval")
+    builder.add_conditional_edges(
+        "plan_approval", route_approval, {"implementation": "implementation", "reject": "reject"}
+    )
+    builder.add_conditional_edges(
+        "implementation",
+        route_implementation,
+        {"recovery": "implementation_recovery", "review": "review"},
+    )
+    builder.add_conditional_edges(
+        "implementation_recovery",
+        route_recovery,
+        {"implementation": "implementation", "reject": "reject"},
+    )
+    builder.add_edge("review", "risk")
+    builder.add_edge("risk", "supervisor")
+    builder.add_conditional_edges(
+        "supervisor",
+        route_supervisor,
+        {
+            "merge_approval": "merge_approval",
+            "revision": "revision",
+            "revision_limit": "revision_limit",
+        },
+    )
+    builder.add_edge("revision", "implementation")
+    builder.add_conditional_edges(
+        "revision_limit",
+        route_revision_override,
+        {"revision": "revision", "reject": "reject"},
+    )
+    builder.add_conditional_edges(
+        "merge_approval",
+        route_merge_approval,
+        {"publication": "publication", "reject": "reject"},
+    )
+    builder.add_conditional_edges(
+        "publication",
+        route_publication,
+        {"recovery": "publication_recovery", "done": END},
+    )
+    builder.add_conditional_edges(
+        "publication_recovery",
+        route_publication_recovery,
+        {"publication": "publication", "reject": "reject"},
+    )
+    builder.add_edge("reject", END)
+    return builder.compile(checkpointer=checkpointer)

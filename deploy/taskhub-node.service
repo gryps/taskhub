@@ -1,0 +1,17 @@
+[Unit]
+Description=TaskHub Execution Node Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/gryps/apps/taskhub-node
+EnvironmentFile=/home/gryps/.config/taskhub-node/node.env
+EnvironmentFile=-/home/gryps/.config/taskhub-node/providers.env
+Environment=PYTHONPATH=/home/gryps/apps/taskhub-node/src
+ExecStart=/home/gryps/apps/taskhub-node/.venv/bin/python -m uvicorn taskhub_v2.node_agent.app:create_node_app --factory --host 0.0.0.0 --port 8301
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

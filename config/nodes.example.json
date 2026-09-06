@@ -1,0 +1,30 @@
+{
+  "nodes": [
+    {
+      "id": "controller-31",
+      "kind": "local",
+      "slots": 1,
+      "workloads": ["test", "build"],
+      "priority": 10,
+      "enabled": true
+    },
+    {
+      "id": "worker-31b",
+      "kind": "remote",
+      "url": "http://192.168.31.31:8301",
+      "slots": 1,
+      "workloads": ["test", "build"],
+      "priority": 10,
+      "enabled": true
+    },
+    {
+      "id": "worker-24",
+      "kind": "remote",
+      "url": "http://192.168.31.24:8301",
+      "slots": 1,
+      "workloads": ["test", "build"],
+      "priority": 100,
+      "enabled": true
+    }
+  ]
+}
