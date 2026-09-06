@@ -5,7 +5,7 @@ const stages = [
   ["supervision", "监督", "自动"], ["merge_approval", "发布审批", "人工"],
   ["merging", "发布", "自动"], ["completed", "完成", "终态"],
 ];
-let currentRun = localStorage.getItem("taskhub_run_id");
+let currentRun = null;
 let currentProjectId = localStorage.getItem("taskhub_project_id");
 let eventSource;
 let pendingAction;
@@ -20,17 +20,30 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
 })[character]);
 
-function renderFlow(stage, status) {
+function renderFlow(stage, status, backendSteps = null) {
+  const action = byId("action");
+  if (action && byId("flow").contains(action)) byId("run").prepend(action);
   const active = stage ? stageIndex(stage) : -1;
   byId("flow").innerHTML = stages.map(([id, label, actor], index) => {
-    const state = index < active || status === "completed"
-      ? "done" : index === active ? "active" : "";
-    return `<div class="step ${state}">
+    const currentState = status === "blocked" ? "blocked"
+      : status === "waiting" ? "manual-wait" : "active";
+    const backendState = backendSteps?.[index]?.state;
+    const states = {completed: "done", current: "active", waiting_manual: "manual-wait",
+      blocked: "blocked", not_started: "not-started"};
+    const state = backendState ? states[backendState] : index < active || status === "completed"
+      ? "done" : index === active ? currentState : "not-started";
+    return `<div class="step ${state}" data-step-id="${id}">
       <span class="step-number">${index + 1}</span>
       <strong>${label}</strong>
       <small class="${actor === "人工" ? "manual" : ""}">${actor}</small>
     </div>`;
   }).join("");
+  const actionStages = {plan_approval: "plan_approval", merge_approval: "merge_approval",
+    implementation_recovery: "implementation", publication_recovery: "merging",
+    revision_limit: "supervision"};
+  const actionStage = actionStages[pendingAction?.type];
+  const activeStep = actionStage && byId("flow").querySelector(`[data-step-id="${actionStage}"]`);
+  if (activeStep && action) activeStep.append(action);
 }
 
 function cookie(name) {
@@ -44,11 +57,11 @@ function render(run) {
   const statuses = {running: "运行中", waiting: "等待处理", completed: "已完成",
     rejected: "已终止", blocked: "已阻塞", failed: "失败"};
   byId("status").textContent = statuses[run.status] || run.status;
-  renderFlow(run.stage, run.status);
+  pendingAction = run.pending_action;
+  renderFlow(run.stage, run.status, run.workflow_steps);
   byId("timeline").innerHTML = run.timeline.map((item) => `
     <li><small>${item.stage}</small><strong>${item.title}</strong><span>${item.detail || item.actor}</span></li>
   `).join("");
-  pendingAction = run.pending_action;
   const waiting = Boolean(pendingAction);
   byId("action").classList.toggle("hidden", !waiting);
   if (pendingAction?.type === "plan_approval") {
@@ -77,6 +90,11 @@ function render(run) {
     byId("approve").textContent = "批准再返工一次";
     byId("reject").textContent = "终止任务";
   }
+  const choices = pendingAction?.choices || [];
+  byId("approve").classList.toggle("hidden", !choices.some((choice) =>
+    ["approve", "retry"].includes(choice)));
+  byId("reject").classList.toggle("hidden", !choices.some((choice) =>
+    ["reject", "cancel"].includes(choice)));
   renderEvidence(run);
   refreshDeployment(run);
 }
@@ -321,9 +339,7 @@ async function bootstrap() {
   byId("logout").classList.toggle("hidden", !state.authenticated);
   if (!state.authenticated) return;
   await Promise.all([loadProviders(), loadProjects(), loadNodes()]);
-  if (currentRun) {
-    request(`/api/runs/${currentRun}`).then((run) => { render(run); watch(currentRun); }).catch(() => {});
-  }
+  window.loadTaskCenter?.();
 }
 
 byId("start").addEventListener("click", async () => {
@@ -334,11 +350,12 @@ byId("start").addEventListener("click", async () => {
     const run = await request("/api/runs", {method: "POST", body: JSON.stringify({
       project_id: currentProjectId,
       requirement: byId("requirement").value,
+      production_line: byId("production-line").value || "default",
     })});
     currentRun = run.run_id;
-    localStorage.setItem("taskhub_run_id", currentRun);
     render(run);
     watch(currentRun);
+    window.showTaskDetail?.(run);
   } catch (error) {
     byId("message").textContent = error.message;
   } finally {

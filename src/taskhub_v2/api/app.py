@@ -14,6 +14,7 @@ from taskhub_v2.api.routes import router
 from taskhub_v2.config import Settings, get_settings
 from taskhub_v2.deployment import DeploymentManager
 from taskhub_v2.persistence.checkpoints import checkpoint_store
+from taskhub_v2.persistence.task_index import task_index_store
 from taskhub_v2.projects import ProjectProvisioner, ProjectRegistry
 from taskhub_v2.providers import build_provider
 from taskhub_v2.providers.health import ProviderHealthStore
@@ -43,7 +44,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        async with checkpoint_store(settings) as checkpointer:
+        async with (
+            checkpoint_store(settings) as checkpointer,
+            task_index_store(settings) as task_index,
+        ):
             provider = build_provider(settings, provider_health)
             local_coder = build_coder(settings, provider_health)
             test_scheduler = build_test_scheduler(settings, local_coder)
@@ -59,8 +63,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 build_publisher(settings, test_scheduler),
             )
             app.state.run_service = RunService(
-                graph, projects if settings.worker_mode == "git" else None
+                graph, projects if settings.worker_mode == "git" else None, task_index
             )
+            # A memory checkpointer is new for every process and has nothing to repair.
+            # PostgreSQL can contain runs created before the task index existed.
+            if settings.checkpointer == "postgres":
+                await app.state.run_service.backfill(checkpointer)
             app.state.provider_catalog = ProviderCatalog(settings, provider_health)
             app.state.node_scheduler = test_scheduler
             try:

@@ -5,6 +5,7 @@ from typing import Annotated, Any, TypedDict
 class BaseState(TypedDict, total=False):
     run_id: str
     project_id: str
+    production_line: str
     requirement: str
     requirement_version: int
     current_stage: str

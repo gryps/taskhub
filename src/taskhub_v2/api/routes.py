@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from taskhub_v2.api.dependencies import get_run_service
-from taskhub_v2.domain.models import ApprovalRequest, ResumeRequest, RunView, StartRunRequest
+from taskhub_v2.domain.models import (
+    ApprovalRequest, ResumeRequest, RunStatus, RunView, Stage, StartRunRequest, TaskPage,
+)
 from taskhub_v2.services.runs import RunConflictError, RunNotFoundError, RunService
 from taskhub_v2.projects import ProjectNotFoundError
 
@@ -24,6 +26,22 @@ async def start_run(payload: StartRunRequest, service: Service) -> RunView:
         return await service.start(payload)
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail="project is not registered") from exc
+
+
+@router.get("/runs", response_model=TaskPage)
+async def list_runs(
+    service: Service,
+    project_id: str | None = None,
+    production_line: str | None = None,
+    status: RunStatus | None = None,
+    stage: Stage | None = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> TaskPage:
+    if page < 1 or not 1 <= page_size <= 200:
+        raise HTTPException(status_code=422, detail="invalid pagination")
+    return await service.list(project_id=project_id, production_line=production_line,
+                              status=status, stage=stage, page=page, page_size=page_size)
 
 
 @router.get("/runs/{run_id}", response_model=RunView)

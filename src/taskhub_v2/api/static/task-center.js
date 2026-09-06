@@ -1,0 +1,74 @@
+const statusLabels = {running: "运行中", waiting: "等待人工处理", blocked: "已阻塞",
+  failed: "失败", completed: "已完成", rejected: "已终止"};
+const stageLabels = Object.fromEntries(stages.map(([id, label]) => [id, label]));
+Object.assign(stageLabels, {implementation_blocked: "实施（阻塞）", merge_blocked: "发布（阻塞）",
+  supervision: "监督", rejected: "已终止", failed: "失败"});
+
+function taskDetailText(task) {
+  if (task.blocking_reason) return task.blocking_reason.detail || task.blocking_reason.code;
+  if (task.pending_action) return task.pending_action.title || task.pending_action.type;
+  return "—";
+}
+
+function taskQuery() {
+  const params = new URLSearchParams();
+  [["project_id", "filter-project"], ["production_line", "filter-line"],
+    ["status", "filter-status"], ["stage", "filter-stage"]].forEach(([key, id]) => {
+    if (byId(id).value) params.set(key, byId(id).value);
+  });
+  return params.toString();
+}
+
+async function loadTaskCenter() {
+  try {
+    const page = await request(`/api/runs?${taskQuery()}`);
+    byId("task-message").textContent = page.total ? `共 ${page.total} 个任务` : "暂无任务";
+    byId("task-rows").innerHTML = page.items.map((task) => `
+      <tr tabindex="0" data-run-id="${escapeHtml(task.run_id)}">
+        <td><strong>${escapeHtml(task.requirement_summary)}</strong><small>${escapeHtml(task.run_id)}</small></td>
+        <td>${escapeHtml(task.project_id)}</td><td>${escapeHtml(task.production_line)}</td>
+        <td>${escapeHtml(stageLabels[task.stage] || task.stage)}</td>
+        <td><span class="task-status status-${task.status}">${escapeHtml(statusLabels[task.status] || task.status)}</span></td>
+        <td class="task-attention">${escapeHtml(taskDetailText(task))}</td>
+        <td>${new Date(task.updated_at).toLocaleString()}</td>
+      </tr>`).join("");
+    byId("task-rows").querySelectorAll("tr").forEach((row) => {
+      const open = () => openTask(row.dataset.runId);
+      row.addEventListener("click", open);
+      row.addEventListener("keydown", (event) => { if (event.key === "Enter") open(); });
+    });
+  } catch (error) { byId("task-message").textContent = error.message; }
+}
+
+async function openTask(runId) {
+  const run = await request(`/api/runs/${encodeURIComponent(runId)}`);
+  showTaskDetail(run);
+}
+
+function showTaskDetail(run) {
+  currentRun = run.run_id;
+  showPage("workflow");
+  render(run);
+  watch(run.run_id);
+  byId("run").scrollIntoView({behavior: "smooth", block: "start"});
+}
+
+function showPage(page) {
+  const tasks = page === "tasks";
+  byId("task-center").classList.toggle("hidden", !tasks);
+  byId("workflow-page").classList.toggle("hidden", tasks);
+  byId("nav-tasks").classList.toggle("nav-active", tasks);
+  byId("nav-workflow").classList.toggle("nav-active", !tasks);
+  if (tasks) { eventSource?.close(); loadTaskCenter(); }
+}
+
+const stageFilter = byId("filter-stage");
+stages.forEach(([id, label]) => stageFilter.insertAdjacentHTML("beforeend",
+  `<option value="${id}">${label}</option>`));
+[["filter-project", "input"], ["filter-line", "input"], ["filter-status", "change"],
+  ["filter-stage", "change"]].forEach(([id, event]) => byId(id).addEventListener(event, loadTaskCenter));
+byId("refresh-tasks").addEventListener("click", loadTaskCenter);
+byId("nav-tasks").addEventListener("click", () => showPage("tasks"));
+byId("nav-workflow").addEventListener("click", () => showPage("workflow"));
+window.loadTaskCenter = loadTaskCenter;
+window.showTaskDetail = showTaskDetail;

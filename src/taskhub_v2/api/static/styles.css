@@ -15,9 +15,25 @@ header span { color: #b9cbc4; font-size: 13px; }
 .header-actions { align-items: center; }
 .header-button { min-height: 30px; padding: 0 10px; background: #315148; }
 main { width: min(1000px, calc(100% - 32px)); margin: 28px auto 64px; }
+.side-menu { display: flex; gap: 8px; margin-bottom: 24px; }
+.side-menu button { background: transparent; color: #52615c; }
+.side-menu .nav-active { background: #167455; color: white; }
+.task-center h1 { margin: 0; font-size: 22px; }
+.task-filters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0; }
+.task-table-wrap { overflow-x: auto; background: white; border: 1px solid #d5dcd9; }
+.task-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.task-table th, .task-table td { padding: 12px 10px; border-bottom: 1px solid #e1e6e3; text-align: left; vertical-align: top; }
+.task-table th { color: #63736d; white-space: nowrap; }
+.task-table tbody tr { cursor: pointer; }
+.task-table tbody tr:hover { background: #f1f7f4; }
+.task-table td:first-child { min-width: 220px; }
+.task-table td small { display: block; margin-top: 4px; color: #7b8984; }
+.task-status { white-space: nowrap; font-weight: 700; }
+.status-waiting { color: #9a5d00; } .status-blocked, .status-failed { color: #a23e2a; }
+.status-completed { color: #14714f; } .task-attention { color: #8e3e2c; max-width: 230px; }
 .login { width: min(360px, 100%); display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
 .login p { grid-column: 1 / -1; color: #a23e2a; margin: 0; min-height: 20px; }
-.composer { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: end; margin-top: 22px; }
+.composer { display: grid; grid-template-columns: 180px 1fr auto; gap: 14px; align-items: end; margin-top: 22px; }
 label { display: grid; gap: 7px; font-size: 13px; font-weight: 650; }
 input, textarea, select {
   width: 100%; border: 1px solid #bdc8c3; border-radius: 6px; padding: 10px 12px;
@@ -70,6 +86,9 @@ button:disabled { opacity: .55; cursor: wait; }
 .step small.manual { color: #9a5d00; font-weight: 700; }
 .step.done { border-color: #16805c; background: #e2f1eb; }
 .step.active { border-color: #d58c1d; background: #fff1d6; }
+.step.manual-wait { border-color: #d58c1d; background: #fff1d6; }
+.step.blocked { border-color: #a23e2a; background: #fae7e2; }
+.step.not-started { color: #72807b; }
 .action { padding: 16px; border-left: 4px solid #d58c1d; background: #fff8e9; }
 .action p { margin: 6px 0 14px; color: #5f5540; }
 .deployment-action { margin-top: 12px; border-left-color: #167455; background: #e8f3ef; }
@@ -111,4 +130,5 @@ h2 { margin-top: 28px; font-size: 16px; }
   .timeline li { grid-template-columns: 90px 1fr; }
   .timeline li span:last-child { grid-column: 1 / -1; }
   .provider { grid-template-columns: 1fr 1fr; }
+  .task-filters { grid-template-columns: 1fr 1fr; }
 }

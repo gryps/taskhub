@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, Generic, Literal, TypeVar
 
@@ -173,6 +174,7 @@ class SupervisionDecision(BaseModel):
 class StartRunRequest(BaseModel):
     project_id: str = Field(min_length=1, max_length=80)
     requirement: str = Field(min_length=3, max_length=20_000)
+    production_line: str = Field(default="default", min_length=1, max_length=80)
 
 
 class LiteralDecision(StrEnum):
@@ -194,6 +196,9 @@ class RunView(BaseModel):
     run_id: str
     project_id: str
     requirement: str
+    production_line: str = "default"
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     stage: Stage
     status: RunStatus
     next_nodes: list[str]
@@ -210,3 +215,24 @@ class RunView(BaseModel):
     publication: PublicationResult | None = None
     model_runs: list[ModelRun] = Field(default_factory=list)
     timeline: list[TimelineEvent] = Field(default_factory=list)
+    workflow_steps: list[dict[str, str]] = Field(default_factory=list)
+
+
+class TaskSummary(BaseModel):
+    run_id: str
+    requirement_summary: str
+    project_id: str
+    production_line: str
+    stage: Stage
+    status: RunStatus
+    blocking_reason: dict[str, Any] | None = None
+    pending_action: dict[str, Any] | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TaskPage(BaseModel):
+    items: list[TaskSummary]
+    total: int
+    page: int
+    page_size: int
