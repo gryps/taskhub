@@ -173,6 +173,14 @@ function render(run) {
     byId("action-detail").textContent = `${run.blocking_reason.detail || run.blocking_reason.code}。当前无可用恢复操作`;
   }
   const choices = pendingAction?.choices || [];
+  const resourceActions = ["implementation_recovery", "acceptance_recovery",
+    "publication_recovery", "revision_limit", "manual_intervention"];
+  byId("configure-resources").classList.toggle(
+    "hidden", !resourceActions.includes(pendingAction?.type)
+  );
+  byId("add-evidence").classList.toggle(
+    "hidden", !["revision_limit", "manual_intervention"].includes(pendingAction?.type)
+  );
   byId("approve").classList.toggle("hidden", !choices.some((choice) =>
     ["approve", "retry"].includes(choice)));
   byId("reject").classList.toggle("hidden", !choices.some((choice) =>
@@ -513,6 +521,11 @@ byId("acceptance-submit").addEventListener("submit", submitAcceptance);
 byId("deploy-release").addEventListener("click", deployRelease);
 byId("archive-task").addEventListener("click", archiveTask);
 byId("rebind-task").addEventListener("click", rebindTask);
+byId("configure-resources").addEventListener("click", () => showPage("resources"));
+byId("add-evidence").addEventListener("click", () => {
+  byId("acceptance-submit").classList.remove("hidden");
+  byId("acceptance-source").focus();
+});
 
 request("/api/health").then(() => { byId("health").textContent = "服务正常"; });
 byId("login-button").addEventListener("click", login);

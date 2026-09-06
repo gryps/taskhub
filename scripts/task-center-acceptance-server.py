@@ -9,6 +9,7 @@ import uvicorn
 from fastapi.responses import JSONResponse
 
 import taskhub_v2.api.app as app_module
+from taskhub_v2.artifacts import ArtifactStore
 from taskhub_v2.config import Settings
 from taskhub_v2.domain.models import (
     ExecutionResult,
@@ -31,13 +32,27 @@ class AcceptanceProvider:
         return ModelResult(content="low", provider="acceptance", model="deterministic")
 
     async def supervise(self, requirement, implementation, review, risk):
-        decision = SupervisionDecision(decision="approve", summary="accepted", reasons=["tests pass"])
+        rejected = "[acceptance:revision-limit]" in requirement
+        decision = SupervisionDecision(
+            decision="reject" if rejected else "approve",
+            summary="acceptance control state" if rejected else "accepted",
+            reasons=["exercise owner recovery actions"] if rejected else ["tests pass"],
+        )
         return ModelResult(content=decision, provider="acceptance", model="deterministic")
 
 
 class AcceptanceWorker:
+    def __init__(self, artifact_root):
+        self.artifacts = ArtifactStore(artifact_root)
+
     async def execute(self, run_id, project_id, requirement, plan, revision=0, feedback=""):
-        return ExecutionResult(summary=f"artifact:{run_id}:{project_id}")
+        artifact = self.artifacts.write_text(
+            run_id,
+            "candidate-report.html",
+            "playwright_report",
+            "<!doctype html><h1>Candidate artifact available</h1>",
+        )
+        return ExecutionResult(summary=f"artifact:{run_id}:{project_id}", artifacts=[artifact])
 
 
 class TransientPublicationError(RuntimeError):
@@ -78,12 +93,6 @@ def main():
         raise SystemExit("preview DSN and state directory are required")
     state_dir = Path(args.state_dir)
     state_dir.mkdir(parents=True, exist_ok=True)
-    provider = AcceptanceProvider()
-    worker = AcceptanceWorker()
-    publisher = RecoveringPublisher()
-    app_module.build_provider = lambda *unused: provider
-    app_module.build_worker = lambda *unused: worker
-    app_module.build_publisher = lambda *unused: publisher
     settings = Settings(
         checkpointer="postgres",
         postgres_dsn=args.dsn,
@@ -93,7 +102,14 @@ def main():
         provider_health_file=str(state_dir / "health.json"),
         nodes_file=str(state_dir / "nodes.json"),
         node_state_file=str(state_dir / "nodes-state.json"),
+        artifact_root=str(state_dir / "artifacts"),
     )
+    provider = AcceptanceProvider()
+    worker = AcceptanceWorker(settings.artifact_root)
+    publisher = RecoveringPublisher()
+    app_module.build_provider = lambda *unused: provider
+    app_module.build_worker = lambda *unused: worker
+    app_module.build_publisher = lambda *unused: publisher
     app = app_module.create_app(settings)
 
     @app.middleware("http")

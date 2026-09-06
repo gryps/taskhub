@@ -80,9 +80,10 @@ def test_project_e2e_suite_definition_is_loaded_and_complete():
     contract = load_acceptance_contract(repository)
     suite = load_acceptance_suite(repository, contract)
     assert {scenario.id for scenario in suite.scenarios} == {
-        "login_status", "structured_blocking", "refresh_consistency",
-        "dual_context_consistency", "retry_recovery", "action_visibility",
-    }
+            "login_status", "structured_blocking", "refresh_consistency",
+            "dual_context_consistency", "retry_recovery", "action_visibility",
+            "artifact_view",
+        }
     assert all(scenario.browsers == {"chromium", "edge"} for scenario in suite.scenarios)
 
 

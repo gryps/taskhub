@@ -11,3 +11,5 @@ scenarios:
     description: 自动重试提示及恢复后的页面状态正确
   - id: action_visibility
     description: 重试、更换节点或模型、补充证据、取消和归档操作按状态显示
+  - id: artifact_view
+    description: 从任务页面实际打开验收报告产物

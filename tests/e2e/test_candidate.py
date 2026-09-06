@@ -87,6 +87,13 @@ def test_candidate_approval_consistency(browser_name, record_property):
             # an observable blocked -> recovered transition.
             pages[0].locator("#approve").click()
             expect(pages[0].locator("#approve")).to_have_text("合并到权威分支")
+            pages[0].locator("#acceptance-detail").evaluate("element => element.parentElement.open = true")
+            with pages[0].context.expect_page() as artifact_page_info:
+                pages[0].locator("#acceptance-detail a").click()
+            artifact_page = artifact_page_info.value
+            expect(artifact_page.locator("h1")).to_have_text("Candidate artifact available")
+            artifact_page.close()
+            completed("artifact_view")
             pages[0].locator("#approve").click()
             expect(pages[0].locator("#status")).to_have_text("已阻塞")
             blocked = contexts[0].request.get(f"{url}/api/runs/{run_id}").json()
@@ -119,6 +126,26 @@ def test_candidate_approval_consistency(browser_name, record_property):
             completed("retry_recovery")
             expect(pages[0].locator("#archive-task")).to_be_visible()
             expect(pages[0].locator("#acceptance-submit")).to_be_hidden()
+
+            owner_response = contexts[0].request.post(
+                f"{url}/api/runs", headers={"X-CSRF-Token": csrf},
+                data={"project_id": f"owner-{uuid4().hex}",
+                      "requirement": "[acceptance:revision-limit] Verify owner actions"},
+            )
+            assert owner_response.status == 201, owner_response.text()
+            owner_run_id = owner_response.json()["run_id"]
+            pages[0].locator("#refresh-tasks").click()
+            pages[0].locator(f'tr[data-run-id="{owner_run_id}"]').click()
+            pages[0].locator("#approve").click()
+            expect(pages[0].locator("#action-title")).to_have_text("返工次数已达上限")
+            expect(pages[0].locator("#configure-resources")).to_be_visible()
+            expect(pages[0].locator("#add-evidence")).to_be_visible()
+            expect(pages[0].locator("#manual")).to_be_visible()
+            expect(pages[0].locator("#reject")).to_have_text("终止任务")
+            pages[0].locator("#add-evidence").click()
+            expect(pages[0].locator("#acceptance-submit")).to_be_visible()
+            pages[0].locator("#configure-resources").click()
+            expect(pages[0].locator("#resource-page")).to_be_visible()
             completed("action_visibility")
             result["status"] = "passed"
         finally:
