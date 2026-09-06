@@ -50,15 +50,25 @@ class NodeScheduler:
         timeout: int,
         workdir: str,
         workload: str = "test",
+        *,
+        required_capabilities_override: set[str] | None = None,
+        target_url: str = "",
+        git_commit: str = "",
+        artifact_paths: list[str] | None = None,
     ) -> ScheduledTests:
         required = required_capabilities(commands)
         if workload == "browser_acceptance":
             required.update({"windows_gui", "playwright", "screenshot", "trace"})
+        required.update(required_capabilities_override or set())
         excluded: set[str] = set()
         failures = []
         while True:
             node = await self._acquire(sticky_key, excluded, required, workload)
             try:
+                if workload == "browser_acceptance":
+                    return await self.runner.run(node, job_id, commands, timeout, workdir,
+                        required_capabilities=required, target_url=target_url,
+                        git_commit=git_commit, artifact_paths=artifact_paths or [])
                 return await self.runner.run(node, job_id, commands, timeout, workdir)
             except Exception as exc:
                 failures.append(str(exc))

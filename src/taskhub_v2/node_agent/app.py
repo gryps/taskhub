@@ -8,10 +8,12 @@ import shutil
 import tempfile
 import platform
 import subprocess
+from datetime import UTC, datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from taskhub_v2.domain.models import Plan
@@ -32,6 +34,7 @@ class ExecuteRequest(BaseModel):
     required_capabilities: set[str] = Field(default_factory=set, max_length=20)
     target_url: str = Field(default="", max_length=500)
     git_commit: str = Field(default="", pattern=r"^$|^[a-fA-F0-9]{7,64}$")
+    artifact_paths: list[str] = Field(default_factory=list, max_length=30)
 
 
 class CodingRequest(BaseModel):
@@ -155,8 +158,10 @@ def create_node_app() -> FastAPI:
         if json.loads(metadata.read_text(encoding="utf-8")).get("sha256") != payload.archive_sha256:
             raise HTTPException(status_code=409, detail="workspace version changed")
         lock = runtime.locks.setdefault(job_id, asyncio.Lock())
+        started_at = datetime.now(UTC)
         async with lock:
             tests = await run_commands(target, payload.commands, payload.timeout_seconds)
+        artifacts = _artifact_manifest(target, payload.artifact_paths, runtime.max_upload_bytes)
         return {
             "node_id": runtime.node_id,
             "job_id": job_id,
@@ -165,8 +170,20 @@ def create_node_app() -> FastAPI:
                 "target_url": payload.target_url,
                 "git_commit": payload.git_commit,
                 "versions": browser_versions(),
+                "started_at": started_at.isoformat(),
+                "finished_at": datetime.now(UTC).isoformat(),
             },
+            "artifacts": artifacts,
         }
+
+    @app.get("/api/jobs/{job_id}/artifacts/{artifact_path:path}")
+    async def download_artifact(job_id: str, artifact_path: str, authorization: str = Header(default="")):
+        runtime.authorize(authorization)
+        target = runtime.job_dir(job_id)
+        path = (target / artifact_path).resolve()
+        if not path.is_relative_to(target) or not path.is_file() or path.is_symlink():
+            raise HTTPException(status_code=404, detail="artifact not found")
+        return FileResponse(path)
 
     @app.post("/api/jobs/{job_id}/code")
     async def code(
@@ -211,9 +228,11 @@ def detect_capabilities() -> dict[str, bool]:
         "npm": bool(shutil.which("npm")),
         "pytest": importlib.util.find_spec("pytest") is not None,
         "coding": coding_available(),
-        "windows_gui": is_windows and bool(os.getenv("SESSIONNAME") or os.getenv("WT_SESSION")),
+        # Services run in session 0. Browser acceptance requires an explicitly
+        # provisioned interactive runner; ambient shell variables are unreliable.
+        "windows_gui": is_windows and os.getenv("TASKHUB_WINDOWS_GUI", "").lower() in {"1", "true", "yes"},
         "playwright": playwright,
-        "chromium": chromium or playwright,
+        "chromium": chromium,
         "edge": edge,
         "screenshot": playwright,
         "video": playwright,
@@ -246,6 +265,29 @@ def browser_versions() -> dict[str, str]:
                 versions[browser] = subprocess.run(
                     [executable, "--version"], capture_output=True, text=True, timeout=5, check=False
                 ).stdout.strip()[:200]
-            except OSError:
+            except (OSError, subprocess.TimeoutExpired):
                 pass
     return versions
+
+
+def _artifact_manifest(root: Path, requested: list[str], max_bytes: int) -> list[dict]:
+    result: list[dict] = []
+    seen: set[Path] = set()
+    total = 0
+    for value in requested:
+        relative = Path(value)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise HTTPException(status_code=422, detail="invalid artifact path")
+        candidate = (root / relative).resolve()
+        paths = [candidate] if candidate.is_file() else sorted(candidate.rglob("*")) if candidate.is_dir() else []
+        for path in paths:
+            if path in seen or path.is_symlink() or not path.is_file() or not path.is_relative_to(root):
+                continue
+            seen.add(path)
+            size = path.stat().st_size
+            total += size
+            if total > max_bytes:
+                raise HTTPException(status_code=413, detail="browser artifacts too large")
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            result.append({"path": path.relative_to(root).as_posix(), "sha256": digest, "size": size})
+    return result

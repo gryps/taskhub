@@ -47,11 +47,26 @@ class NodeRunner:
         commands: list[list[str]],
         timeout: int,
         workdir: str,
+        *,
+        required_capabilities: set[str] | None = None,
+        target_url: str = "",
+        git_commit: str = "",
+        artifact_paths: list[str] | None = None,
     ) -> ScheduledTests:
         if node.kind == "local":
             tests = await self._run_local(commands, timeout, workdir)
             return ScheduledTests(node_id=node.id, tests=tests)
-        return await self._run_remote(node, job_id, commands, timeout, workdir)
+        return await self._run_remote(
+            node,
+            job_id,
+            commands,
+            timeout,
+            workdir,
+            required_capabilities or set(),
+            target_url,
+            git_commit,
+            artifact_paths or [],
+        )
 
     async def health(self, node: NodeDefinition) -> dict:
         if node.kind == "local":
@@ -125,6 +140,10 @@ class NodeRunner:
         commands: list[list[str]],
         timeout: int,
         workdir: str,
+        required_capabilities: set[str],
+        target_url: str,
+        git_commit: str,
+        artifact_paths: list[str],
     ) -> ScheduledTests:
         archive = await asyncio.to_thread(self._archive, Path(workdir))
         digest = hashlib.sha256(archive).hexdigest()
@@ -137,6 +156,10 @@ class NodeRunner:
                         "commands": commands,
                         "timeout_seconds": timeout,
                         "archive_sha256": digest,
+                        "required_capabilities": sorted(required_capabilities),
+                        "target_url": target_url,
+                        "git_commit": git_commit,
+                        "artifact_paths": artifact_paths,
                     },
                     headers=self._headers(),
                 )
@@ -144,10 +167,30 @@ class NodeRunner:
         except Exception as exc:
             raise NodeExecutionError(f"node {node.id} failed: {str(exc)[:300]}") from exc
         payload = executed.json()
+        artifacts = []
+        for item in payload.get("artifacts", []):
+            response = await self._download_artifact(node, job_id, item["path"])
+            if (
+                len(response) != item["size"]
+                or hashlib.sha256(response).hexdigest() != item["sha256"]
+            ):
+                raise NodeExecutionError(f"node {node.id} returned an invalid artifact")
+            artifacts.append({**item, "content": response})
         return ScheduledTests(
             node_id=node.id,
             tests=[TestExecution.model_validate(item) for item in payload["tests"]],
+            metadata={**payload.get("metadata", {}), "downloaded_artifacts": artifacts},
         )
+
+    async def _download_artifact(self, node, job_id: str, path: str) -> bytes:
+        from urllib.parse import quote
+        async with self._client(timeout=120) as client:
+            response = await client.get(
+                f"{node.url.rstrip('/')}/api/jobs/{job_id}/artifacts/{quote(path, safe='/')}",
+                headers=self._headers(),
+            )
+            response.raise_for_status()
+            return response.content
 
     async def _upload(self, client, node, job_id, archive, digest) -> None:
         uploaded = await client.put(

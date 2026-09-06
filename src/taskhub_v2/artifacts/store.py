@@ -58,3 +58,14 @@ class ArtifactStore:
             sha256=digest,
             metadata={"bytes": len(payload), "verified": True, **(metadata or {})},
         )
+
+    def path(self, run_id: str, name: str) -> Path:
+        """Resolve an existing artifact using the same canonical names as writes."""
+        safe_run = re.sub(r"[^a-zA-Z0-9-]", "-", run_id)
+        safe_name = re.sub(r"[^a-zA-Z0-9._-]", "-", name)
+        if safe_run != run_id or safe_name != name or safe_name in {"", ".", ".."}:
+            raise ValueError("invalid artifact path")
+        path = (self.root / safe_run / safe_name).resolve()
+        if not path.is_relative_to(self.root) or not path.is_file() or path.is_symlink():
+            raise FileNotFoundError(name)
+        return path

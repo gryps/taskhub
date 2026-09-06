@@ -8,7 +8,8 @@ $Venv = Join-Path $Root "venv"
 $Jobs = Join-Path $Root "jobs"
 New-Item -ItemType Directory -Force -Path $Jobs | Out-Null
 & $Python -m venv $Venv
-& (Join-Path $Venv "Scripts\python.exe") -m pip install taskhub-v2
+& (Join-Path $Venv "Scripts\python.exe") -m pip install "taskhub-v2[browser]"
+& (Join-Path $Venv "Scripts\python.exe") -m playwright install chromium
 
 # The token is intentionally not accepted on the command line. Configure
 # TASKHUB_NODE_TOKEN using the existing protected service environment mechanism.
@@ -19,6 +20,6 @@ if (-not (Get-Command nssm.exe -ErrorAction SilentlyContinue)) {
 }
 & nssm.exe install $ServiceName $Exe $Args
 & nssm.exe set $ServiceName AppDirectory $Root
-& nssm.exe set $ServiceName AppEnvironmentExtra "TASKHUB_NODE_ID=windows-gui-34" "TASKHUB_NODE_WORK_ROOT=$Jobs"
+& nssm.exe set $ServiceName AppEnvironmentExtra "TASKHUB_NODE_ID=windows-gui-34" "TASKHUB_NODE_WORK_ROOT=$Jobs" "TASKHUB_WINDOWS_GUI=true"
 & nssm.exe set $ServiceName Start SERVICE_AUTO_START
 & nssm.exe start $ServiceName

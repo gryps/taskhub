@@ -102,7 +102,8 @@ function render(run) {
     const limitReached = run.revision_count >= run.max_revision_attempts;
     const limitNotice = limitReached ? " 已达到返工上限，退回实施将授权额外返工一次。" : "";
     byId("action-detail").textContent = `${run.blocking_reason?.detail || "验收节点需要处理"}${limitNotice}`;
-    byId("approve").textContent = "重新执行验收";
+    byId("approve").textContent = run.blocking_reason?.detail?.includes("Windows")
+      ? "在 .34 执行浏览器验收" : "重新执行验收";
     byId("revise").textContent = limitReached ? "批准额外返工" : "退回实施";
     byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "merge_approval") {
@@ -186,7 +187,11 @@ function renderEvidence(run) {
     : "尚未验收";
   byId("acceptance-detail").innerHTML = acceptance ? acceptance.evidence.map((item) => `
     <p><strong>${item.status === "passed" ? "通过" : "失败"} · ${escapeHtml(item.id)}</strong><br>
-    ${escapeHtml(item.summary)}<br><small>来源：${escapeHtml(item.source)}</small></p>`).join("") : "尚未验收";
+    ${escapeHtml(item.summary)}<br><small>来源：${escapeHtml(item.source)}</small><br>
+    ${(item.artifacts || []).map((artifact) => {
+      const name = artifact.uri.split("/").pop();
+      return `<a href="/api/runs/${encodeURIComponent(run.run_id)}/artifacts/${encodeURIComponent(name)}" target="_blank" rel="noopener">${escapeHtml(name)} · SHA256 ${escapeHtml(artifact.sha256)}</a>`;
+    }).join("<br>")}</p>`).join("") : "尚未验收";
   const supervision = run.supervision;
   byId("decision-summary").textContent = supervision
     ? (supervision.decision === "approve" ? "已通过" : "需返工") : "尚未裁决";

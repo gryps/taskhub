@@ -1,8 +1,9 @@
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse, StreamingResponse
+from taskhub_v2.artifacts import ArtifactStore
 
 from taskhub_v2.api.dependencies import get_run_service
 from taskhub_v2.domain.models import (
@@ -131,3 +132,12 @@ async def run_events(run_id: str, service: Service) -> StreamingResponse:
             yield 'event: error\ndata: {"detail":"run not found"}\n\n'
 
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@router.get("/runs/{run_id}/artifacts/{name}")
+async def download_run_artifact(run_id: str, name: str, request: Request) -> FileResponse:
+    try:
+        path = ArtifactStore(request.app.state.settings.artifact_root).path(run_id, name)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail="artifact not found") from exc
+    return FileResponse(path, filename=name)

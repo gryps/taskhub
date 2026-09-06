@@ -13,6 +13,7 @@ from taskhub_v2.workers.coding_router import CodexCodingRouter
 from taskhub_v2.workers.git_coder import GitCodingWorker
 from taskhub_v2.workers.local import LocalWorker
 from taskhub_v2.workers.publisher import GitPublisher, LocalPublisher
+from taskhub_v2.browser import PreviewManager
 
 
 def build_worker(
@@ -75,6 +76,7 @@ def build_acceptance(settings: Settings, test_scheduler=None):
         ProjectRegistry(settings.projects_file),
         test_scheduler or build_test_scheduler(settings),
         ArtifactStore(settings.artifact_root),
+        PreviewManager(settings.postgres_dsn),
     )
 
 
