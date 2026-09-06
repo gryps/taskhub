@@ -30,9 +30,7 @@ class GitWorkspaceManager:
         base_commit = self._git(repository, "rev-parse", project.base_ref).strip()
         if target.exists():
             current = self._git(target, "rev-parse", "HEAD").strip()
-            branch_base = self._git(
-                target, "merge-base", current, project.base_ref
-            ).strip()
+            branch_base = self._original_base(target, current, project.base_ref, run_id)
             return Workspace(
                 project_id=project.id,
                 path=str(target),
@@ -62,6 +60,22 @@ class GitWorkspaceManager:
             branch=branch,
             base_commit=base_commit,
         )
+
+    def _original_base(
+        self, target: Path, current: str, base_ref: str, run_id: str
+    ) -> str:
+        first_run_commit = self._git(
+            target,
+            "log",
+            "--reverse",
+            "--format=%H",
+            "--fixed-strings",
+            f"--grep=TaskHub-Run: {run_id}",
+            current,
+        ).splitlines()
+        if first_run_commit:
+            return self._git(target, "rev-parse", f"{first_run_commit[0]}^").strip()
+        return self._git(target, "merge-base", current, base_ref).strip()
 
     def _sync_authority(self, repository: Path, remote: str, base_ref: str) -> None:
         if self._git(repository, "status", "--porcelain").strip():
