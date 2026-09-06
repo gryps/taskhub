@@ -113,20 +113,23 @@ def create_node_app() -> FastAPI:
         async with lock:
             digest = hashlib.sha256()
             size = 0
-            with tempfile.NamedTemporaryFile(dir=runtime.root, suffix=".tar.gz") as archive:
-                async for chunk in request.stream():
-                    size += len(chunk)
-                    if size > runtime.max_upload_bytes:
-                        raise HTTPException(status_code=413, detail="workspace archive too large")
-                    digest.update(chunk)
-                    archive.write(chunk)
-                archive.flush()
+            descriptor, archive_name = tempfile.mkstemp(dir=runtime.root, suffix=".tar.gz")
+            try:
+                with os.fdopen(descriptor, "wb") as archive:
+                    async for chunk in request.stream():
+                        size += len(chunk)
+                        if size > runtime.max_upload_bytes:
+                            raise HTTPException(status_code=413, detail="workspace archive too large")
+                        digest.update(chunk)
+                        archive.write(chunk)
                 if digest.hexdigest() != sha256:
                     raise HTTPException(status_code=422, detail="workspace digest mismatch")
                 try:
-                    extract_workspace(Path(archive.name), target, runtime.root)
+                    extract_workspace(Path(archive_name), target, runtime.root)
                 except UnsafeArchiveError as exc:
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
+            finally:
+                Path(archive_name).unlink(missing_ok=True)
             (target / ".taskhub-workspace.json").write_text(
                 json.dumps({"sha256": sha256}), encoding="utf-8"
             )
