@@ -2,6 +2,7 @@
 """Serve a disposable TaskHub acceptance instance with deterministic adapters."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 
@@ -93,6 +94,18 @@ def main():
         raise SystemExit("preview DSN and state directory are required")
     state_dir = Path(args.state_dir)
     state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "nodes.json").write_text(
+        json.dumps({"nodes": [{
+            "id": "windows-gui-34",
+            "kind": "remote",
+            "url": "http://192.168.31.34:8301",
+            "slots": 1,
+            "workloads": ["browser_acceptance"],
+            "priority": 1,
+            "enabled": True,
+        }]}),
+        encoding="utf-8",
+    )
     settings = Settings(
         checkpointer="postgres",
         postgres_dsn=args.dsn,
@@ -103,6 +116,7 @@ def main():
         nodes_file=str(state_dir / "nodes.json"),
         node_state_file=str(state_dir / "nodes-state.json"),
         artifact_root=str(state_dir / "artifacts"),
+        node_token=os.getenv("TASKHUB_NODE_TOKEN", ""),
     )
     provider = AcceptanceProvider()
     worker = AcceptanceWorker(settings.artifact_root)

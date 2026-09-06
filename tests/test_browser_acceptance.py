@@ -82,7 +82,7 @@ def test_project_e2e_suite_definition_is_loaded_and_complete():
     assert {scenario.id for scenario in suite.scenarios} == {
             "login_status", "structured_blocking", "refresh_consistency",
             "dual_context_consistency", "retry_recovery", "action_visibility",
-            "artifact_view",
+            "artifact_view", "resource_center",
         }
     assert all(scenario.browsers == {"chromium", "edge"} for scenario in suite.scenarios)
 

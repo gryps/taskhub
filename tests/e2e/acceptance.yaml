@@ -13,3 +13,5 @@ scenarios:
     description: 重试、更换节点或模型、补充证据、取消和归档操作按状态显示
   - id: artifact_view
     description: 从任务页面实际打开验收报告产物
+  - id: resource_center
+    description: 资源中心显示正式 Windows 节点在线及浏览器能力

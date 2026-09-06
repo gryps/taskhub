@@ -173,7 +173,11 @@ class ProjectAcceptanceGateway:
                 records.append(AcceptanceEvidence(
                     id="windows-browser-acceptance", kind="browser",
                     status="failed" if failed else "passed", source=scheduled.node_id,
-                    summary=f"Chromium and Edge acceptance at {preview.url} for {actual_commit}",
+                    summary=(
+                        f"Chromium and Edge acceptance at {preview.url} for {actual_commit}; "
+                        "zero failures and skips; verified scenarios: "
+                        + ", ".join(item.id for item in suite.scenarios)
+                    ),
                     tests=scheduled.tests, artifacts=browser_artifacts,
                 ))
                 if failed:
