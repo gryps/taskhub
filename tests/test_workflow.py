@@ -400,6 +400,63 @@ def test_acceptance_failure_has_its_own_recovery_without_rerunning_worker():
     asyncio.run(scenario())
 
 
+def test_acceptance_failure_can_return_to_worker_from_legacy_checkpoint_at_limit():
+    async def scenario():
+        provider = RecordingProvider()
+        worker = RevisionRecordingWorker()
+        acceptance = RecoveringAcceptance()
+        checkpointer = InMemorySaver()
+        graph = build_main_graph(
+            provider, worker, checkpointer, acceptance=acceptance
+        )
+        service = RunService(graph)
+        waiting = await service.start(
+            StartRunRequest(project_id="shop", requirement="Repair acceptance defect")
+        )
+        blocked = await service.approve(
+            waiting.run_id, ApprovalRequest(decision="approve")
+        )
+        assert blocked.stage == Stage.ACCEPTANCE_BLOCKED
+        assert blocked.pending_action["choices"] == ["retry", "revise", "cancel"]
+
+        # Reproduce a pre-upgrade checkpoint which has reached its revision limit
+        # and does not yet advertise the new decision.
+        await graph.aupdate_state(
+            service._config(blocked.run_id),
+            {
+                "revision_count": 2,
+                "max_revision_attempts": 2,
+                "pending_action": {
+                    "type": "acceptance_recovery",
+                    "title": "Acceptance needs attention",
+                    "choices": ["retry", "cancel"],
+                },
+            },
+        )
+        publishing = await service.resume(
+            blocked.run_id,
+            ResumeRequest(decision="revise", comment="Approve one extra revision"),
+        )
+
+        assert publishing.stage == Stage.MERGE_APPROVAL
+        assert publishing.revision_count == 3
+        assert publishing.max_revision_attempts == 3
+        assert worker.calls == 2
+        assert worker.revisions[-1][0] == 3
+        assert "RuntimeError: browser unavailable" in worker.revisions[-1][1]
+        assert acceptance.calls == 2
+        assert any(
+            item.title == "Acceptance returned to implementation"
+            for item in publishing.timeline
+        )
+        assert any(
+            item.title == "Acceptance revision 3 started"
+            for item in publishing.timeline
+        )
+
+    asyncio.run(scenario())
+
+
 def test_submitted_acceptance_evidence_reassesses_without_coding_revision():
     async def scenario():
         provider = EvidenceAwareProvider()

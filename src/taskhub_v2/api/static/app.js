@@ -94,8 +94,11 @@ function render(run) {
   } else if (pendingAction?.type === "acceptance_recovery") {
     byId("action-stage").textContent = "第 5 环 · 验收";
     byId("action-title").textContent = "验收执行已阻塞";
-    byId("action-detail").textContent = run.blocking_reason?.detail || "验收节点需要处理";
+    const limitReached = run.revision_count >= run.max_revision_attempts;
+    const limitNotice = limitReached ? " 已达到返工上限，退回实施将授权额外返工一次。" : "";
+    byId("action-detail").textContent = `${run.blocking_reason?.detail || "验收节点需要处理"}${limitNotice}`;
     byId("approve").textContent = "重新执行验收";
+    byId("revise").textContent = limitReached ? "批准额外返工" : "退回实施";
     byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "merge_approval") {
     byId("action-stage").textContent = "第 9 环 · 发布审批";
@@ -126,6 +129,9 @@ function render(run) {
     ["approve", "retry"].includes(choice)));
   byId("reject").classList.toggle("hidden", !choices.some((choice) =>
     ["reject", "cancel"].includes(choice)));
+  byId("revise").classList.toggle(
+    "hidden", pendingAction?.type !== "acceptance_recovery"
+  );
   renderEvidence(run);
   refreshDeployment(run);
 }
@@ -398,7 +404,9 @@ async function decide(decision) {
   const planApproval = pendingAction?.type === "plan_approval";
   const endpoint = planApproval ? "approval" : "resume";
   const recovery = ["implementation_recovery", "acceptance_recovery", "publication_recovery", "revision_limit"].includes(pendingAction?.type);
-  const resolved = recovery ? (decision === "approve" ? "retry" : "cancel") : decision;
+  const resolved = recovery
+    ? (decision === "approve" ? "retry" : decision === "revise" ? "revise" : "cancel")
+    : decision;
   const run = await request(`/api/runs/${currentRun}/${endpoint}`, {
     method: "POST", body: JSON.stringify({decision: resolved, comment: ""}),
   });
@@ -423,6 +431,7 @@ async function submitAcceptance(event) {
   render(run);
 }
 byId("approve").addEventListener("click", () => decide("approve"));
+byId("revise").addEventListener("click", () => decide("revise"));
 byId("reject").addEventListener("click", () => decide("reject"));
 byId("acceptance-submit").addEventListener("submit", submitAcceptance);
 byId("deploy-release").addEventListener("click", deployRelease);

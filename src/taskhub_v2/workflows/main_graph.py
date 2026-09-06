@@ -7,6 +7,11 @@ from taskhub_v2.workers.acceptance import LocalAcceptanceGateway
 from taskhub_v2.workers.base import AcceptanceGateway, PublisherGateway, WorkerGateway
 from taskhub_v2.workers.publisher import LocalPublisher
 from taskhub_v2.workflows.acceptance import build_acceptance_graph
+from taskhub_v2.workflows.acceptance_recovery import (
+    prepare_acceptance_revision,
+    recover_acceptance,
+    route_acceptance_recovery,
+)
 from taskhub_v2.workflows.implementation import build_implementation_graph
 from taskhub_v2.workflows.intake import build_intake_graph
 from taskhub_v2.workflows.planning import build_planning_graph
@@ -82,30 +87,6 @@ def build_main_graph(
             "timeline": event(
                 Stage.IMPLEMENTATION_BLOCKED,
                 "Implementation retry requested" if retry else "Run cancelled",
-                "owner",
-            ),
-        }
-
-    async def recover_acceptance(state: CodingState) -> dict:
-        response = interrupt(
-            {
-                "type": "acceptance_recovery",
-                "run_id": state["run_id"],
-                "reason": state.get("blocking_reason"),
-                "choices": ["retry", "cancel"],
-            }
-        )
-        decision = response.get("decision") if isinstance(response, dict) else response
-        retry = decision == "retry"
-        return {
-            "decision": decision,
-            "pending_action": None,
-            "blocking_reason": None if retry else state.get("blocking_reason"),
-            "current_stage": Stage.ACCEPTANCE.value if retry else Stage.REJECTED.value,
-            "status": RunStatus.RUNNING.value if retry else RunStatus.REJECTED.value,
-            "timeline": event(
-                Stage.ACCEPTANCE_BLOCKED,
-                "Acceptance retry requested" if retry else "Run cancelled",
                 "owner",
             ),
         }
@@ -333,6 +314,7 @@ def build_main_graph(
     builder.add_node("publication_recovery", recover_publication)
     builder.add_node("implementation_recovery", recover_implementation)
     builder.add_node("acceptance_recovery", recover_acceptance)
+    builder.add_node("acceptance_revision", prepare_acceptance_revision)
     builder.add_node("reject", reject)
 
     builder.add_edge(START, "intake")
@@ -358,9 +340,14 @@ def build_main_graph(
     )
     builder.add_conditional_edges(
         "acceptance_recovery",
-        route_recovery,
-        {"implementation": "acceptance", "reject": "reject"},
+        route_acceptance_recovery,
+        {
+            "acceptance": "acceptance",
+            "revision": "acceptance_revision",
+            "reject": "reject",
+        },
     )
+    builder.add_edge("acceptance_revision", "implementation")
     builder.add_edge("review", "risk")
     builder.add_edge("risk", "supervisor")
     builder.add_conditional_edges(

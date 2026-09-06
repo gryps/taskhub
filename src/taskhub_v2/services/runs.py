@@ -164,7 +164,12 @@ class RunService:
     async def resume(self, run_id: str, request: ResumeRequest) -> RunView:
         current = await self.get(run_id)
         action = current.pending_action or {}
-        if not current.next_nodes or request.decision not in action.get("choices", []):
+        choices = list(action.get("choices", []))
+        # Checkpoints created before acceptance revisions existed only contain
+        # retry/cancel. Allow them to use the new recovery route after deployment.
+        if action.get("type") == "acceptance_recovery" and "revise" not in choices:
+            choices.append("revise")
+        if not current.next_nodes or request.decision not in choices:
             raise RunConflictError("decision is not valid for the pending action")
         await self._execute(run_id, Command(resume=request.model_dump(mode="json")))
         return await self.get(run_id, sync=True)

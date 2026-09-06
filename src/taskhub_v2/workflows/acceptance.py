@@ -14,7 +14,7 @@ def build_acceptance_graph(gateway: AcceptanceGateway):
             )
         except Exception as exc:
             reason = getattr(exc, "reason", exc.__class__.__name__)
-            detail = getattr(exc, "detail", str(exc))[:500]
+            detail = getattr(exc, "detail", str(exc))[:4000]
             return {
                 "current_stage": Stage.ACCEPTANCE_BLOCKED.value,
                 "status": RunStatus.BLOCKED.value,
@@ -22,7 +22,7 @@ def build_acceptance_graph(gateway: AcceptanceGateway):
                 "pending_action": {
                     "type": "acceptance_recovery",
                     "title": "Acceptance needs attention",
-                    "choices": ["retry", "cancel"],
+                    "choices": ["retry", "revise", "cancel"],
                 },
                 "timeline": event(
                     Stage.ACCEPTANCE_BLOCKED, "Acceptance blocked", "acceptance", detail
