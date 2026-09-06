@@ -25,8 +25,11 @@
     </section>
     <div id="workspace" class="hidden">
     <nav class="side-menu" aria-label="主菜单">
+      <span class="menu-label">工作区</span>
       <button id="nav-tasks" class="nav-active">任务中心</button>
-      <button id="nav-workflow" class="secondary">新建任务</button>
+      <button id="nav-workflow" class="secondary">开发流程</button>
+      <span class="menu-label">系统</span>
+      <button id="nav-resources" class="secondary">系统资源</button>
     </nav>
     <section id="task-center" class="task-center">
       <div class="section-head"><h1>任务中心</h1><button id="refresh-tasks" class="secondary">刷新</button></div>
@@ -103,7 +106,12 @@
     <section class="process-overview" aria-labelledby="process-title">
       <div class="section-head">
         <h2 id="process-title">开发流程</h2>
-        <span class="muted">计划审批、发布审批需要人工处理</span>
+        <div class="flow-legend" aria-label="流程状态图例">
+          <span><i class="legend-done"></i>已完成</span>
+          <span><i class="legend-active"></i>当前</span>
+          <span><i class="legend-manual"></i>待人工</span>
+          <span><i class="legend-blocked"></i>阻塞</span>
+        </div>
       </div>
       <div id="flow" class="flow" aria-label="任务处理流程"></div>
     </section>
@@ -113,6 +121,7 @@
         <span id="status" class="badge"></span>
       </div>
       <aside id="action" class="action hidden">
+        <span id="action-stage" class="action-stage"></span>
         <strong id="action-title"></strong>
         <p id="action-detail"></p>
         <div class="actions">
@@ -125,22 +134,32 @@
         <p id="deployment-detail">等待部署</p>
         <button id="deploy-release">部署并重启</button>
       </aside>
-      <div class="evidence-grid">
-        <section><h2>规划方案</h2><div id="plan-detail" class="evidence">尚未生成</div></section>
-        <section><h2>代码与测试</h2><div id="change-detail" class="evidence">尚未实施</div></section>
-        <section><h2>监督裁决</h2><div id="decision-detail" class="evidence">尚未裁决</div></section>
-        <section><h2>权威发布</h2><div id="publication-detail" class="evidence">尚未发布</div></section>
+      <div class="run-summary" aria-label="当前流程摘要">
+        <div><span>当前环节</span><strong id="current-stage">尚未开始</strong></div>
+        <div><span>流程进度</span><strong id="flow-progress">0/10</strong></div>
+        <div><span>返工次数</span><strong id="revision-summary">0/0</strong></div>
       </div>
-      <h2>执行记录</h2>
-      <ol id="timeline" class="timeline"></ol>
+      <div class="evidence-list">
+        <details><summary>规划方案 <span id="plan-summary">尚未生成</span></summary><div id="plan-detail" class="evidence">尚未生成</div></details>
+        <details><summary>代码与测试 <span id="change-summary">尚未实施</span></summary><div id="change-detail" class="evidence">尚未实施</div></details>
+        <details><summary>监督裁决 <span id="decision-summary">尚未裁决</span></summary><div id="decision-detail" class="evidence">尚未裁决</div></details>
+        <details><summary>权威发布 <span id="publication-summary">尚未发布</span></summary><div id="publication-detail" class="evidence">尚未发布</div></details>
+        <details><summary>执行记录 <span id="timeline-summary">0 条</span></summary><ol id="timeline" class="timeline"></ol></details>
+      </div>
     </section>
+    </div>
+    <section id="resource-page" class="resource-page hidden">
+    <div class="resource-title">
+      <h1>系统资源</h1>
+      <p class="muted">模型额度、计费状态与执行节点统一在此查看。</p>
+    </div>
     <section class="providers-section">
       <div class="section-head">
         <h2>模型资源</h2>
         <button id="refresh-providers" class="icon-button" title="刷新模型状态" aria-label="刷新模型状态">↻</button>
       </div>
       <p id="provider-summary" class="muted">正在检查</p>
-      <div id="providers" class="providers"></div>
+      <div id="providers" class="resource-table"></div>
     </section>
     <section class="providers-section">
       <div class="section-head">
@@ -148,12 +167,13 @@
         <button id="refresh-nodes" class="icon-button" title="刷新节点状态" aria-label="刷新节点状态">↻</button>
       </div>
       <p id="node-summary" class="muted">正在检查</p>
-      <div id="nodes" class="providers"></div>
+      <div id="nodes" class="resource-table"></div>
     </section>
-    </div>
+    </section>
     </div>
   </main>
   <script src="/static/app.js"></script>
   <script src="/static/task-center.js"></script>
+  <script src="/static/resource-center.js"></script>
 </body>
 </html>

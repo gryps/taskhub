@@ -63,12 +63,16 @@ function showTaskDetail(run) {
 
 function showPage(page) {
   const tasks = page === "tasks";
+  const resources = page === "resources";
   byId("task-center").classList.toggle("hidden", !tasks);
-  byId("workflow-page").classList.toggle("hidden", tasks);
+  byId("workflow-page").classList.toggle("hidden", tasks || resources);
+  byId("resource-page").classList.toggle("hidden", !resources);
   byId("workflow-page").classList.toggle("task-detail", page === "detail");
-  byId("nav-tasks").classList.toggle("nav-active", page !== "workflow");
+  byId("nav-tasks").classList.toggle("nav-active", tasks || page === "detail");
   byId("nav-workflow").classList.toggle("nav-active", page === "workflow");
+  byId("nav-resources").classList.toggle("nav-active", resources);
   if (tasks) { eventSource?.close(); loadTaskCenter(); }
+  if (resources) { eventSource?.close(); window.loadResources?.(); }
 }
 
 const stageFilter = byId("filter-stage");
@@ -79,6 +83,7 @@ stages.forEach(([id, label]) => stageFilter.insertAdjacentHTML("beforeend",
 byId("refresh-tasks").addEventListener("click", loadTaskCenter);
 byId("nav-tasks").addEventListener("click", () => showPage("tasks"));
 byId("nav-workflow").addEventListener("click", () => showPage("workflow"));
+byId("nav-resources").addEventListener("click", () => showPage("resources"));
 window.loadTaskCenter = loadTaskCenter;
 window.showTaskDetail = showTaskDetail;
 

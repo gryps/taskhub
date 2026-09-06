@@ -91,7 +91,9 @@ def test_browser_history_approvals_and_recovery(monkeypatch, tmp_path):
         assert first["y"] + first["height"] <= second["y"]
 
     def action(page, stage, label):
-        button = page.locator(f'[data-step-id="{stage}"] #approve')
+        panel = page.locator(f'#action[data-stage="{stage}"]')
+        expect(panel).to_be_visible()
+        button = panel.locator("#approve")
         expect(button).to_be_visible()
         expect(button).to_have_text(label)
         button.click()

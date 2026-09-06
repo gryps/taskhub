@@ -111,13 +111,16 @@ class RunService:
 
     async def backfill(self, checkpointer) -> None:
         """Repair missing and stale rows from authoritative latest checkpoints."""
-        seen: set[str] = set()
+        latest: dict[str, dict[str, Any]] = {}
         async for item in checkpointer.alist(None):
             values = item.checkpoint.get("channel_values", {})
             run_id = values.get("run_id")
-            if not run_id or run_id in seen or not values.get("project_id"):
+            if not run_id or run_id in latest or not values.get("project_id"):
                 continue
-            seen.add(run_id)
+            latest[run_id] = values
+        # PostgreSQL uses one async connection for the listing cursor. Finish
+        # that cursor before querying individual graph snapshots.
+        for run_id, values in latest.items():
             snapshot = await self.graph.aget_state(self._config(run_id))
             await self.task_index.upsert(checkpoint_values(snapshot),
                                          values.get("production_line"))

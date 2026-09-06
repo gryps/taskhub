@@ -21,8 +21,6 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character
 })[character]);
 
 function renderFlow(stage, status, backendSteps = null) {
-  const action = byId("action");
-  if (action && byId("flow").contains(action)) byId("run").prepend(action);
   const active = stage ? stageIndex(stage) : -1;
   byId("flow").innerHTML = stages.map(([id, label, actor], index) => {
     const currentState = status === "blocked" ? "blocked"
@@ -35,15 +33,14 @@ function renderFlow(stage, status, backendSteps = null) {
     return `<div class="step ${state}" data-step-id="${id}">
       <span class="step-number">${index + 1}</span>
       <strong>${label}</strong>
-      <small class="${actor === "人工" ? "manual" : ""}">${actor}</small>
+      <small class="${actor === "人工" ? "manual" : ""}">${stepStateLabel(state, actor)}</small>
     </div>`;
   }).join("");
-  const actionStages = {plan_approval: "plan_approval", merge_approval: "merge_approval",
-    implementation_recovery: "implementation", publication_recovery: "merging",
-    revision_limit: "supervision"};
-  const actionStage = actionStages[pendingAction?.type];
-  const activeStep = actionStage && byId("flow").querySelector(`[data-step-id="${actionStage}"]`);
-  if (activeStep && action) activeStep.append(action);
+}
+
+function stepStateLabel(state, actor) {
+  return {done: "已完成", active: "进行中", "manual-wait": "待你处理",
+    blocked: "已阻塞", "not-started": actor === "人工" ? "人工确认" : "未开始"}[state];
 }
 
 function cookie(name) {
@@ -59,38 +56,55 @@ function render(run) {
   byId("status").textContent = statuses[run.status] || run.status;
   pendingAction = run.pending_action;
   renderFlow(run.stage, run.status, run.workflow_steps);
+  const normalizedStage = run.stage === "implementation_blocked" ? "implementation"
+    : run.stage === "merge_blocked" ? "merging" : run.stage;
+  byId("current-stage").textContent = stages.find(([id]) => id === normalizedStage)?.[1] || run.stage;
+  const completed = (run.workflow_steps || []).filter((item) => item.state === "completed").length;
+  byId("flow-progress").textContent = `${run.status === "completed" ? 10 : completed}/10`;
+  byId("revision-summary").textContent = `${run.revision_count}/${run.max_revision_attempts}`;
+  byId("timeline-summary").textContent = `${run.timeline.length} 条`;
   byId("timeline").innerHTML = run.timeline.map((item) => `
-    <li><small>${item.stage}</small><strong>${item.title}</strong><span>${item.detail || item.actor}</span></li>
+    <li><small>${escapeHtml(stageName(item.stage))}</small><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail || item.actor)}</span></li>
   `).join("");
   const waiting = Boolean(pendingAction || run.blocking_reason);
-  byId("action").classList.toggle("hidden", !waiting);
+  const action = byId("action");
+  const actionStages = {plan_approval: "plan_approval", implementation_recovery: "implementation",
+    merge_approval: "merge_approval", publication_recovery: "merging", revision_limit: "supervision"};
+  action.dataset.stage = actionStages[pendingAction?.type] || normalizedStage;
+  action.classList.toggle("hidden", !waiting);
   if (pendingAction?.type === "plan_approval") {
+    byId("action-stage").textContent = "第 3 环 · 计划审批";
     byId("action-title").textContent = "需要你审批计划";
     byId("action-detail").textContent = run.plan?.summary || "规划已经完成";
     byId("approve").textContent = "批准计划";
     byId("reject").textContent = "拒绝";
   } else if (pendingAction?.type === "implementation_recovery") {
+    byId("action-stage").textContent = "第 4 环 · 实施";
     byId("action-title").textContent = "实施已阻塞";
     byId("action-detail").textContent = run.blocking_reason?.detail || "实施节点需要处理";
     byId("approve").textContent = "重试";
     byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "merge_approval") {
+    byId("action-stage").textContent = "第 8 环 · 发布审批";
     byId("action-title").textContent = "需要你批准发布";
     byId("action-detail").textContent = run.supervision?.summary || "监督角色已批准代码变更";
     byId("approve").textContent = "合并到权威分支";
     byId("reject").textContent = "拒绝发布";
   } else if (pendingAction?.type === "publication_recovery") {
+    byId("action-stage").textContent = "第 9 环 · 发布";
     byId("action-title").textContent = "发布已阻塞";
     byId("action-detail").textContent = run.blocking_reason?.detail || "发布环境需要处理";
     byId("approve").textContent = "重新检查并发布";
     byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "revision_limit") {
+    byId("action-stage").textContent = "第 7 环 · 监督";
     byId("action-title").textContent = "返工次数已达上限";
     byId("action-detail").textContent = run.supervision?.summary || "监督仍发现未解决的问题";
     byId("approve").textContent = "批准再返工一次";
     byId("reject").textContent = "终止任务";
   }
   if (run.blocking_reason && !pendingAction) {
+    byId("action-stage").textContent = `当前环节 · ${stageName(run.stage)}`;
     byId("action-title").textContent = "任务无法继续";
     byId("action-detail").textContent = `${run.blocking_reason.detail || run.blocking_reason.code}。当前无可用恢复操作`;
   }
@@ -103,12 +117,22 @@ function render(run) {
   refreshDeployment(run);
 }
 
+function stageName(stage) {
+  const normalized = stage === "implementation_blocked" ? "implementation"
+    : stage === "merge_blocked" ? "merging" : stage;
+  return stages.find(([id]) => id === normalized)?.[1] || stage;
+}
+
 function renderEvidence(run) {
   const plan = run.plan;
+  byId("plan-summary").textContent = plan ? `${plan.steps.length} 个步骤` : "尚未生成";
   byId("plan-detail").innerHTML = plan ? `
     <strong>${escapeHtml(plan.summary)}</strong>
     <ol>${plan.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>` : "尚未生成";
   const implementation = run.implementation;
+  byId("change-summary").textContent = implementation
+    ? `${implementation.changed_files.length} 个文件 · ${implementation.tests.filter((test) => test.exit_code === 0).length}/${implementation.tests.length} 测试通过`
+    : "尚未实施";
   byId("change-detail").innerHTML = implementation ? `
     <strong>${escapeHtml(implementation.summary)}</strong>
     <span class="revision-count">返工 ${run.revision_count}/${run.max_revision_attempts}</span>
@@ -117,10 +141,13 @@ function renderEvidence(run) {
     <p>执行节点：${escapeHtml(implementation.execution_node || "控制中心")}</p>
     <p>${implementation.tests.map((test) => `${escapeHtml(test.command.join(" "))}: ${test.exit_code === 0 ? "通过" : "失败"}`).join(" · ")}</p>` : "尚未实施";
   const supervision = run.supervision;
+  byId("decision-summary").textContent = supervision
+    ? (supervision.decision === "approve" ? "已通过" : "需返工") : "尚未裁决";
   byId("decision-detail").innerHTML = supervision ? `
     <strong>${supervision.decision === "approve" ? "监督通过" : "监督拒绝"}</strong>
     <p>${escapeHtml(supervision.summary)}</p>` : "尚未裁决";
   const publication = run.publication;
+  byId("publication-summary").textContent = publication ? "已发布" : "尚未发布";
   byId("publication-detail").innerHTML = publication ? `
     <strong>已发布到 ${escapeHtml(publication.authority_ref)}</strong>
     <p><code>${escapeHtml(publication.published_commit)}</code>${publication.rebased ? " · 已同步最新基线" : ""}</p>
@@ -185,20 +212,6 @@ function watch(runId) {
   eventSource?.close();
   eventSource = new EventSource(`/api/runs/${runId}/events`);
   eventSource.addEventListener("run", (event) => render(JSON.parse(event.data)));
-}
-
-async function loadProviders() {
-  const data = await request("/api/providers");
-  const ready = data.providers.filter((item) => item.configured).length;
-  byId("provider-summary").textContent = `${ready}/${data.providers.length} 可用 · OpenAI 走代理 · 其他模型直连`;
-  byId("providers").innerHTML = data.providers.map((item) => `
-    <div class="provider">
-      <strong>${escapeHtml(item.id)}</strong>
-      <span class="${item.configured ? "ok" : "bad"}">${escapeHtml(item.status)}</span>
-      <span>${escapeHtml(item.model)}</span>
-      <span>${escapeHtml(item.kind === "api" ? item.api_key_mask : item.route)}</span>
-    </div>
-  `).join("");
 }
 
 async function loadProjects(preferredProjectId = currentProjectId) {
@@ -303,26 +316,6 @@ function applySelectedRepository() {
   byId("attach-project-branch").value = option.dataset.branch || "main";
 }
 
-async function loadNodes() {
-  const data = await request("/api/nodes");
-  const ready = data.nodes.filter((item) => item.status === "ok").length;
-  byId("node-summary").textContent = `${ready}/${data.nodes.length} 在线`;
-  byId("nodes").innerHTML = data.nodes.map((item) => `
-    <div class="provider">
-      <strong>${escapeHtml(item.node_id)}</strong>
-      <span class="${item.status === "ok" ? "ok" : "bad"}">${escapeHtml(item.status)}</span>
-      <span>${escapeHtml(item.kind)} · ${item.active}/${item.slots}</span>
-      <span>${(item.workloads || []).map(escapeHtml).join(" · ")} · 优先级 ${item.priority}</span>
-      <span>${item.status === "ok"
-        ? Object.entries(item.capabilities || {}).filter(([, value]) => value).map(([name]) => escapeHtml(name)).join(" · ")
-        : escapeHtml(item.detail || "节点不可达")}</span>
-      ${Object.entries(item.provider_health || {}).map(([provider, state]) =>
-        `<span class="bad">${escapeHtml(provider)}：${escapeHtml(state.reason || state.status)}</span>`
-      ).join("")}
-    </div>
-  `).join("");
-}
-
 async function login() {
   byId("login-message").textContent = "";
   try {
@@ -342,7 +335,7 @@ async function bootstrap() {
   byId("workspace").classList.toggle("hidden", !state.authenticated);
   byId("logout").classList.toggle("hidden", !state.authenticated);
   if (!state.authenticated) return;
-  await Promise.all([loadProviders(), loadProjects(), loadNodes()]);
+  await loadProjects();
   window.loadTaskCenter?.();
 }
 
@@ -385,8 +378,6 @@ request("/api/health").then(() => { byId("health").textContent = "服务正常";
 byId("login-button").addEventListener("click", login);
 byId("admin-token").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
 byId("logout").addEventListener("click", async () => { await request("/api/auth/logout", {method: "POST"}); await bootstrap(); });
-byId("refresh-providers").addEventListener("click", () => loadProviders());
-byId("refresh-nodes").addEventListener("click", () => loadNodes());
 byId("show-project-form").addEventListener("click", () => {
   byId("attach-project-form").classList.add("hidden");
   byId("project-form").classList.remove("hidden");

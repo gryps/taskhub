@@ -6,6 +6,7 @@ from taskhub_v2.config import Settings
 from taskhub_v2.providers.codex_account import CodexAccountProvider
 from taskhub_v2.providers.health import ProviderHealthStore
 from taskhub_v2.security import mask_secret
+from taskhub_v2.services.model_usage import ModelUsageReader, unavailable
 
 
 DEVICE_AUTH_URL = "https://auth.openai.com/codex/device"
@@ -15,12 +16,21 @@ class ProviderCatalog:
     def __init__(self, settings: Settings, health: ProviderHealthStore | None = None):
         self.settings = settings
         self.health = health
+        self.usage = ModelUsageReader(settings.codex_cli_bin, settings.openai_proxy_url)
 
     async def status(self) -> dict[str, Any]:
-        plus, pro = await asyncio.gather(
+        plus, pro, plus_usage, pro_usage, deepseek_balance, minimax_balance = await asyncio.gather(
             self._account("chatgpt_plus_account", "plus", self.settings.codex_plus_home),
             self._account("chatgpt_pro_account", "pro", self.settings.codex_pro_home),
+            self.usage.account(self.settings.codex_plus_home, "plus"),
+            self.usage.account(self.settings.codex_pro_home, "pro"),
+            self.usage.deepseek_balance(
+                self.settings.deepseek_api_key, self.settings.deepseek_base_url
+            ),
+            self.usage.minimax_balance(self.settings.minimax_api_key),
         )
+        plus["billing"] = plus_usage
+        pro["billing"] = pro_usage
         providers = [
             plus,
             pro,
@@ -46,6 +56,11 @@ class ProviderCatalog:
                 "direct",
             ),
         ]
+        providers[2]["billing"] = unavailable(
+            "api_balance", "普通项目 API Key 不提供账户剩余余额；需组织管理员账单权限"
+        )
+        providers[3]["billing"] = deepseek_balance
+        providers[4]["billing"] = minimax_balance
         health = self.health.snapshot() if self.health else {}
         for provider in providers:
             record = health.get(provider["id"])

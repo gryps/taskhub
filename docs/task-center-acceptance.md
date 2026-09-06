@@ -9,6 +9,10 @@ TASKHUB_TEST_POSTGRES_DSN='postgresql://localhost/taskhub_acceptance' \
   scripts/test-task-center-acceptance.sh --basetemp=/tmp/taskhub-acceptance
 ```
 
+临时 PostgreSQL 集群必须使用 UTF-8 初始化，例如
+`initdb --encoding=UTF8 --no-locale`。`SQL_ASCII` 会使 checkpoint 文本标识被
+驱动读取为字节串，导致 LangGraph 中断恢复无法匹配。
+
 此入口执行全套 pytest，并强制启用浏览器验收。缺少数据库、Playwright 或浏览器时会失败，不会将其跳过后视为验收通过。数据库中会保留测试任务，请勿使用生产数据库。无需修改环境文件或凭据文件。
 
 `test_task_center_postgres.py` 验证三任务持久化、缺失/过期索引修复、幂等回填、A/B 筛选，以及重新连接后的 checkpoint 恢复和无重复执行。`test_postgres_recovery.py` 验证运行时重建后仍可审批并完成工作流。
@@ -22,14 +26,35 @@ TASKHUB_TEST_POSTGRES_DSN='postgresql://localhost/taskhub_acceptance' \
 - 全新 Firefox 会话重新登录查询历史，在发布环节旁恢复，验证执行记录前缀未变，已完成节点调用次数未增加。
 - 保存列表、阻塞及恢复后的截图到 pytest 临时目录。
 
-## 本次受限工作区执行记录
+## Windows Edge 图形节点
 
-PostgreSQL 16 临时集群初始化成功，但启动报错：`could not bind Unix address ... Operation not permitted`；显式执行两项 PostgreSQL 测试同样在连接 socket 时失败。浏览器测试显式执行时因缺少 `playwright` 失败，安装请求也被网络沙箱拒绝。因此本次没有获得 PostgreSQL 或浏览器端通过证据，不能据此宣称持久化/跨浏览器验收已完成。需要在上述具备依赖和 socket 权限的环境运行验收入口并审阅截图。
-
-常规全套测试在本沙箱默认 asyncio 运行器下挂起；使用已安装的 uvloop 执行后为 **56 passed、3 skipped**：
+当 PostgreSQL 与临时验收服务运行在控制节点、浏览器运行在独立 Windows 图形节点时：
 
 ```sh
-python -c 'import uvloop, pytest; uvloop.install(); raise SystemExit(pytest.main(["-q"]))'
+python scripts/task-center-acceptance-server.py \
+  --dsn 'postgresql://localhost/taskhub_acceptance' \
+  --state-dir /tmp/taskhub-edge-state --host 0.0.0.0 --port 8324
 ```
 
-三项跳过为两项 PostgreSQL 测试及新增浏览器测试，不计入验收通过。另通过架构测试（2 passed）、JavaScript 语法检查、浏览器测试 Python 编译检查、验收脚本 shell 语法检查及 `git diff --check`。
+Windows 图形节点只需 Python Playwright 包和系统 Microsoft Edge，不需要安装
+TaskHub 或额外下载 Chromium：
+
+```powershell
+python scripts/task-center-edge-acceptance.py `
+  --url http://192.168.31.31:8324 `
+  --output C:\taskhub-acceptance
+```
+
+脚本使用两个全新的 Edge 进程，验证任务创建、筛选、审批、阻塞原因、系统资源、
+重新登录、服务器历史查询和恢复完成，并产出四张截图及 `result.json`。PostgreSQL 应用重启
+恢复由 `test_task_center_postgres.py` 和 `test_postgres_recovery.py` 独立验证。
+
+## 验收记录
+
+验收结果必须记录实际命令、数据库编码、通过/跳过数量、浏览器名称及证据目录。
+浏览器测试被跳过时，不得宣称图形验收完成。
+
+2026-09-06 在控制节点的 UTF-8 PostgreSQL 16 临时库执行完整测试：
+**61 passed、1 skipped**；跳过项为本机浏览器测试。随后由 Windows 图形节点
+`192.168.31.34` 使用系统 Microsoft Edge 执行独立图形验收并通过，产出任务列表、
+系统资源、阻塞处理和恢复完成四张截图及 `result.json`。两个临时服务均已停止。
