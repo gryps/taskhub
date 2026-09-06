@@ -14,8 +14,14 @@ header div { display: flex; gap: 14px; align-items: baseline; }
 header span { color: #b9cbc4; font-size: 13px; }
 .header-actions { align-items: center; }
 .header-button { min-height: 30px; padding: 0 10px; background: #315148; }
-main { width: min(1000px, calc(100% - 32px)); margin: 28px auto 64px; }
-.side-menu { display: flex; gap: 8px; margin-bottom: 24px; }
+main { width: min(1280px, calc(100% - 32px)); margin: 28px auto 64px; }
+#workspace { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 24px; align-items: start; }
+.side-menu { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 20px; }
+.side-menu button { text-align: left; }
+#task-center, #workflow-page { grid-column: 2; grid-row: 1; min-width: 0; }
+#workflow-page.task-detail .project-tools,
+#workflow-page.task-detail .composer,
+#workflow-page.task-detail .providers-section { display: none; }
 .side-menu button { background: transparent; color: #52615c; }
 .side-menu .nav-active { background: #167455; color: white; }
 .task-center h1 { margin: 0; font-size: 22px; }
@@ -91,6 +97,8 @@ button:disabled { opacity: .55; cursor: wait; }
 .step.not-started { color: #72807b; }
 .action { padding: 16px; border-left: 4px solid #d58c1d; background: #fff8e9; }
 .action p { margin: 6px 0 14px; color: #5f5540; }
+.step .action { grid-column: 1 / -1; margin-top: 12px; padding: 10px; min-width: 0; }
+.step .actions { flex-wrap: wrap; }
 .deployment-action { margin-top: 12px; border-left-color: #167455; background: #e8f3ef; }
 .actions { display: flex; gap: 8px; }
 .evidence-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
@@ -118,6 +126,8 @@ h2 { margin-top: 28px; font-size: 16px; }
 @media (max-width: 720px) {
   header { padding: 0 16px; }
   main { width: min(100% - 24px, 1000px); margin-top: 18px; }
+  #workspace { grid-template-columns: 96px minmax(0, 1fr); gap: 12px; }
+  .side-menu button { padding: 0 8px; }
   .composer { grid-template-columns: 1fr; }
   .project-toolbar { align-items: flex-start; flex-direction: column; }
   .form-grid { grid-template-columns: 1fr; }

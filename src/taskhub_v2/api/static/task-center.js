@@ -55,18 +55,19 @@ async function openTask(runId) {
 
 function showTaskDetail(run) {
   currentRun = run.run_id;
-  showPage("workflow");
+  showPage("detail");
   render(run);
   watch(run.run_id);
-  byId("run").scrollIntoView({behavior: "smooth", block: "start"});
+  byId("flow").scrollIntoView({behavior: "smooth", block: "start"});
 }
 
 function showPage(page) {
   const tasks = page === "tasks";
   byId("task-center").classList.toggle("hidden", !tasks);
   byId("workflow-page").classList.toggle("hidden", tasks);
-  byId("nav-tasks").classList.toggle("nav-active", tasks);
-  byId("nav-workflow").classList.toggle("nav-active", !tasks);
+  byId("workflow-page").classList.toggle("task-detail", page === "detail");
+  byId("nav-tasks").classList.toggle("nav-active", page !== "workflow");
+  byId("nav-workflow").classList.toggle("nav-active", page === "workflow");
   if (tasks) { eventSource?.close(); loadTaskCenter(); }
 }
 
