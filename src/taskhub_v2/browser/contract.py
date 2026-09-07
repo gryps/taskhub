@@ -18,6 +18,12 @@ timeout_seconds: 900
 required_artifacts: [playwright-report, junit.xml, screenshots, trace.zip]
 """
 
+SUITE_EXAMPLE = """scenarios:
+  - id: task-list
+    description: Create, refresh and filter tasks
+    browsers: [chromium, edge]
+"""
+
 
 class AcceptanceContractValidationError(ValueError):
     reason = "acceptance_contract_invalid"
@@ -26,7 +32,21 @@ class AcceptanceContractValidationError(ValueError):
         self.detail = (
             ".taskhub/acceptance.yaml does not match the required schema. "
             "Use this exact structure and replace only project-specific commands/paths:\n"
-            f"{CONTRACT_EXAMPLE}\nValidation details:\n{validation_error}"
+            f"{CONTRACT_EXAMPLE}\nThe referenced suite must use this structure:\n"
+            f"{SUITE_EXAMPLE}\nValidation details:\n{validation_error}"
+        )
+        super().__init__(self.detail)
+
+
+class AcceptanceSuiteValidationError(ValueError):
+    reason = "acceptance_suite_invalid"
+
+    def __init__(self, validation_error: Exception):
+        self.detail = (
+            "The browser acceptance suite does not match the required schema. "
+            "Each scenario permits only id, description and browsers; split multiple "
+            "checks into separate scenarios when needed. Use this structure:\n"
+            f"{SUITE_EXAMPLE}\nValidation details:\n{validation_error}"
         )
         super().__init__(self.detail)
 
@@ -101,7 +121,10 @@ def load_acceptance_contract(repository: str | Path) -> AcceptanceContract:
         raise ValueError("acceptance suite must stay inside the repository")
     if suite_path.is_file():
         suite_payload = yaml.safe_load(suite_path.read_text(encoding="utf-8"))
-        suite = AcceptanceSuite.model_validate(suite_payload)
+        try:
+            suite = AcceptanceSuite.model_validate(suite_payload)
+        except ValidationError as exc:
+            raise AcceptanceSuiteValidationError(exc) from exc
         unsupported = {
             browser for scenario in suite.scenarios for browser in scenario.browsers
         } - set(contract.browsers)
@@ -119,4 +142,7 @@ def load_acceptance_suite(repository: str | Path, contract: AcceptanceContract) 
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("browser acceptance suite must contain a mapping")
-    return AcceptanceSuite.model_validate(payload)
+    try:
+        return AcceptanceSuite.model_validate(payload)
+    except ValidationError as exc:
+        raise AcceptanceSuiteValidationError(exc) from exc

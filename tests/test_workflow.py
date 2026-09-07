@@ -130,9 +130,12 @@ class RecoveringAcceptance:
 
 
 class InvalidContractAcceptance:
+    def __init__(self, reason="acceptance_contract_invalid"):
+        self.reason = reason
+
     async def verify(self, run_id, project_id, implementation):
         error = RuntimeError("contract schema mismatch")
-        error.reason = "acceptance_contract_invalid"
+        error.reason = self.reason
         error.detail = "use the required contract template"
         raise error
 
@@ -473,11 +476,14 @@ def test_acceptance_failure_has_its_own_recovery_without_rerunning_worker():
     asyncio.run(scenario())
 
 
-def test_invalid_acceptance_contract_only_returns_to_implementation():
+@pytest.mark.parametrize(
+    "reason", ["acceptance_contract_invalid", "acceptance_suite_invalid"]
+)
+def test_invalid_acceptance_contract_only_returns_to_implementation(reason):
     async def scenario():
         service = RunService(build_main_graph(
             RecordingProvider(), RecordingWorker(), InMemorySaver(),
-            acceptance=InvalidContractAcceptance(),
+            acceptance=InvalidContractAcceptance(reason),
         ))
         waiting = await service.start(StartRunRequest(
             project_id="shop", requirement="Create browser acceptance contract"
@@ -487,7 +493,7 @@ def test_invalid_acceptance_contract_only_returns_to_implementation():
         )
 
         assert blocked.stage == Stage.ACCEPTANCE_BLOCKED
-        assert blocked.blocking_reason["code"] == "acceptance_contract_invalid"
+        assert blocked.blocking_reason["code"] == reason
         assert blocked.blocking_reason["responsible_node"] == "implementation"
         assert blocked.pending_action["choices"] == ["revise", "cancel"]
 

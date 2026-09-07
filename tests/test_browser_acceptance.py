@@ -8,6 +8,7 @@ import pytest
 from taskhub_v2.artifacts.store import ArtifactStore
 from taskhub_v2.browser.contract import (
     AcceptanceContractValidationError,
+    AcceptanceSuiteValidationError,
     load_acceptance_contract,
     load_acceptance_suite,
 )
@@ -103,6 +104,22 @@ def test_invalid_acceptance_contract_returns_exact_repair_schema(tmp_path):
     assert error.value.reason == "acceptance_contract_invalid"
     assert "preview:\n  command: [python3" in error.value.detail
     assert "command: [npx, playwright, test]" in error.value.detail
+    assert "description: Create, refresh and filter tasks" in error.value.detail
+
+
+def test_invalid_acceptance_suite_returns_exact_repair_schema(tmp_path):
+    suite = tmp_path / "suite.yaml"
+    suite.write_text(
+        "scenarios:\n  - id: task-list\n    checks: [create, refresh]\n",
+        encoding="utf-8",
+    )
+
+    contract = type("Contract", (), {"suite": "suite.yaml"})()
+    with pytest.raises(AcceptanceSuiteValidationError) as error:
+        load_acceptance_suite(tmp_path, contract)
+
+    assert error.value.reason == "acceptance_suite_invalid"
+    assert "browsers: [chromium, edge]" in error.value.detail
 
 
 def test_legacy_task_bootstraps_missing_browser_contract_once(tmp_path):

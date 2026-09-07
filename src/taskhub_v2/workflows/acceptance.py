@@ -18,6 +18,7 @@ def build_acceptance_graph(gateway: AcceptanceGateway):
             implementation_fix = reason in {
                 "acceptance_contract_invalid",
                 "acceptance_contract_missing",
+                "acceptance_suite_invalid",
             }
             return {
                 "current_stage": Stage.ACCEPTANCE_BLOCKED.value,
