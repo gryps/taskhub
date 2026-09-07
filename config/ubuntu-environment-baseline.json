@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "profile_id": "taskhub-ubuntu-24-amd64-v1",
+  "template_host": "192.168.31.50",
+  "template_hostname": "taskhub-ubuntu-template",
+  "template_production_eligible": false,
+  "platform": {
+    "os_id": "ubuntu",
+    "os_version": "24.04",
+    "architecture": "x86_64"
+  },
+  "tools": {
+    "python": "3.12.3",
+    "pip": "26.2.1",
+    "node": "22.22.1",
+    "npm": "10.9.4",
+    "git": "2.43.0",
+    "ripgrep": "14.1.0",
+    "jq": "1.7",
+    "zip": "3.0",
+    "unzip": "6.00",
+    "psql": "16.15",
+    "corepack": "0.34.6",
+    "codex_cli": "0.153.2"
+  },
+  "required_commands": [
+    "rg",
+    "jq",
+    "zip",
+    "unzip",
+    "psql",
+    "/usr/local/bin/corepack",
+    "/home/gryps/.local/bin/codex"
+  ],
+  "venv": "/home/gryps/apps/taskhub-node/.venv",
+  "lock_file": "config/ubuntu-template.lock",
+  "lock_sha256": "405e671609686fb547bfa63864e45bf7bf32274a5455c269e0d2946a31553496",
+  "taskhub_wheel_sha256": "30425cfd221b6e385a520c7b5ae45b5ec417f5373db03dbc7689f420e0f2afa2",
+  "taskhub_source_commit": "444d567"
+}
