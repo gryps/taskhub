@@ -189,3 +189,36 @@ def test_remote_runner_applies_coding_result(tmp_path, monkeypatch):
     assert result.node_id == "remote-coder"
     assert result.result.content.summary == "changed value"
     assert (worktree / "value.txt").read_text() == "changed\n"
+
+
+def test_node_health_disables_coding_when_workspace_sandbox_fails(tmp_path, monkeypatch):
+    import taskhub_v2.node_agent.app as agent_module
+
+    monkeypatch.setenv("TASKHUB_NODE_ID", "node-test")
+    monkeypatch.setenv("TASKHUB_NODE_TOKEN", "node-secret")
+    monkeypatch.setenv("TASKHUB_NODE_WORK_ROOT", str(tmp_path / "jobs"))
+    monkeypatch.setattr(agent_module, "coding_available", lambda: True)
+    monkeypatch.setattr(agent_module, "coding_prerequisites_ok", lambda: False)
+    monkeypatch.setattr(agent_module, "node_diagnostics", lambda: {
+        "role": "node",
+        "host": "node-test",
+        "platform": {},
+        "checks": [{
+            "category": "preflight",
+            "name": "User namespace",
+            "status": "fail",
+            "detail": "Operation not permitted",
+            "expected": "",
+            "actual": "",
+            "recommendation": "fix sandbox",
+        }],
+    })
+
+    with TestClient(create_node_app()) as client:
+        response = client.get("/api/health", headers={"Authorization": "Bearer node-secret"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["capabilities"]["workspace_write_sandbox"] is False
+    assert payload["capabilities"]["coding"] is False
+    assert payload["system"]["checks"][0]["status"] == "fail"

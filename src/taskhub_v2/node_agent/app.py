@@ -26,6 +26,7 @@ from taskhub_v2.node_agent.runtime import (
     extract_workspace,
     run_commands,
 )
+from taskhub_v2.services.diagnostics import coding_prerequisites_ok, node_diagnostics
 
 JOB_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
 
@@ -95,6 +96,7 @@ def create_node_app() -> FastAPI:
             "disk_free_bytes": usage.free,
             "capabilities": await asyncio.to_thread(detect_capabilities),
             "versions": await asyncio.to_thread(browser_versions),
+            "system": await asyncio.to_thread(node_diagnostics),
             "provider_health": provider_health(),
         }
 
@@ -232,13 +234,15 @@ def create_node_app() -> FastAPI:
 def detect_capabilities() -> dict[str, bool]:
     import importlib.util
 
+    coding_ready = coding_available() and coding_prerequisites_ok()
     return {
         "git": bool(shutil.which("git")),
         "python3": True,
         "node": bool(shutil.which("node")),
         "npm": bool(shutil.which("npm")),
         "pytest": importlib.util.find_spec("pytest") is not None,
-        "coding": coding_available(),
+        "workspace_write_sandbox": coding_prerequisites_ok(),
+        "coding": coding_ready,
         **_probe_browsers()["capabilities"],
     }
 

@@ -34,6 +34,51 @@ function billingView(billing) {
     '<span class="usage-unavailable">暂无计费数据</span>';
 }
 
+function checkStatusClass(status) {
+  return status === "pass" ? "ok" : status === "warn" ? "warn" : "bad";
+}
+
+function checkStatusLabel(status) {
+  return {pass: "通过", warn: "注意", fail: "失败"}[status] || status;
+}
+
+function renderCheckRows(title, checks) {
+  return `<div class="resource-row check-group"><strong>${escapeHtml(title)}</strong>
+    <span>${checks.filter((item) => item.status === "pass").length}/${checks.length} 通过</span>
+    <span></span><span></span></div>${checks.map((item) => `
+      <div class="resource-row check-row">
+        <strong>${escapeHtml(item.name)}<small>${escapeHtml(item.category)}</small></strong>
+        <span class="${checkStatusClass(item.status)}">${escapeHtml(checkStatusLabel(item.status))}</span>
+        <span>${escapeHtml(item.detail)}<small>${escapeHtml(item.expected || "")}</small></span>
+        <span>${escapeHtml(item.recommendation || item.actual || "—")}</span>
+      </div>`).join("")}`;
+}
+
+async function loadSystemConfig() {
+  byId("system-summary").textContent = "正在读取系统版本、组件与前置条件";
+  try {
+    const data = await request("/api/system/config");
+    const controllerStatus = checkStatusLabel(data.status);
+    const nodeChecks = (data.nodes || []).flatMap((node) => node.system?.checks || []);
+    const failed = [...data.controller.checks, ...nodeChecks]
+      .filter((item) => item.status === "fail").length;
+    byId("system-summary").textContent = `控制器 ${controllerStatus} · ${failed} 个失败项`;
+    const nodeRows = (data.nodes || []).map((node) => {
+      const title = `${node.node_id} · ${node.kind} · ${node.status}`;
+      const checks = node.system?.checks || [];
+      return checks.length
+        ? renderCheckRows(title, checks)
+        : `<div class="resource-row check-group"><strong>${escapeHtml(title)}</strong>
+          <span class="warn">未上报</span><span></span><span>${escapeHtml(node.detail || "节点版本不支持系统检测")}</span></div>`;
+    }).join("");
+    byId("system-checks").innerHTML = `<div class="resource-row resource-header">
+      <span>检测项</span><span>结果</span><span>当前状态</span><span>建议 / 路径</span>
+    </div>${renderCheckRows(`${data.controller.host} · ${data.controller.role}`, data.controller.checks)}${nodeRows}`;
+  } catch (error) {
+    byId("system-summary").textContent = error.message;
+  }
+}
+
 async function loadProviders() {
   byId("provider-summary").textContent = "正在读取模型状态与计费信息";
   try {
@@ -76,9 +121,10 @@ async function loadNodes() {
 }
 
 async function loadResources() {
-  await Promise.all([loadProviders(), loadNodes()]);
+  await Promise.all([loadSystemConfig(), loadProviders(), loadNodes()]);
 }
 
+byId("refresh-system").addEventListener("click", loadSystemConfig);
 byId("refresh-providers").addEventListener("click", loadProviders);
 byId("refresh-nodes").addEventListener("click", loadNodes);
 window.loadResources = loadResources;

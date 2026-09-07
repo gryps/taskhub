@@ -15,6 +15,7 @@ class Stage(StrEnum):
     IMPLEMENTATION_BLOCKED = "implementation_blocked"
     ACCEPTANCE = "acceptance"
     ACCEPTANCE_BLOCKED = "acceptance_blocked"
+    BROWSER_ACCEPTANCE = "browser_acceptance"
     REVIEW = "review"
     RISK = "risk"
     SUPERVISION = "supervision"

@@ -2,7 +2,7 @@ const statusLabels = {running: "运行中", waiting: "等待人工处理", block
   failed: "失败", completed: "已完成", rejected: "已终止"};
 const stageLabels = Object.fromEntries(stages.map(([id, label]) => [id, label]));
 Object.assign(stageLabels, {implementation_blocked: "实施（阻塞）", merge_blocked: "发布（阻塞）",
-  supervision: "监督", rejected: "已终止", failed: "失败"});
+  browser_acceptance: "浏览器验收", supervision: "监督", rejected: "已终止", failed: "失败"});
 
 function taskDetailText(task) {
   if (task.blocking_reason) return task.blocking_reason.detail || task.blocking_reason.code;

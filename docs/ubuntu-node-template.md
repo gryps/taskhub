@@ -14,6 +14,8 @@ credentials, start a TaskHub service, or accept a workload.
 - PostgreSQL client 16.15
 - Corepack 0.34.6
 - Codex CLI 0.153.2 without account authentication
+- User namespaces available: `unshare -Ur true` succeeds for user `gryps`
+- Codex workspace-write sandbox can edit a temporary Git worktree
 - Exact Python packages from `config/ubuntu-template.lock`
 - TaskHub wheel built from the commit recorded in
   `config/ubuntu-environment-baseline.json`
@@ -34,9 +36,11 @@ The command must return `status: qualified` before the VM is sealed.
    machine ID, and static IP.
 3. Keep the OS, system tools, venv path, and locked Python packages unchanged.
 4. Run `scripts/check_ubuntu_environment.py --mode node`.
-5. Configure that node's identity, token, credentials, service, and workload only
+5. Open TaskHub **系统配置** and confirm the node has no failed preflight
+   checks before enabling coding workloads.
+6. Configure that node's identity, token, credentials, service, and workload only
    after qualification succeeds.
-6. Register and enable it in TaskHub last.
+7. Register and enable it in TaskHub last.
 
 Ubuntu nodes with a different OS release, interpreter, Node.js version, package
 set, or dependency fingerprint are rejected. A project venv must never be reused

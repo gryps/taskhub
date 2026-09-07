@@ -73,6 +73,9 @@ class NodeRunner:
         if node.kind == "local":
             import shutil
 
+            from taskhub_v2.config import get_settings
+            from taskhub_v2.services.diagnostics import controller_diagnostics
+
             return {
                 "status": "ok",
                 "node_id": node.id,
@@ -85,6 +88,7 @@ class NodeRunner:
                     "pytest": importlib.util.find_spec("pytest") is not None,
                     "coding": self.local_coder is not None,
                 },
+                "system": controller_diagnostics(get_settings()),
             }
         try:
             async with self._client(timeout=100 if "browser_acceptance" in node.workloads else 5) as client:

@@ -112,3 +112,35 @@ def test_node_status_api_exposes_configured_nodes(tmp_path):
         response = client.get("/api/nodes")
     assert response.status_code == 200
     assert response.json()["nodes"][0]["node_id"] == "controller-local"
+
+
+def test_system_config_api_exposes_safe_diagnostics(tmp_path):
+    app_settings = settings(
+        projects_file=str(tmp_path / "projects.json"),
+        nodes_file=str(tmp_path / "nodes.json"),
+        provider_secrets_file=str(tmp_path / "providers.env"),
+        workspace_root=str(tmp_path / "workspaces"),
+        artifact_root=str(tmp_path / "artifacts"),
+    )
+    (tmp_path / "projects.json").write_text('{"projects": []}', encoding="utf-8")
+    (tmp_path / "nodes.json").write_text('{"nodes": []}', encoding="utf-8")
+    (tmp_path / "providers.env").write_text("TASKHUB_ADMIN_TOKEN=hidden\n", encoding="utf-8")
+    (tmp_path / "workspaces").mkdir()
+    (tmp_path / "artifacts").mkdir()
+
+    with TestClient(create_app(app_settings)) as client:
+        login(client)
+        response = client.get("/api/system/config")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "admin-secret" not in body
+    assert "hidden" not in body
+    payload = response.json()
+    assert payload["controller"]["role"] == "controller"
+    assert {item["name"] for item in payload["controller"]["checks"]} >= {
+        "操作系统",
+        "Codex CLI",
+        "User namespace",
+        "Provider 配置",
+    }

@@ -2,6 +2,7 @@ const stages = [
   ["intake", "需求", "自动"], ["planning", "规划", "自动"],
   ["plan_approval", "计划审批", "人工"], ["implementation", "实施", "自动"],
   ["acceptance", "验收", "自动"], ["review", "审查", "自动"],
+  ["browser_acceptance", "浏览器验收", "自动"],
   ["risk", "风险", "自动"],
   ["supervision", "监督", "自动"], ["merge_approval", "发布审批", "人工"],
   ["merging", "发布", "自动"], ["completed", "完成", "终态"],

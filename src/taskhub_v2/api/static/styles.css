@@ -140,6 +140,7 @@ h2 { margin-top: 28px; font-size: 16px; }
 .resource-row small { display: block; margin-top: 4px; color: #74817c; }
 .resource-header { background: #eef1f0; color: #63736d; font-size: 12px; font-weight: 700; }
 .resource-row .ok { color: #14714f; }
+.resource-row .warn { color: #9a5d00; }
 .resource-row .bad, .usage-unavailable { color: #9d3d2d; }
 .usage-cell { display: grid; gap: 10px; }
 .usage-metric > div, .balance-metric { display: flex; justify-content: space-between; gap: 12px; }
@@ -149,6 +150,8 @@ h2 { margin-top: 28px; font-size: 16px; }
 .role-model small { color: #66736f; }
 .usage-metric small { margin-top: 1px; }
 .balance-metric strong { white-space: nowrap; }
+.check-group { background: #f8faf9; font-weight: 700; }
+.check-row strong small { font-weight: 500; }
 .timeline { list-style: none; padding: 0; margin: 0; }
 .timeline li { display: grid; grid-template-columns: 120px 150px 1fr; gap: 12px; padding: 11px 0; border-bottom: 1px solid #dce2df; }
 .timeline small { color: #687771; }

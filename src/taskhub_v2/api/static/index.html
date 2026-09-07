@@ -29,7 +29,7 @@
       <button id="nav-tasks" class="nav-active">任务中心</button>
       <button id="nav-workflow" class="secondary">开发流程</button>
       <span class="menu-label">系统</span>
-      <button id="nav-resources" class="secondary">系统资源</button>
+      <button id="nav-resources" class="secondary">系统配置</button>
     </nav>
     <section id="task-center" class="task-center">
       <div class="section-head"><h1>任务中心</h1><button id="refresh-tasks" class="secondary">刷新</button></div>
@@ -187,9 +187,17 @@
     </div>
     <section id="resource-page" class="resource-page hidden">
     <div class="resource-title">
-      <h1>系统资源</h1>
-      <p class="muted">模型额度、计费状态与执行节点统一在此查看。</p>
+      <h1>系统配置</h1>
+      <p class="muted">模型、节点、运行环境与实施前置条件统一在此检测。</p>
     </div>
+    <section class="providers-section">
+      <div class="section-head">
+        <h2>系统检测</h2>
+        <button id="refresh-system" class="icon-button" title="刷新系统检测" aria-label="刷新系统检测">↻</button>
+      </div>
+      <p id="system-summary" class="muted">正在检查</p>
+      <div id="system-checks" class="resource-table"></div>
+    </section>
     <section class="providers-section">
       <div class="section-head">
         <h2>模型资源</h2>

@@ -11,6 +11,7 @@ from taskhub_v2.api.node_routes import router as node_router
 from taskhub_v2.api.project_routes import router as project_router
 from taskhub_v2.api.provider_routes import router as provider_router
 from taskhub_v2.api.routes import router
+from taskhub_v2.api.system_routes import router as system_router
 from taskhub_v2.config import Settings, get_settings
 from taskhub_v2.deployment import DeploymentManager
 from taskhub_v2.persistence.checkpoints import checkpoint_store
@@ -97,6 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(project_router)
     app.include_router(node_router)
     app.include_router(deployment_router)
+    app.include_router(system_router)
 
     @app.middleware("http")
     async def require_authentication(request, call_next):
