@@ -13,7 +13,7 @@ class RecordingRunner:
         self.capabilities = capabilities or {}
         self.calls = []
 
-    async def run(self, node, job_id, commands, timeout, workdir):
+    async def run(self, node, job_id, commands, timeout, workdir, **kwargs):
         self.calls.append((job_id, node.id))
         if node.id in self.failing:
             raise NodeExecutionError(f"{node.id} unavailable")
@@ -117,6 +117,41 @@ def test_scheduler_treats_npx_as_npm_capability(tmp_path):
         await scheduler.preflight_browser([["npx", "playwright", "test"]], set())
 
     asyncio.run(scenario())
+
+
+def test_scheduler_preserves_single_browser_node_execution_failure(tmp_path):
+    async def scenario():
+        runner = RecordingRunner(
+            failing={"node-a"},
+            capabilities={
+                "node-a": {
+                    "windows_gui": True,
+                    "playwright": True,
+                    "screenshot": True,
+                    "trace": True,
+                    "npm": True,
+                },
+            },
+        )
+        path = tmp_path / "nodes.json"
+        path.write_text(json.dumps({"nodes": [{
+            "id": "node-a", "kind": "remote", "url": "http://node-a:8301",
+            "workloads": ["browser_acceptance"],
+        }]}), encoding="utf-8")
+        scheduler = NodeScheduler(NodeRegistry(str(path)), runner, str(tmp_path / "state.json"))
+        await scheduler.run(
+            "job-browser",
+            "run-browser",
+            [["npx", "playwright", "test"]],
+            30,
+            str(tmp_path),
+            workload="browser_acceptance",
+        )
+
+    import pytest
+
+    with pytest.raises(NodeExecutionError, match="node-a unavailable"):
+        asyncio.run(scenario())
 
 
 def test_scheduler_reports_missing_required_tool(tmp_path):

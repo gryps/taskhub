@@ -130,8 +130,9 @@ class ProjectAcceptanceGateway:
                 preview = await self.preview_manager.start(
                     preview_id, implementation.workspace.path, actual_commit, contract.preview
                 )
+                browser_job_id = f"{run_id}-browser-{uuid4().hex[:8]}"
                 scheduled = await self.scheduler.run(
-                    f"{run_id}-browser", f"{run_id}-browser", [contract.command],
+                    browser_job_id, f"{run_id}-browser", [contract.command],
                     contract.timeout_seconds, implementation.workspace.path,
                     workload=contract.workload,
                     required_capabilities_override=contract.required_capabilities,
@@ -159,6 +160,8 @@ class ProjectAcceptanceGateway:
                                    target_url=preview.url, git_commit=actual_commit,
                                    scenarios={item.id: item.browsers for item in suite.scenarios})
                 except ValueError as exc:
+                    if failed and str(exc) == "browser acceptance requires executed test cases":
+                        raise AcceptanceExecutionError(failed[0].output_tail or str(exc)) from exc
                     raise AcceptanceExecutionError(str(exc)) from exc
                 missing = [
                     name

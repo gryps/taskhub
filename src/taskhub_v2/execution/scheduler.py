@@ -63,7 +63,12 @@ class NodeScheduler:
         excluded: set[str] = set()
         failures = []
         while True:
-            node = await self._acquire(sticky_key, excluded, required, workload)
+            try:
+                node = await self._acquire(sticky_key, excluded, required, workload)
+            except NodeExecutionError:
+                if failures:
+                    raise NodeExecutionError("; ".join(failures))
+                raise
             try:
                 if workload == "browser_acceptance":
                     return await self.runner.run(node, job_id, commands, timeout, workdir,

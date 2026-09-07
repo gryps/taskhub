@@ -1,5 +1,6 @@
 import hashlib
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from taskhub_v2.browser.contract import (
     load_acceptance_suite,
 )
 from taskhub_v2.domain.models import RunStatus
+from taskhub_v2.domain.models import ExecutionResult, ScheduledTests, TestExecution, Workspace
 from taskhub_v2.workflows.browser_acceptance import (
     request_browser_acceptance,
     route_browser_acceptance,
@@ -173,6 +175,174 @@ def test_browser_contract_dispatches_automatically_when_present(tmp_path):
     result = asyncio.run(request_browser_acceptance(state))
     assert result == {"status": RunStatus.RUNNING.value}
     assert route_browser_acceptance({**state, **result}) == "execute"
+
+
+def test_browser_acceptance_uses_unique_job_id_for_retries(monkeypatch, tmp_path):
+    import subprocess
+    from taskhub_v2.browser.preview import PreviewInstance
+    from taskhub_v2.projects import ProjectRegistry
+    from taskhub_v2.workers.acceptance import ProjectAcceptanceGateway
+
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    (repository / ".taskhub").mkdir()
+    (repository / ".taskhub" / "acceptance.yaml").write_text(
+        """
+workload: browser_acceptance
+preview:
+  command: [python3, tests/e2e/preview.py, --port, "{port}"]
+browsers: [chromium]
+command: [npx, playwright, test]
+suite: tests/e2e/acceptance.yaml
+required_artifacts: [junit.xml]
+""",
+        encoding="utf-8",
+    )
+    (repository / "tests" / "e2e").mkdir(parents=True)
+    (repository / "tests" / "e2e" / "acceptance.yaml").write_text(
+        "scenarios:\n  - id: task-list\n    description: Task list\n    browsers: [chromium]\n",
+        encoding="utf-8",
+    )
+    projects_file = tmp_path / "projects.json"
+    projects_file.write_text(
+        json.dumps({"projects": [{"id": "shop", "repository": str(repository)}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(subprocess, "run", lambda command, **kwargs:
+        subprocess.CompletedProcess(command, 0, "a" * 40))
+
+    class Preview:
+        async def start(self, run_id, worktree, commit, contract):
+            return PreviewInstance(run_id, commit, 8400, "schema", "http://preview", None, "", "")
+
+        async def stop(self, run_id):
+            pass
+
+    class Scheduler:
+        def __init__(self):
+            self.job_ids = []
+
+        async def preflight_browser(self, commands, capabilities):
+            pass
+
+        async def run(self, job_id, *args, **kwargs):
+            self.job_ids.append(job_id)
+            return ScheduledTests(
+                node_id="windows-gui-34",
+                tests=[TestExecution(command=["npx", "playwright", "test"], exit_code=0, output_tail="ok")],
+                metadata={
+                    "target_url": "http://preview",
+                    "git_commit": "a" * 40,
+                    "downloaded_artifacts": [{
+                        "path": "junit.xml",
+                        "sha256": hashlib.sha256(b"<testsuite/>").hexdigest(),
+                        "size": len(b"<testsuite/>"),
+                        "content": b"<testsuite/>",
+                    }],
+                },
+            )
+
+    scheduler = Scheduler()
+    gateway = ProjectAcceptanceGateway(
+        ProjectRegistry(str(projects_file)),
+        scheduler,
+        ArtifactStore(str(tmp_path / "artifacts")),
+        Preview(),
+    )
+    implementation = ExecutionResult(
+        summary="done",
+        workspace=Workspace(project_id="shop", path=str(repository), branch="task", base_commit="a" * 40),
+        commit="a" * 40,
+    )
+
+    for _ in range(2):
+        with pytest.raises(Exception):
+            asyncio.run(gateway.verify("run-1", "shop", implementation))
+
+    assert len(set(scheduler.job_ids)) == 2
+    assert all(job_id.startswith("run-1-browser-") for job_id in scheduler.job_ids)
+
+
+def test_browser_acceptance_surfaces_collection_failure(monkeypatch, tmp_path):
+    import subprocess
+    from taskhub_v2.browser.preview import PreviewInstance
+    from taskhub_v2.projects import ProjectRegistry
+    from taskhub_v2.workers.acceptance import AcceptanceExecutionError, ProjectAcceptanceGateway
+
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    (repository / ".taskhub").mkdir()
+    (repository / ".taskhub" / "acceptance.yaml").write_text(
+        """
+workload: browser_acceptance
+preview:
+  command: [python3, tests/e2e/preview.py, --port, "{port}"]
+browsers: [chromium]
+command: [npx, playwright, test]
+suite: tests/e2e/acceptance.yaml
+required_artifacts: [junit.xml]
+""",
+        encoding="utf-8",
+    )
+    (repository / "tests" / "e2e").mkdir(parents=True)
+    (repository / "tests" / "e2e" / "acceptance.yaml").write_text(
+        "scenarios:\n  - id: task-list\n    description: Task list\n    browsers: [chromium]\n",
+        encoding="utf-8",
+    )
+    projects_file = tmp_path / "projects.json"
+    projects_file.write_text(
+        json.dumps({"projects": [{"id": "shop", "repository": str(repository)}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(subprocess, "run", lambda command, **kwargs:
+        subprocess.CompletedProcess(command, 0, "a" * 40))
+
+    class Preview:
+        async def start(self, run_id, worktree, commit, contract):
+            return PreviewInstance(run_id, commit, 8400, "schema", "http://preview", None, "", "")
+
+        async def stop(self, run_id):
+            pass
+
+    class Scheduler:
+        async def preflight_browser(self, commands, capabilities):
+            pass
+
+        async def run(self, *args, **kwargs):
+            empty_junit = b'<testsuites tests="0"></testsuites>'
+            return ScheduledTests(
+                node_id="windows-gui-34",
+                tests=[TestExecution(
+                    command=["npx", "playwright", "test"],
+                    exit_code=1,
+                    output_tail="Error: spawnSync git ENOENT",
+                )],
+                metadata={
+                    "target_url": "http://preview",
+                    "git_commit": "a" * 40,
+                    "downloaded_artifacts": [{
+                        "path": "junit.xml",
+                        "sha256": hashlib.sha256(empty_junit).hexdigest(),
+                        "size": len(empty_junit),
+                        "content": empty_junit,
+                    }],
+                },
+            )
+
+    gateway = ProjectAcceptanceGateway(
+        ProjectRegistry(str(projects_file)),
+        Scheduler(),
+        ArtifactStore(str(tmp_path / "artifacts")),
+        Preview(),
+    )
+    implementation = ExecutionResult(
+        summary="done",
+        workspace=Workspace(project_id="shop", path=str(repository), branch="task", base_commit="a" * 40),
+        commit="a" * 40,
+    )
+
+    with pytest.raises(AcceptanceExecutionError, match="spawnSync git ENOENT"):
+        asyncio.run(gateway.verify("run-1", "shop", implementation))
 
 
 def test_project_e2e_suite_definition_is_loaded_and_complete():
