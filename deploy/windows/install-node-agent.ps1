@@ -3,13 +3,24 @@ param(
   [Parameter(Mandatory=$true)][string]$PackagePath,
   [string]$TaskName = "TaskHubCandidateNodeAgent",
   [string]$NodeId = "windows-gui-34-candidate",
-  [int]$Port = 8391
+  [int]$Port = 8391,
+  [string]$WorkRoot = ""
 )
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Security
 $Root = "C:\TaskHub"
 $Venv = Join-Path $Root "venv"
-$Jobs = Join-Path $Root "jobs"
+$Jobs = $WorkRoot
+if ([string]::IsNullOrWhiteSpace($Jobs)) {
+  $DataDrive = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='D:'" `
+    -ErrorAction SilentlyContinue
+  if ($DataDrive -and $DataDrive.DriveType -eq 3 -and $DataDrive.FileSystem `
+      -and $DataDrive.FreeSpace -gt 1GB) {
+    $Jobs = "D:\TaskHub\jobs"
+  } else {
+    $Jobs = Join-Path $Root "jobs"
+  }
+}
 $Secrets = Join-Path $Root "secrets"
 $TokenFile = Join-Path $Secrets "node-token.dpapi"
 $StartScript = Join-Path $Root "start-node-agent.ps1"
@@ -86,4 +97,4 @@ if ($Firewall) {
 }
 Start-ScheduledTask -TaskName $TaskName
 
-Write-Host "TaskHub candidate node scheduled for $Identity on port $Port"
+Write-Host "TaskHub candidate node scheduled for $Identity on port $Port; work root: $Jobs"
