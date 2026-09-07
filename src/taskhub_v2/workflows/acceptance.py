@@ -15,14 +15,32 @@ def build_acceptance_graph(gateway: AcceptanceGateway):
         except Exception as exc:
             reason = getattr(exc, "reason", exc.__class__.__name__)
             detail = getattr(exc, "detail", str(exc))[:4000]
+            implementation_fix = reason in {
+                "acceptance_contract_invalid",
+                "acceptance_contract_missing",
+            }
             return {
                 "current_stage": Stage.ACCEPTANCE_BLOCKED.value,
                 "status": RunStatus.BLOCKED.value,
-                "blocking_reason": {"code": reason, "detail": detail},
+                "blocking_reason": {
+                    "code": reason,
+                    "detail": detail,
+                    "responsible_node": "implementation" if implementation_fix else "acceptance",
+                    "model": "none",
+                    "recommended_action": (
+                        "系统退回实施环节，按平台契约模板修正后重新验收"
+                        if implementation_fix
+                        else "检查验收执行日志后重试或退回实施"
+                    ),
+                },
                 "pending_action": {
                     "type": "acceptance_recovery",
                     "title": "Acceptance needs attention",
-                    "choices": ["retry", "revise", "cancel"],
+                    "choices": (
+                        ["revise", "cancel"]
+                        if implementation_fix
+                        else ["retry", "revise", "cancel"]
+                    ),
                 },
                 "timeline": event(
                     Stage.ACCEPTANCE_BLOCKED, "Acceptance blocked", "acceptance", detail

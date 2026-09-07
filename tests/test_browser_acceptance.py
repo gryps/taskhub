@@ -6,7 +6,11 @@ from pathlib import Path
 import pytest
 
 from taskhub_v2.artifacts.store import ArtifactStore
-from taskhub_v2.browser.contract import load_acceptance_contract, load_acceptance_suite
+from taskhub_v2.browser.contract import (
+    AcceptanceContractValidationError,
+    load_acceptance_contract,
+    load_acceptance_suite,
+)
 from taskhub_v2.domain.models import RunStatus
 from taskhub_v2.workflows.browser_acceptance import (
     request_browser_acceptance,
@@ -83,6 +87,22 @@ command: [npx, playwright, test]
     contract = load_acceptance_contract(tmp_path)
     assert contract.workload == "browser_acceptance"
     assert {"chromium", "edge", "windows_gui", "trace"} <= contract.required_capabilities
+
+
+def test_invalid_acceptance_contract_returns_exact_repair_schema(tmp_path):
+    directory = tmp_path / ".taskhub"
+    directory.mkdir()
+    (directory / "acceptance.yaml").write_text(
+        "preview:\n  command: python app.py\nentrypoint: python browser.py\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(AcceptanceContractValidationError) as error:
+        load_acceptance_contract(tmp_path)
+
+    assert error.value.reason == "acceptance_contract_invalid"
+    assert "preview:\n  command: [python3" in error.value.detail
+    assert "command: [npx, playwright, test]" in error.value.detail
 
 
 def test_legacy_task_bootstraps_missing_browser_contract_once(tmp_path):

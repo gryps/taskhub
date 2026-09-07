@@ -129,6 +129,14 @@ class RecoveringAcceptance:
         )
 
 
+class InvalidContractAcceptance:
+    async def verify(self, run_id, project_id, implementation):
+        error = RuntimeError("contract schema mismatch")
+        error.reason = "acceptance_contract_invalid"
+        error.detail = "use the required contract template"
+        raise error
+
+
 class EvidenceAwareProvider(RecordingProvider):
     async def supervise(self, requirement, implementation, review, risk):
         self.supervisor_calls += 1
@@ -461,6 +469,27 @@ def test_acceptance_failure_has_its_own_recovery_without_rerunning_worker():
         assert publishing.stage == Stage.MERGE_APPROVAL
         assert acceptance.calls == 2
         assert worker.calls == 1
+
+    asyncio.run(scenario())
+
+
+def test_invalid_acceptance_contract_only_returns_to_implementation():
+    async def scenario():
+        service = RunService(build_main_graph(
+            RecordingProvider(), RecordingWorker(), InMemorySaver(),
+            acceptance=InvalidContractAcceptance(),
+        ))
+        waiting = await service.start(StartRunRequest(
+            project_id="shop", requirement="Create browser acceptance contract"
+        ))
+        blocked = await service.approve(
+            waiting.run_id, ApprovalRequest(decision="approve")
+        )
+
+        assert blocked.stage == Stage.ACCEPTANCE_BLOCKED
+        assert blocked.blocking_reason["code"] == "acceptance_contract_invalid"
+        assert blocked.blocking_reason["responsible_node"] == "implementation"
+        assert blocked.pending_action["choices"] == ["revise", "cancel"]
 
     asyncio.run(scenario())
 

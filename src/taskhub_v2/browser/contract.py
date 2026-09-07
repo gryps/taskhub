@@ -1,7 +1,34 @@
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
+
+CONTRACT_EXAMPLE = """workload: browser_acceptance
+required_capabilities: [windows_gui, playwright, screenshot, trace]
+preview:
+  command: [python3, -m, taskhub_v2.api]
+  health_path: /api/health
+  stop_command: []
+  timeout_seconds: 120
+browsers: [chromium, edge]
+command: [npx, playwright, test]
+suite: tests/e2e/acceptance.yaml
+timeout_seconds: 900
+required_artifacts: [playwright-report, junit.xml, screenshots, trace.zip]
+"""
+
+
+class AcceptanceContractValidationError(ValueError):
+    reason = "acceptance_contract_invalid"
+
+    def __init__(self, validation_error: Exception):
+        self.detail = (
+            ".taskhub/acceptance.yaml does not match the required schema. "
+            "Use this exact structure and replace only project-specific commands/paths:\n"
+            f"{CONTRACT_EXAMPLE}\nValidation details:\n{validation_error}"
+        )
+        super().__init__(self.detail)
 
 
 class PreviewContract(BaseModel):
@@ -64,7 +91,10 @@ def load_acceptance_contract(repository: str | Path) -> AcceptanceContract:
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("acceptance.yaml must contain a mapping")
-    contract = AcceptanceContract.model_validate(payload)
+    try:
+        contract = AcceptanceContract.model_validate(payload)
+    except ValidationError as exc:
+        raise AcceptanceContractValidationError(exc) from exc
     suite_path = (Path(repository) / contract.suite).resolve()
     root = Path(repository).resolve()
     if not suite_path.is_relative_to(root):
