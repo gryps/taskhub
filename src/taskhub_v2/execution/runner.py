@@ -5,6 +5,7 @@ import io
 import json
 import os
 import shutil
+import sys
 import tarfile
 import tempfile
 from pathlib import Path
@@ -266,6 +267,9 @@ class NodeRunner:
         for command in commands:
             if not command:
                 continue
+            command = list(command)
+            if Path(command[0]).name in {"python", "python3"}:
+                command[0] = sys.executable
             process = await asyncio.create_subprocess_exec(
                 *command,
                 cwd=workdir,

@@ -1,5 +1,6 @@
 import hashlib
 import io
+import sys
 import tarfile
 
 import httpx
@@ -53,6 +54,20 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert response.json()["node_id"] == "node-test"
     assert response.json()["tests"][0]["exit_code"] == 0
+
+
+def test_local_runner_uses_its_own_python_environment(tmp_path):
+    import asyncio
+
+    expected = sys.executable
+    result = asyncio.run(NodeRunner._run_local(
+        [["python3", "-c", f"import sys; assert sys.executable == {expected!r}"]],
+        30,
+        str(tmp_path),
+    ))
+
+    assert result[0].command[0] == expected
+    assert result[0].exit_code == 0
 
 
 def test_node_rejects_archive_path_traversal(tmp_path, monkeypatch):

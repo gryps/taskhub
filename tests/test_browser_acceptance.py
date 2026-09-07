@@ -60,7 +60,12 @@ def test_windows_portable_commands_are_mapped_to_native_executables():
         "test",
     ]
     mapped_python = normalize_command(["python3", "-V"], windows=True)
-    assert mapped_python[0] == str(Path(sys.executable).resolve())
+    assert mapped_python[0] == sys.executable
+
+
+def test_linux_python_command_uses_node_runtime_interpreter():
+    mapped_python = normalize_command(["python3", "-m", "pytest"], windows=False)
+    assert mapped_python == [sys.executable, "-m", "pytest"]
 
 
 def test_acceptance_contract_requires_dedicated_lane_and_browser_capabilities(tmp_path):

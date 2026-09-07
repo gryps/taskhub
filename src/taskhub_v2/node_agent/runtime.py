@@ -26,15 +26,16 @@ WINDOWS_COMMANDS = {"python3": "python.exe", "npm": "npm.cmd", "npx": "npx.cmd"}
 
 
 def normalize_command(command: list[str], *, windows: bool | None = None) -> list[str]:
-    """Map portable project commands to Windows executables before spawning them."""
+    """Map portable commands to executables provided by the node runtime."""
     if not command:
         return command
+    executable_name = Path(command[0]).name.lower()
+    if executable_name in {"python", "python3", "python.exe"}:
+        return [sys.executable, *command[1:]]
     is_windows = os.name == "nt" if windows is None else windows
     if not is_windows:
         return list(command)
-    executable = WINDOWS_COMMANDS.get(Path(command[0]).name.lower(), command[0])
-    if executable == "python.exe":
-        executable = str(Path(sys.executable).resolve())
+    executable = WINDOWS_COMMANDS.get(executable_name, command[0])
     return [executable, *command[1:]]
 
 
