@@ -61,6 +61,11 @@ class PreviewManager:
             state_dir = tempfile.mkdtemp(prefix="taskhub-preview-")
             try:
                 environment = {**os.environ, "PORT": str(port), "TASKHUB_PREVIEW_URL": f"http://{self.host}:{port}", "PGOPTIONS": f"-c search_path={schema}", "TASKHUB_GIT_COMMIT": commit, "TASKHUB_PREVIEW_STATE_DIR": state_dir, "TASKHUB_PREVIEW_DSN": make_conninfo(self.postgres_dsn, options=f"-csearch_path={schema}")}
+                candidate_source = Path(worktree) / "src"
+                if candidate_source.is_dir():
+                    environment["PYTHONPATH"] = str(candidate_source)
+                else:
+                    environment.pop("PYTHONPATH", None)
                 command = [
                     part.format(port=port, schema=schema, commit=commit)
                     for part in contract.command

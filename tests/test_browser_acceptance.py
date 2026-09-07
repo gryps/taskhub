@@ -236,6 +236,36 @@ def test_preview_cancellation_cleans_schema_process_and_state(monkeypatch, tmp_p
     assert calls[0][0] == "create" and calls[1] == ("drop", calls[0][1])
 
 
+def test_preview_uses_candidate_source_instead_of_controller_pythonpath(
+    monkeypatch, tmp_path
+):
+    import subprocess
+    from taskhub_v2.browser.preview import PreviewManager
+    from taskhub_v2.browser.contract import PreviewContract
+
+    (tmp_path / "src").mkdir()
+    manager = PreviewManager("postgresql://unused", host="127.0.0.1", ports=[8498])
+    monkeypatch.setattr(manager, "_create_schema", lambda schema: None)
+    monkeypatch.setattr(manager, "_drop_schema", lambda schema: None)
+    monkeypatch.setattr(subprocess, "run", lambda command, **kwargs:
+        subprocess.CompletedProcess(command, 0, "a" * 40 if command[-1] == "HEAD" else ""))
+    captured = {}
+
+    async def spawn(*command, **kwargs):
+        captured.update(kwargs["env"])
+        raise RuntimeError("captured")
+
+    monkeypatch.setenv("PYTHONPATH", "/deployed/controller/src")
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    with pytest.raises(RuntimeError, match="captured"):
+        asyncio.run(manager.start(
+            "run", str(tmp_path), "a" * 40,
+            PreviewContract(command=[sys.executable, "-c", "port='{port}'"]),
+        ))
+
+    assert captured["PYTHONPATH"] == str(tmp_path / "src")
+
+
 def test_preview_rejects_healthy_old_version(monkeypatch):
     import httpx
     from taskhub_v2.browser.preview import PreviewManager
