@@ -20,16 +20,38 @@ def build_implementation_graph(worker: WorkerGateway):
         except Exception as exc:
             reason = getattr(exc, "reason", exc.__class__.__name__)
             detail = getattr(exc, "detail", str(exc))[:500]
+            failed_model_runs = [
+                {
+                    "role": "coder",
+                    "provider": result.provider,
+                    "model": result.model,
+                    "duration_ms": result.duration_ms,
+                    "failed_providers": result.failed_providers,
+                }
+                for result in getattr(exc, "model_results", [])
+            ]
+            blocking_reason = {"code": reason, "detail": detail}
+            if getattr(exc, "model_results", []):
+                blocking_reason["attempts"] = [
+                    {
+                        "provider": result.provider,
+                        "model": result.model,
+                        "duration_ms": result.duration_ms,
+                        "summary": getattr(result.content, "summary", str(result.content)),
+                        "failed_providers": result.failed_providers,
+                    }
+                    for result in exc.model_results
+                ]
             return {
                 "current_stage": Stage.IMPLEMENTATION_BLOCKED.value,
                 "status": RunStatus.BLOCKED.value,
-                "blocking_reason": {"code": reason, "detail": detail},
+                "blocking_reason": blocking_reason,
                 "pending_action": {
                     "type": "implementation_recovery",
                     "title": "Implementation needs attention",
                     "choices": ["retry", "cancel"],
                 },
-                "model_runs": [],
+                "model_runs": failed_model_runs,
                 "timeline": event(
                     Stage.IMPLEMENTATION_BLOCKED,
                     "Implementation blocked",

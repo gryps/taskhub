@@ -15,10 +15,11 @@ GENERATED_SUFFIXES = {".pyc", ".pyo", ".coverage"}
 
 
 class WorkerExecutionError(RuntimeError):
-    def __init__(self, reason: str, detail: str):
+    def __init__(self, reason: str, detail: str, model_results=None):
         super().__init__(detail)
         self.reason = reason
         self.detail = detail
+        self.model_results = model_results or []
 
 
 class GitCodingWorker:
@@ -72,16 +73,34 @@ class GitCodingWorker:
             ]
             return existing
 
+        model_results = []
         model_result = await self.coder.modify(
             requirement, plan, workspace.path, feedback=feedback
         )
+        model_results.append(model_result)
         changed_files = await self._changed_files(workspace.path)
         if not changed_files:
             if revision and await self._has_implementation(workspace.path, workspace.base_commit):
                 return await self._evidence_only_result(
                     run_id, revision, workspace, project, model_result
                 )
-            raise WorkerExecutionError("no_changes", "coding model produced no file changes")
+            retry_feedback = self._no_change_feedback(model_result, feedback)
+            model_result = await self.coder.modify(
+                requirement, plan, workspace.path, feedback=retry_feedback
+            )
+            model_results.append(model_result)
+            changed_files = await self._changed_files(workspace.path)
+            if not changed_files:
+                attempts = "; ".join(
+                    f"{item.provider}/{item.model}: {item.content.summary}"
+                    for item in model_results
+                )
+                raise WorkerExecutionError(
+                    "no_changes",
+                    "Coding completed twice without changing tracked or untracked files. "
+                    f"Model reports: {attempts}",
+                    model_results=model_results,
+                )
         forbidden = [name for name in changed_files if Path(name).name in FORBIDDEN_FILES]
         if forbidden:
             raise WorkerExecutionError("forbidden_files", ", ".join(forbidden))
@@ -143,6 +162,20 @@ class GitCodingWorker:
                 duration_ms=model_result.duration_ms,
                 failed_providers=model_result.failed_providers,
             ),
+        )
+
+    @staticmethod
+    def _no_change_feedback(model_result, existing_feedback: str) -> str:
+        prefix = f"{existing_feedback}\n" if existing_feedback else ""
+        return (
+            prefix
+            + "The previous coding attempt returned successfully but produced no Git "
+            "changes. Its summary was: "
+            + model_result.content.summary
+            + ". Re-inspect the repository, identify the concrete files required by the "
+            "approved plan, implement the missing behavior now, and verify that `git status "
+            "--short` lists the edits before returning. Do not merely describe or validate "
+            "the existing implementation."
         )
 
     async def _has_implementation(self, workdir: str, base_commit: str) -> bool:

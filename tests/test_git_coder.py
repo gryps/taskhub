@@ -55,6 +55,21 @@ class NoChangeCoder(FileWritingCoder):
         )
 
 
+class WriteOnRetryCoder(NoChangeCoder):
+    async def modify(self, requirement, plan, workdir, feedback=""):
+        self.calls += 1
+        if self.calls == 2:
+            Path(workdir, "feature.txt").write_text("implemented\n", encoding="utf-8")
+            summary = "Implemented after inspecting the repository"
+        else:
+            summary = "Validated existing implementation"
+        return ModelResult(
+            content=CodeChangeSummary(summary=summary, tests=[]),
+            provider="fake_coder",
+            model="test",
+        )
+
+
 def test_git_worker_changes_tests_artifacts_and_commits(tmp_path: Path):
     repository = tmp_path / "authority"
     repository.mkdir()
@@ -254,8 +269,19 @@ def test_git_worker_accepts_evidence_only_revision_but_not_empty_initial_work(tm
         asyncio.run(initial_worker.execute("empty", "demo", "Do work", plan))
     except WorkerExecutionError as exc:
         assert exc.reason == "no_changes"
+        assert len(exc.model_results) == 2
+        assert "fake_coder/test" in exc.detail
+        assert "Validated existing implementation" in exc.detail
     else:
         raise AssertionError("initial no-change implementation must be blocked")
+
+    retry_worker = GitCodingWorker(
+        ProjectRegistry(str(projects_file)), GitWorkspaceManager(str(tmp_path / "retry")),
+        WriteOnRetryCoder(), ArtifactStore(str(tmp_path / "retry-artifacts")),
+    )
+    retried = asyncio.run(retry_worker.execute("retry", "demo", "Do work", plan))
+    assert retried.changed_files == ["feature.txt"]
+    assert retried.commit
 
     writing_worker = GitCodingWorker(
         ProjectRegistry(str(projects_file)), workspaces, FileWritingCoder(),

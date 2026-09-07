@@ -236,6 +236,48 @@ def test_rejected_plan_never_reaches_worker():
     asyncio.run(scenario())
 
 
+def test_implementation_block_preserves_failed_coder_runs():
+    class DiagnosticWorker(RecordingWorker):
+        async def execute(self, *args, **kwargs):
+            self.calls += 1
+            error = RuntimeError("coding completed twice without file changes")
+            error.reason = "no_changes"
+            error.detail = "first summary; second summary"
+            error.model_results = [
+                ModelResult(content="first", provider="plus", model="gpt-5", duration_ms=10),
+                ModelResult(content="second", provider="pro", model="gpt-5", duration_ms=20),
+            ]
+            raise error
+
+    async def scenario():
+        provider = RecordingProvider()
+        worker = DiagnosticWorker()
+        service = RunService(build_main_graph(provider, worker, InMemorySaver()))
+        run = await service.start(
+            StartRunRequest(project_id="shop", requirement="Implement shop model")
+        )
+        blocked = await service.approve(
+            run.run_id, ApprovalRequest(decision="approve", comment="Proceed")
+        )
+        assert blocked.stage == Stage.IMPLEMENTATION_BLOCKED
+        assert blocked.blocking_reason["code"] == "no_changes"
+        assert blocked.blocking_reason["detail"] == "first summary; second summary"
+        assert blocked.blocking_reason["attempts"] == [
+            {
+                "provider": "plus", "model": "gpt-5", "duration_ms": 10,
+                "summary": "first", "failed_providers": [],
+            },
+            {
+                "provider": "pro", "model": "gpt-5", "duration_ms": 20,
+                "summary": "second", "failed_providers": [],
+            },
+        ]
+        assert [item.provider for item in blocked.model_runs[-2:]] == ["plus", "pro"]
+        assert [item.duration_ms for item in blocked.model_runs[-2:]] == [10, 20]
+
+    asyncio.run(scenario())
+
+
 def test_new_graph_instance_resumes_same_checkpoint():
     async def scenario():
         checkpointer = InMemorySaver()
