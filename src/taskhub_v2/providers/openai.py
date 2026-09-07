@@ -120,7 +120,7 @@ class OpenAIResponsesProvider:
                     "type": "json_schema",
                     "name": "supervision_decision",
                     "strict": True,
-                    "schema": SupervisionDecision.model_json_schema(),
+                    "schema": SupervisionDecision.response_json_schema(),
                 }
             },
             model=self.supervisor_model,

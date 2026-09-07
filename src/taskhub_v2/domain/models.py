@@ -195,6 +195,13 @@ class SupervisionDecision(BaseModel):
     reasons: list[str]
     missing_evidence: list[Literal["browser"]] = Field(default_factory=list)
 
+    @classmethod
+    def response_json_schema(cls) -> dict[str, Any]:
+        """Return an OpenAI-strict schema without breaking old checkpoints."""
+        schema = cls.model_json_schema()
+        schema["required"] = list(schema.get("properties", {}))
+        return schema
+
 
 class StartRunRequest(BaseModel):
     project_id: str = Field(min_length=1, max_length=80)

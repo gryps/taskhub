@@ -102,7 +102,7 @@ class CodexAccountProvider:
             f"Requirement:\n{requirement}\nImplementation:\n{implementation}\n"
             f"Review:\n{review}\nRisk:\n{risk}"
         )
-        text, duration = await self._run(prompt, SupervisionDecision.model_json_schema())
+        text, duration = await self._run(prompt, SupervisionDecision.response_json_schema())
         return self._result(SupervisionDecision.model_validate_json(text), duration)
 
     async def modify_workspace(
@@ -220,11 +220,37 @@ class CodexAccountProvider:
     @staticmethod
     def _failure_reason(output: str) -> str:
         lowered = output.lower()
-        if any(marker in lowered for marker in ("usage limit", "quota", "limit reached")):
+        if any(
+            marker in lowered
+            for marker in (
+                "invalid schema for response_format",
+                "invalid json schema",
+                "invalid_response_schema",
+            )
+        ):
+            return "invalid_response_schema"
+        if re.search(
+            r"\b(?:insufficient_quota|usage_limit_reached|quota exceeded)\b",
+            lowered,
+        ) or re.search(
+            r"\byou(?:'ve| have) (?:hit|reached) (?:your )?(?:current )?usage limit\b",
+            lowered,
+        ):
             return "quota_exceeded"
-        if any(marker in lowered for marker in ("not logged in", "unauthorized", "401")):
+        if re.search(
+            r"\b(?:http(?: status)?|unexpected status)[: =]+401\b",
+            lowered,
+        ) or any(
+            marker in lowered
+            for marker in ('"code":"invalid_api_key"', '"code": "invalid_api_key"')
+        ):
             return "needs_reauth"
-        if "429" in lowered or "rate limit" in lowered:
+        if re.search(
+            r"\b(?:http(?: status)?|unexpected status)[: =]+429\b",
+            lowered,
+        ) or "too many requests" in lowered or re.search(
+            r'"code"\s*:\s*"rate_limit_exceeded"', lowered
+        ):
             return "rate_limited"
         return "account_runner_failed"
 
