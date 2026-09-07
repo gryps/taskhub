@@ -25,6 +25,7 @@ class PreviewInstance:
     url: str
     process: asyncio.subprocess.Process
     state_dir: str
+    log_path: str
 
 
 class PreviewManager:
@@ -64,15 +65,27 @@ class PreviewManager:
                     part.format(port=port, schema=schema, commit=commit)
                     for part in contract.command
                 ]
-                process = await asyncio.create_subprocess_exec(*command, cwd=Path(worktree), env=environment, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.STDOUT, start_new_session=True)
+                log_path = Path(state_dir) / "preview.log"
+                with log_path.open("wb") as log:
+                    process = await asyncio.create_subprocess_exec(
+                        *command, cwd=Path(worktree), env=environment,
+                        stdout=log, stderr=asyncio.subprocess.STDOUT,
+                        start_new_session=True,
+                    )
             except BaseException:
                 await asyncio.to_thread(self._drop_schema, schema)
                 shutil.rmtree(state_dir, ignore_errors=True)
                 raise
-            instance = PreviewInstance(run_id, commit, port, schema, f"http://{self.host}:{port}", process, state_dir)
+            instance = PreviewInstance(
+                run_id, commit, port, schema, f"http://{self.host}:{port}",
+                process, state_dir, str(log_path),
+            )
             self._instances[run_id] = instance
         try:
-            await self._wait_ready(instance.url + contract.health_path, contract.timeout_seconds, commit)
+            await self._wait_ready(
+                instance.url + contract.health_path, contract.timeout_seconds, commit,
+                process=instance.process, log_path=instance.log_path,
+            )
             return instance
         except BaseException:
             await self.stop(run_id)
@@ -97,10 +110,19 @@ class PreviewManager:
             finally:
                 shutil.rmtree(instance.state_dir, ignore_errors=True)
 
-    async def _wait_ready(self, url: str, timeout: int, commit: str) -> None:
+    async def _wait_ready(
+        self, url: str, timeout: int, commit: str, *, process=None, log_path: str = ""
+    ) -> None:
         deadline = asyncio.get_running_loop().time() + timeout
         async with httpx.AsyncClient(trust_env=False) as client:
             while asyncio.get_running_loop().time() < deadline:
+                if process is not None and process.returncode is not None:
+                    detail = "preview process exited before becoming healthy"
+                    if log_path and Path(log_path).is_file():
+                        output = Path(log_path).read_text(errors="replace")[-2000:].strip()
+                        if output:
+                            detail += f": {output}"
+                    raise RuntimeError(detail)
                 try:
                     response = await client.get(url, timeout=2)
                     if response.is_success:

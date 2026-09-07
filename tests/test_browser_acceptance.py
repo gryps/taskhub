@@ -79,7 +79,7 @@ def test_acceptance_contract_requires_dedicated_lane_and_browser_capabilities(tm
     (directory / "acceptance.yaml").write_text(
         """
 preview:
-  command: [python3, -m, app]
+  command: [python3, -m, app, --port, "{port}"]
 browsers: [chromium, edge]
 command: [npx, playwright, test]
 """,
@@ -105,6 +105,19 @@ def test_invalid_acceptance_contract_returns_exact_repair_schema(tmp_path):
     assert "preview:\n  command: [python3" in error.value.detail
     assert "command: [npx, playwright, test]" in error.value.detail
     assert "description: Create, refresh and filter tasks" in error.value.detail
+
+
+def test_preview_contract_requires_allocated_port_placeholder(tmp_path):
+    directory = tmp_path / ".taskhub"
+    directory.mkdir()
+    (directory / "acceptance.yaml").write_text(
+        "preview:\n  command: [python3, app.py, --port, '8200']\n"
+        "command: [npx, playwright, test]\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(AcceptanceContractValidationError, match="port.*placeholder"):
+        load_acceptance_contract(tmp_path)
 
 
 def test_invalid_acceptance_suite_returns_exact_repair_schema(tmp_path):
@@ -200,12 +213,14 @@ def test_preview_cancellation_cleans_schema_process_and_state(monkeypatch, tmp_p
 
     async def exercise():
         ready = asyncio.Event()
-        async def wait(*args):
+        async def wait(*args, **kwargs):
             ready.set()
             await asyncio.Event().wait()
         monkeypatch.setattr(manager, "_wait_ready", wait)
         task = asyncio.create_task(manager.start("run", str(tmp_path), "a" * 40,
-            PreviewContract(command=[sys.executable, "-c", "import time; time.sleep(60)"])))
+            PreviewContract(command=[
+                sys.executable, "-c", "import time; time.sleep(60); port='{port}'"
+            ])))
         done, _ = await asyncio.wait([task, asyncio.create_task(ready.wait())], timeout=5, return_when=asyncio.FIRST_COMPLETED)
         if task in done:
             await task

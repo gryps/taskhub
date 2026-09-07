@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 CONTRACT_EXAMPLE = """workload: browser_acceptance
 required_capabilities: [windows_gui, playwright, screenshot, trace]
 preview:
-  command: [python3, -m, taskhub_v2.api]
+  command: [python3, -m, uvicorn, app:create_app, --factory, --host, 0.0.0.0, --port, "{port}"]
   health_path: /api/health
   stop_command: []
   timeout_seconds: 120
@@ -16,6 +16,7 @@ command: [npx, playwright, test]
 suite: tests/e2e/acceptance.yaml
 timeout_seconds: 900
 required_artifacts: [playwright-report, junit.xml, screenshots, trace.zip]
+# health_path must return JSON containing git_commit equal to TASKHUB_GIT_COMMIT.
 """
 
 SUITE_EXAMPLE = """scenarios:
@@ -57,6 +58,12 @@ class PreviewContract(BaseModel):
     health_path: str = "/api/health"
     stop_command: list[str] = Field(default_factory=list)
     timeout_seconds: int = Field(default=120, ge=1, le=900)
+
+    @model_validator(mode="after")
+    def require_allocated_port(self):
+        if not any("{port}" in part for part in self.command):
+            raise ValueError("preview.command must contain the {port} placeholder")
+        return self
 
 
 class AcceptanceContract(BaseModel):
