@@ -17,6 +17,8 @@ suite: tests/e2e/acceptance.yaml
 timeout_seconds: 900
 required_artifacts: [playwright-report, junit.xml, screenshots, trace.zip]
 # health_path must return JSON containing git_commit equal to TASKHUB_GIT_COMMIT.
+# On Windows, launch the installed browsers from TASKHUB_CHROMIUM_CHANNEL=chrome
+# and TASKHUB_EDGE_CHANNEL=msedge; do not require Playwright-downloaded Chromium.
 """
 
 SUITE_EXAMPLE = """scenarios:

@@ -172,6 +172,8 @@ def create_node_app() -> FastAPI:
                     "TASKHUB_PREVIEW_URL": payload.target_url,
                     "TASKHUB_TARGET_URL": payload.target_url,
                     "TASKHUB_GIT_COMMIT": payload.git_commit,
+                    "TASKHUB_CHROMIUM_CHANNEL": "chrome",
+                    "TASKHUB_EDGE_CHANNEL": "msedge",
                 },
             )
         artifacts = _artifact_manifest(target, payload.artifact_paths, runtime.max_upload_bytes)

@@ -43,7 +43,10 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
                         "python3",
                         "-c",
                         "from pathlib import Path; "
-                        "assert Path('value.txt').read_text() == 'ready\\n'",
+                        "assert Path('value.txt').read_text() == 'ready\\n'; "
+                        "import os; "
+                        "assert os.environ['TASKHUB_CHROMIUM_CHANNEL'] == 'chrome'; "
+                        "assert os.environ['TASKHUB_EDGE_CHANNEL'] == 'msedge'",
                     ]
                 ],
                 "timeout_seconds": 30,
