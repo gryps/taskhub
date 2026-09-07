@@ -61,6 +61,7 @@ class RunService:
             "revision_count": 0,
             "max_revision_attempts": max_revisions,
             "revision_feedback": "",
+            "acceptance_contract_bootstrap_attempted": False,
             "pending_action": None,
             "blocking_reason": None,
             "model_runs": [],

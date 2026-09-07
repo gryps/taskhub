@@ -286,7 +286,11 @@ def build_main_graph(
     builder.add_conditional_edges(
         "browser_acceptance",
         route_browser_acceptance,
-        {"recovery": "acceptance_recovery", "execute": "acceptance"},
+        {
+            "recovery": "acceptance_recovery",
+            "revision": "acceptance_revision",
+            "execute": "acceptance",
+        },
     )
     builder.add_node("supervisor", build_supervisor_graph(provider))
     builder.add_node("supervision_recovery", recover_supervision)

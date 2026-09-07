@@ -7,6 +7,11 @@ import pytest
 
 from taskhub_v2.artifacts.store import ArtifactStore
 from taskhub_v2.browser.contract import load_acceptance_contract, load_acceptance_suite
+from taskhub_v2.domain.models import RunStatus
+from taskhub_v2.workflows.browser_acceptance import (
+    request_browser_acceptance,
+    route_browser_acceptance,
+)
 from taskhub_v2.node_agent.runtime import normalize_command
 from taskhub_v2.node_agent.runtime import run_commands
 from taskhub_v2.browser.reports import validate_junit
@@ -73,6 +78,40 @@ command: [npx, playwright, test]
     contract = load_acceptance_contract(tmp_path)
     assert contract.workload == "browser_acceptance"
     assert {"chromium", "edge", "windows_gui", "trace"} <= contract.required_capabilities
+
+
+def test_legacy_task_bootstraps_missing_browser_contract_once(tmp_path):
+    state = {
+        "implementation": {"workspace": {"path": str(tmp_path)}},
+        "acceptance": {"status": "passed", "evidence": []},
+    }
+
+    bootstrap = asyncio.run(request_browser_acceptance(state))
+    assert bootstrap["status"] == RunStatus.RUNNING
+    assert bootstrap["blocking_reason"]["code"] == "acceptance_contract_missing"
+    assert bootstrap["acceptance_contract_bootstrap_attempted"] is True
+    assert route_browser_acceptance({**state, **bootstrap}) == "revision"
+
+    repeated = asyncio.run(request_browser_acceptance(
+        {**state, "acceptance_contract_bootstrap_attempted": True}
+    ))
+    assert repeated["status"] == RunStatus.BLOCKED
+    assert repeated["pending_action"]["choices"] == ["revise", "cancel"]
+    assert route_browser_acceptance({**state, **repeated}) == "recovery"
+
+
+def test_browser_contract_dispatches_automatically_when_present(tmp_path):
+    contract = tmp_path / ".taskhub" / "acceptance.yaml"
+    contract.parent.mkdir()
+    contract.write_text("preview: {}", encoding="utf-8")
+    state = {
+        "implementation": {"workspace": {"path": str(tmp_path)}},
+        "acceptance": {"status": "passed", "evidence": []},
+    }
+
+    result = asyncio.run(request_browser_acceptance(state))
+    assert result == {"status": RunStatus.RUNNING.value}
+    assert route_browser_acceptance({**state, **result}) == "execute"
 
 
 def test_project_e2e_suite_definition_is_loaded_and_complete():

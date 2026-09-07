@@ -128,12 +128,16 @@ function render(run) {
     byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "acceptance_recovery") {
     byId("action-stage").textContent = "第 5 环 · 验收";
-    byId("action-title").textContent = "验收执行已阻塞";
+    const browserEvidence = run.blocking_reason?.code === "browser_evidence_missing";
+    const contractMissing = run.blocking_reason?.code === "acceptance_contract_missing";
+    byId("action-title").textContent = browserEvidence
+      ? "浏览器验收需要重新执行"
+      : contractMissing ? "浏览器验收契约缺失" : "验收执行已阻塞";
     const limitReached = run.revision_count >= run.max_revision_attempts;
     const limitNotice = limitReached ? " 已达到返工上限，退回实施将授权额外返工一次。" : "";
     byId("action-detail").textContent = `${run.blocking_reason?.detail || "验收节点需要处理"}${limitNotice}`;
-    byId("approve").textContent = run.blocking_reason?.detail?.includes("Windows")
-      ? "在 .34 执行浏览器验收" : "重新执行验收";
+    byId("approve").textContent = browserEvidence
+      ? "自动执行浏览器验收" : "重新执行验收";
     byId("revise").textContent = limitReached ? "批准额外返工" : "退回实施";
     byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "merge_approval") {
@@ -186,7 +190,7 @@ function render(run) {
   byId("reject").classList.toggle("hidden", !choices.some((choice) =>
     ["reject", "cancel"].includes(choice)));
   byId("revise").classList.toggle(
-    "hidden", pendingAction?.type !== "acceptance_recovery"
+    "hidden", pendingAction?.type !== "acceptance_recovery" || !choices.includes("revise")
   );
   byId("manual").classList.toggle(
     "hidden", pendingAction?.type !== "revision_limit"
