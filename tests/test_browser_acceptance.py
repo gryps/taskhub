@@ -345,6 +345,48 @@ required_artifacts: [junit.xml]
         asyncio.run(gateway.verify("run-1", "shop", implementation))
 
 
+def test_browser_acceptance_allows_workspace_descendant_commit(monkeypatch, tmp_path):
+    import subprocess
+
+    from taskhub_v2.workers.acceptance import _browser_acceptance_commit
+
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        if command[3] == "rev-parse":
+            return subprocess.CompletedProcess(command, 0, "b" * 40)
+        if command[3] == "merge-base":
+            return subprocess.CompletedProcess(command, 0, "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    assert _browser_acceptance_commit(str(tmp_path), "a" * 40) == "b" * 40
+    assert calls[-1][-2:] == ["a" * 40, "b" * 40]
+
+
+def test_browser_acceptance_rejects_unrelated_workspace_commit(monkeypatch, tmp_path):
+    import subprocess
+
+    from taskhub_v2.workers.acceptance import (
+        AcceptanceExecutionError,
+        _browser_acceptance_commit,
+    )
+
+    def run(command, **kwargs):
+        if command[3] == "rev-parse":
+            return subprocess.CompletedProcess(command, 0, "b" * 40)
+        if command[3] == "merge-base":
+            return subprocess.CompletedProcess(command, 1, "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    with pytest.raises(AcceptanceExecutionError, match="commit does not match"):
+        _browser_acceptance_commit(str(tmp_path), "a" * 40)
+
+
 def test_project_e2e_suite_definition_is_loaded_and_complete():
     repository = Path(__file__).parents[1]
     contract = load_acceptance_contract(repository)

@@ -117,12 +117,9 @@ class ProjectAcceptanceGateway:
                 raise AcceptanceExecutionError("browser preview manager is not configured")
             contract = load_acceptance_contract(implementation.workspace.path)
             suite = load_acceptance_suite(implementation.workspace.path, contract)
-            actual_commit = subprocess.run(
-                ["git", "-C", implementation.workspace.path, "rev-parse", "HEAD"],
-                capture_output=True, text=True, check=True, timeout=15,
-            ).stdout.strip()
-            if actual_commit != implementation.commit:
-                raise AcceptanceExecutionError("browser acceptance commit does not match workspace HEAD")
+            actual_commit = _browser_acceptance_commit(
+                implementation.workspace.path, implementation.commit
+            )
             await self.scheduler.preflight_browser([contract.command], contract.required_capabilities)
             preview_id = f"{run_id}-{uuid4().hex[:8]}"
             preview = None
@@ -211,3 +208,19 @@ def _artifact_kind(path: str) -> str:
     if path.lower().endswith((".webm", ".mp4")):
         return "browser_video"
     return "playwright_report"
+
+
+def _browser_acceptance_commit(worktree: str, expected_commit: str) -> str:
+    actual_commit = subprocess.run(
+        ["git", "-C", worktree, "rev-parse", "--verify", "HEAD^{commit}"],
+        capture_output=True, text=True, check=True, timeout=15,
+    ).stdout.strip()
+    if actual_commit == expected_commit:
+        return actual_commit
+    ancestor = subprocess.run(
+        ["git", "-C", worktree, "merge-base", "--is-ancestor", expected_commit, actual_commit],
+        capture_output=True, text=True, timeout=15,
+    )
+    if ancestor.returncode == 0:
+        return actual_commit
+    raise AcceptanceExecutionError("browser acceptance commit does not match workspace HEAD")
