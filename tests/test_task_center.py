@@ -7,9 +7,9 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from taskhub_v2.api.app import create_app
 from taskhub_v2.config import Settings
-from taskhub_v2.domain.models import StartRunRequest
+from taskhub_v2.domain.models import RunStatus, StartRunRequest
 from taskhub_v2.persistence.task_index import MemoryTaskIndex
-from taskhub_v2.services.runs import RunService
+from taskhub_v2.services.runs import RunConflictError, RunService
 from taskhub_v2.services.task_state import checkpoint_values, workflow_steps
 from taskhub_v2.workflows import build_main_graph
 from tests.fakes import RecordingProvider, RecordingWorker
@@ -166,6 +166,70 @@ def test_task_center_approvals_and_recovery_do_not_repeat_completed_work():
         assert provider.supervisor_calls == worker.calls == 1
         assert publisher.calls == 2
         assert sum(e['title'] == 'Plan approved' for e in completed['timeline']) == 1
+
+
+def test_running_checkpoint_can_replay_current_stage():
+    async def scenario():
+        class ReplayGraph:
+            def __init__(self):
+                self.next = ["acceptance"]
+                self.values = {
+                    "run_id": "run-replay",
+                    "project_id": "demo",
+                    "production_line": "A",
+                    "requirement": "Replay stuck browser acceptance",
+                    "current_stage": "browser_acceptance",
+                    "status": "running",
+                    "pending_action": None,
+                    "blocking_reason": None,
+                    "timeline": [],
+                    "model_runs": [],
+                }
+                self.payloads = []
+
+            async def aget_state(self, _config):
+                return SimpleNamespace(values=self.values, next=self.next, tasks=[])
+
+            async def astream(self, payload, _config, stream_mode):
+                self.payloads.append(payload)
+                yield "debug", {"type": "task", "payload": {"name": "acceptance"}}
+                self.values = {
+                    **self.values,
+                    "current_stage": "completed",
+                    "status": "completed",
+                    "timeline": [{
+                        "stage": "completed",
+                        "title": "Replay completed",
+                        "detail": "",
+                        "actor": "system",
+                        "status": "completed",
+                    }],
+                }
+                self.next = []
+                yield "values", self.values
+
+        graph = ReplayGraph()
+        service = RunService(graph, task_index=MemoryTaskIndex())
+        replayed = await service.replay("run-replay")
+
+        assert graph.payloads == [None]
+        assert replayed.status == RunStatus.COMPLETED
+        assert replayed.stage == "completed"
+
+    asyncio.run(scenario())
+
+
+def test_replay_rejects_tasks_waiting_for_owner_action():
+    async def scenario():
+        service = RunService(build_main_graph(
+            RecordingProvider(), RecordingWorker(), InMemorySaver()
+        ), task_index=MemoryTaskIndex())
+        waiting = await service.start(StartRunRequest(project_id="demo", requirement="wait"))
+
+        with pytest.raises(RunConflictError, match="only running tasks|explicit owner action"):
+            await service.replay(waiting.run_id)
+
+    asyncio.run(scenario())
 
 
 def test_live_index_failure_and_stale_backfill():

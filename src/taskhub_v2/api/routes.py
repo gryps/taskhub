@@ -102,6 +102,16 @@ async def resume_run(run_id: str, payload: ResumeRequest, service: Service) -> R
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post("/runs/{run_id}/replay", response_model=RunView)
+async def replay_run(run_id: str, service: Service) -> RunView:
+    try:
+        return await service.replay(run_id)
+    except RunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="run not found") from exc
+    except RunConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.post("/runs/{run_id}/acceptance", response_model=RunView)
 async def submit_acceptance(
     run_id: str, payload: AcceptanceSubmission, service: Service

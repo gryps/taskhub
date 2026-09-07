@@ -67,6 +67,11 @@ function render(run) {
   byId("archive-task").classList.toggle(
     "hidden", Boolean(run.archived_at) || (!run.project_missing && !terminal)
   );
+  byId("replay-stage").classList.toggle(
+    "hidden",
+    Boolean(run.archived_at) || run.status !== "running" || Boolean(pendingAction)
+      || !(run.next_nodes || []).length
+  );
   byId("approve").disabled = run.project_missing || Boolean(run.archived_at);
   if (run.project_missing && !run.archived_at) populateRebindProjects();
   renderFlow(run.stage, run.status, run.workflow_steps);
@@ -501,6 +506,19 @@ async function rebindTask() {
   render(run);
 }
 
+async function replayStage() {
+  const button = byId("replay-stage");
+  button.disabled = true;
+  try {
+    const run = await request(`/api/runs/${currentRun}/replay`, {method: "POST"});
+    render(run);
+  } catch (error) {
+    byId("message").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function submitAcceptance(event) {
   event.preventDefault();
   const summary = byId("acceptance-note").value.trim();
@@ -525,6 +543,7 @@ byId("reject").addEventListener("click", () => decide("reject"));
 byId("acceptance-submit").addEventListener("submit", submitAcceptance);
 byId("deploy-release").addEventListener("click", deployRelease);
 byId("archive-task").addEventListener("click", archiveTask);
+byId("replay-stage").addEventListener("click", replayStage);
 byId("rebind-task").addEventListener("click", rebindTask);
 byId("configure-resources").addEventListener("click", () => showPage("resources"));
 byId("add-evidence").addEventListener("click", () => {

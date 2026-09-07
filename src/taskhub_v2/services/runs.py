@@ -242,6 +242,25 @@ class RunService:
         await self._execute(run_id, Command(resume=request.model_dump(mode="json"), update=update))
         return await self.get(run_id, sync=True)
 
+    async def replay(self, run_id: str) -> RunView:
+        current = await self.get(run_id)
+        if current.archived_at:
+            raise RunConflictError("task is archived; workflow actions are disabled")
+        if current.project_missing:
+            raise RunConflictError(
+                "project is not registered; archive the task or rebind it to an existing project"
+            )
+        if current.status != RunStatus.RUNNING:
+            raise RunConflictError("only running tasks can replay the current stage")
+        if current.pending_action:
+            raise RunConflictError("task is waiting for an explicit owner action")
+        if not current.next_nodes:
+            raise RunConflictError("task has no checkpoint node to replay")
+        update = {"project_id": current.project_id} if current.original_project_id else None
+        payload = Command(update=update) if update else None
+        await self._execute(run_id, payload)
+        return await self.get(run_id, sync=True)
+
     async def submit_acceptance(
         self, run_id: str, request: AcceptanceSubmission
     ) -> RunView:
