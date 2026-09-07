@@ -48,6 +48,12 @@ def test_junit_rejects_incomplete_or_skipped_evidence(report):
         validate_junit([report], ["chromium", "edge"])
 
 
+def test_junit_surfaces_browser_failure_detail():
+    report = b"<testsuite failures='1'><testcase><failure>UnicodeDecodeError: gbk</failure></testcase></testsuite>"
+    with pytest.raises(ValueError, match="UnicodeDecodeError: gbk"):
+        validate_junit([report], ["chromium"])
+
+
 def test_junit_requires_both_executed_browsers():
     reports = [f'<testsuite><testcase><properties><property name="browser" '
                f'value="{browser}"/></properties></testcase></testsuite>'.encode()

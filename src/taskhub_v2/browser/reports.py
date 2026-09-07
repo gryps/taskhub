@@ -21,6 +21,13 @@ def validate_junit(
         cases = list(root.iter("testcase"))
         if not cases:
             raise ValueError("browser acceptance requires executed test cases")
+        failures = [
+            (element.text or "").strip()
+            for element in root.iter()
+            if element.tag in {"failure", "error"}
+        ]
+        if failures:
+            raise ValueError("browser acceptance failed: " + failures[0][-2000:])
         for element in root.iter():
             if element.tag in {"skipped", "failure", "error"}:
                 raise ValueError("browser acceptance requires zero skips and failures")

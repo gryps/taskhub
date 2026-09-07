@@ -153,6 +153,13 @@ class ProjectAcceptanceGateway:
                         metadata={**scheduled.metadata, "original_path": item["path"]},
                     ))
                 found = {item.metadata.get("original_path") for item in browser_artifacts}
+                failed = [test for test in scheduled.tests if test.exit_code]
+                try:
+                    validate_junit(junit_reports, contract.browsers,
+                                   target_url=preview.url, git_commit=actual_commit,
+                                   scenarios={item.id: item.browsers for item in suite.scenarios})
+                except ValueError as exc:
+                    raise AcceptanceExecutionError(str(exc)) from exc
                 missing = [
                     name
                     for name in contract.required_artifacts
@@ -163,13 +170,6 @@ class ProjectAcceptanceGateway:
                 ]
                 if missing:
                     raise AcceptanceExecutionError("required browser artifacts missing: " + ", ".join(missing))
-                failed = [test for test in scheduled.tests if test.exit_code]
-                try:
-                    validate_junit(junit_reports, contract.browsers,
-                                   target_url=preview.url, git_commit=actual_commit,
-                                   scenarios={item.id: item.browsers for item in suite.scenarios})
-                except ValueError as exc:
-                    raise AcceptanceExecutionError(str(exc)) from exc
                 records.append(AcceptanceEvidence(
                     id="windows-browser-acceptance", kind="browser",
                     status="failed" if failed else "passed", source=scheduled.node_id,
