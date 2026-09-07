@@ -272,6 +272,25 @@ def test_preview_uses_candidate_source_instead_of_controller_pythonpath(
     assert captured["PYTHONPATH"] == str(tmp_path / "src")
 
 
+def test_preview_manager_uses_configured_reachable_host(tmp_path):
+    from taskhub_v2.browser.preview import PreviewManager
+
+    manager = PreviewManager("postgresql://unused", host="192.168.31.51", ports=[8498])
+
+    assert manager.host == "192.168.31.51"
+
+
+def test_preview_host_is_loaded_from_environment(monkeypatch):
+    from taskhub_v2.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("TASKHUB_PREVIEW_HOST", "192.168.31.51")
+    try:
+        assert get_settings().preview_host == "192.168.31.51"
+    finally:
+        get_settings.cache_clear()
+
+
 def test_preview_rejects_healthy_old_version(monkeypatch):
     import httpx
     from taskhub_v2.browser.preview import PreviewManager

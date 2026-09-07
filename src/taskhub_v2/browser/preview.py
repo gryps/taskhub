@@ -31,7 +31,7 @@ class PreviewInstance:
 class PreviewManager:
     """Owns preview ports/processes and always tears down their database schema."""
 
-    def __init__(self, postgres_dsn: str, host: str = "192.168.31.31", ports=range(8400, 8500)):
+    def __init__(self, postgres_dsn: str, host: str = "127.0.0.1", ports=range(8400, 8500)):
         self.postgres_dsn = postgres_dsn
         self.host = host
         self.ports = tuple(ports)

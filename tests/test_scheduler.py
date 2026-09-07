@@ -100,6 +100,25 @@ def test_scheduler_routes_only_to_node_with_required_tool(tmp_path):
     assert runner.calls == [("job-npm", "node-b")]
 
 
+def test_scheduler_treats_npx_as_npm_capability(tmp_path):
+    async def scenario():
+        runner = RecordingRunner(
+            capabilities={
+                "node-a": {"windows_gui": True, "playwright": True, "screenshot": True,
+                           "trace": True, "npm": True},
+            }
+        )
+        path = tmp_path / "nodes.json"
+        path.write_text(json.dumps({"nodes": [{
+            "id": "node-a", "kind": "remote", "url": "http://node-a:8301",
+            "workloads": ["browser_acceptance"],
+        }]}), encoding="utf-8")
+        scheduler = NodeScheduler(NodeRegistry(str(path)), runner, str(tmp_path / "state.json"))
+        await scheduler.preflight_browser([["npx", "playwright", "test"]], set())
+
+    asyncio.run(scenario())
+
+
 def test_scheduler_reports_missing_required_tool(tmp_path):
     async def scenario():
         runner = RecordingRunner(

@@ -85,6 +85,7 @@ class NodeRunner:
                     "python3": True,
                     "node": bool(shutil.which("node")),
                     "npm": bool(shutil.which("npm")),
+                    "npx": bool(shutil.which("npx")),
                     "pytest": importlib.util.find_spec("pytest") is not None,
                     "coding": self.local_coder is not None,
                 },

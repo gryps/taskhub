@@ -29,6 +29,7 @@ class Settings(BaseModel):
     self_deploy_health_url: str = "http://127.0.0.1:8200/api/health"
     workspace_root: str = "/home/gryps/workspaces/taskhub-v2"
     artifact_root: str = "/home/gryps/artifacts/taskhub-v2"
+    preview_host: str = "127.0.0.1"
     provider_health_file: str = "/home/gryps/.local/state/taskhub-v2/provider-health.json"
     provider_quota_cooldown_seconds: int = 3600
     provider_transient_cooldown_seconds: int = 60
@@ -102,6 +103,7 @@ def get_settings() -> Settings:
         ),
         workspace_root=os.getenv("TASKHUB_WORKSPACE_ROOT", "/home/gryps/workspaces/taskhub-v2"),
         artifact_root=os.getenv("TASKHUB_ARTIFACT_ROOT", "/home/gryps/artifacts/taskhub-v2"),
+        preview_host=os.getenv("TASKHUB_PREVIEW_HOST", "127.0.0.1"),
         provider_health_file=os.getenv(
             "TASKHUB_PROVIDER_HEALTH_FILE",
             "/home/gryps/.local/state/taskhub-v2/provider-health.json",

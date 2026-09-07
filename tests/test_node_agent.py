@@ -59,6 +59,57 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
     assert response.json()["tests"][0]["exit_code"] == 0
 
 
+def test_browser_node_installs_npm_dependencies_before_npx(tmp_path, monkeypatch):
+    import taskhub_v2.node_agent.app as agent_module
+
+    monkeypatch.setenv("TASKHUB_NODE_ID", "node-test")
+    monkeypatch.setenv("TASKHUB_NODE_TOKEN", "node-secret")
+    monkeypatch.setenv("TASKHUB_NODE_WORK_ROOT", str(tmp_path / "jobs"))
+    monkeypatch.setattr(agent_module, "detect_capabilities", lambda: {"playwright": True})
+    payload = archive({"package.json": b'{"devDependencies":{"@playwright/test":"1.58.2"}}'})
+    digest = hashlib.sha256(payload).hexdigest()
+    headers = {"Authorization": "Bearer node-secret"}
+    installed = []
+    real_run = agent_module.subprocess.run
+
+    def fake_install(command, **kwargs):
+        if "cwd" not in kwargs:
+            return real_run(command, **kwargs)
+        installed.append((command, kwargs["cwd"]))
+        (kwargs["cwd"] / "node_modules").mkdir()
+        return agent_module.subprocess.CompletedProcess(command, 0, "installed\n", "")
+
+    async def fake_run_commands(*args, **kwargs):
+        return [{"command": ["npx", "playwright", "test"], "exit_code": 0, "output_tail": "ok"}]
+
+    monkeypatch.setattr(agent_module.subprocess, "run", fake_install)
+    monkeypatch.setattr(agent_module, "run_commands", fake_run_commands)
+
+    with TestClient(create_node_app()) as client:
+        uploaded = client.put(
+            f"/api/jobs/job-browser/workspace?sha256={digest}",
+            content=payload,
+            headers=headers,
+        )
+        assert uploaded.status_code == 200
+        response = client.post(
+            "/api/jobs/job-browser/execute",
+            json={
+                "commands": [["npx", "playwright", "test"]],
+                "timeout_seconds": 30,
+                "archive_sha256": digest,
+                "required_capabilities": ["playwright"],
+            },
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    assert installed[0][0][:2] == ["npm", "install"]
+    tests = response.json()["tests"]
+    assert tests[0]["command"][:2] == ["npm", "install"]
+    assert tests[1]["command"] == ["npx", "playwright", "test"]
+
+
 def test_local_runner_uses_its_own_python_environment(tmp_path):
     import asyncio
 

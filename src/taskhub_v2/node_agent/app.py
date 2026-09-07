@@ -22,8 +22,10 @@ from pydantic import BaseModel, Field
 from taskhub_v2.domain.models import Plan
 from taskhub_v2.node_agent.coding import coding_available, modify_workspace, provider_health
 from taskhub_v2.node_agent.runtime import (
+    PROXY_VARIABLES,
     UnsafeArchiveError,
     extract_workspace,
+    normalize_command,
     run_commands,
 )
 from taskhub_v2.services.diagnostics import coding_prerequisites_ok, node_diagnostics
@@ -168,7 +170,11 @@ def create_node_app() -> FastAPI:
         lock = runtime.locks.setdefault(job_id, asyncio.Lock())
         started_at = datetime.now(UTC)
         async with lock:
-            tests = await run_commands(
+            tests = await _prepare_browser_acceptance_dependencies(
+                target, payload.commands, payload.required_capabilities, payload.timeout_seconds
+            )
+            if not any(test["exit_code"] for test in tests):
+                tests.extend(await run_commands(
                 target, payload.commands, payload.timeout_seconds,
                 execution_environment={
                     "TASKHUB_PREVIEW_URL": payload.target_url,
@@ -177,7 +183,7 @@ def create_node_app() -> FastAPI:
                     "TASKHUB_CHROMIUM_CHANNEL": "chrome",
                     "TASKHUB_EDGE_CHANNEL": "msedge",
                 },
-            )
+                ))
         artifacts = _artifact_manifest(target, payload.artifact_paths, runtime.max_upload_bytes)
         return {
             "node_id": runtime.node_id,
@@ -240,6 +246,7 @@ def detect_capabilities() -> dict[str, bool]:
         "python3": True,
         "node": bool(shutil.which("node")),
         "npm": bool(shutil.which("npm")),
+        "npx": bool(shutil.which("npx")),
         "pytest": importlib.util.find_spec("pytest") is not None,
         "workspace_write_sandbox": coding_prerequisites_ok(),
         "coding": coding_ready,
@@ -320,3 +327,41 @@ def _artifact_manifest(root: Path, requested: list[str], max_bytes: int) -> list
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             result.append({"path": path.relative_to(root).as_posix(), "sha256": digest, "size": size})
     return result
+
+
+async def _prepare_browser_acceptance_dependencies(
+    target: Path, commands: list[list[str]], required_capabilities: set[str], timeout: int
+) -> list[dict]:
+    if "playwright" not in required_capabilities:
+        return []
+    if not (target / "package.json").is_file() or (target / "node_modules").is_dir():
+        return []
+    if not any(Path(command[0]).name.lower() in {"npx", "npx.cmd"} for command in commands if command):
+        return []
+    command = ["npm", "ci"] if (target / "package-lock.json").is_file() else ["npm", "install"]
+    command.extend(["--ignore-scripts", "--no-audit", "--no-fund"])
+
+    def install() -> dict:
+        environment = dict(os.environ)
+        environment["PATH"] = os.pathsep.join(
+            (str(Path(sys.executable).parent), environment.get("PATH", ""))
+        )
+        for key in PROXY_VARIABLES:
+            environment.pop(key, None)
+        try:
+            result = subprocess.run(
+                normalize_command(command),
+                cwd=target,
+                env=environment,
+                capture_output=True,
+                text=True,
+                timeout=min(max(timeout, 60), 600),
+            )
+            output = (result.stdout + result.stderr)[-4000:]
+            return {"command": command, "exit_code": result.returncode, "output_tail": output}
+        except FileNotFoundError:
+            return {"command": command, "exit_code": 127, "output_tail": "command not found"}
+        except TimeoutError:
+            return {"command": command, "exit_code": 124, "output_tail": "command timed out"}
+
+    return [await asyncio.to_thread(install)]

@@ -255,6 +255,8 @@ def required_capabilities(commands: list[list[str]]) -> set[str]:
                 required.add("pytest")
         elif executable in {"pytest", "py.test"}:
             required.add("pytest")
-        elif executable in {"node", "npm", "npm.cmd", "npx", "npx.cmd", "git"}:
+        elif executable in {"node", "npm", "npm.cmd", "git"}:
             required.add(executable.removesuffix(".cmd"))
+        elif executable in {"npx", "npx.cmd"}:
+            required.add("npm")
     return required
