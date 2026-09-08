@@ -142,6 +142,7 @@ h2 { margin-top: 28px; font-size: 16px; }
 .muted { color: #687771; font-size: 13px; }
 .resource-table { overflow-x: auto; border: 1px solid #d6ddda; background: white; }
 .resource-row { min-width: 800px; display: grid; grid-template-columns: 1.1fr .7fr 1.1fr 2.1fr; gap: 14px; padding: 13px; align-items: start; border-bottom: 1px solid #e1e6e3; }
+.load-row { grid-template-columns: .9fr 1fr 1fr 1fr; }
 .resource-row:last-child { border-bottom: 0; }
 .resource-row > * { min-width: 0; overflow-wrap: anywhere; }
 .resource-row small { display: block; margin-top: 4px; color: #74817c; }

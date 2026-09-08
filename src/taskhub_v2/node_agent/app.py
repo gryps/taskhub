@@ -29,6 +29,7 @@ from taskhub_v2.node_agent.runtime import (
     repair_managed_virtualenv,
     run_commands,
 )
+from taskhub_v2.node_agent.system_load import system_load
 from taskhub_v2.services.diagnostics import coding_prerequisites_ok, node_diagnostics
 
 JOB_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
@@ -101,6 +102,7 @@ def create_node_app() -> FastAPI:
             "node_id": runtime.node_id,
             "cpu_count": os.cpu_count() or 1,
             "disk_free_bytes": usage.free,
+            "load": await asyncio.to_thread(system_load, runtime.root),
             "capabilities": await asyncio.to_thread(detect_capabilities),
             "versions": await asyncio.to_thread(browser_versions),
             "system": await asyncio.to_thread(node_diagnostics),

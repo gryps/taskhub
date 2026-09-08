@@ -120,11 +120,59 @@ async function loadNodes() {
   }
 }
 
+function formatBytes(value) {
+  if (value === null || value === undefined) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let amount = Number(value);
+  let unit = 0;
+  while (amount >= 1024 && unit < units.length - 1) {
+    amount /= 1024;
+    unit += 1;
+  }
+  return `${amount.toFixed(unit > 2 ? 1 : 0)} ${units[unit]}`;
+}
+
+function loadMetric(label, percent, detail) {
+  const available = percent !== null && percent !== undefined;
+  const value = available ? Math.max(0, Math.min(100, Number(percent))) : 0;
+  return `<div class="usage-metric">
+    <div><span>${escapeHtml(label)}</span><strong>${available ? `${value}%` : "—"}</strong></div>
+    <progress max="100" value="${value}">${value}%</progress>
+    <small>${escapeHtml(detail)}</small>
+  </div>`;
+}
+
+async function loadNodeLoad() {
+  byId("load-summary").textContent = "正在读取 CPU、内存和磁盘负载";
+  try {
+    const data = await request("/api/nodes");
+    const online = data.nodes.filter((item) => item.status === "ok");
+    const busy = online.filter((item) => Number(item.load?.cpu_percent || 0) >= 85).length;
+    byId("load-summary").textContent = `${online.length}/${data.nodes.length} 在线 · ${busy} 个高负载`;
+    byId("node-load").innerHTML = `<div class="resource-row load-row resource-header">
+      <span>节点</span><span>CPU</span><span>内存</span><span>磁盘</span>
+    </div>${data.nodes.map((item) => {
+      const load = item.load || {};
+      const offline = item.status !== "ok";
+      return `<div class="resource-row load-row">
+        <strong>${escapeHtml(item.node_id)}<small>${escapeHtml(offline ? item.detail || "节点不可达" : `${item.cpu_count || "—"} 核 · ${item.active}/${item.slots} 任务`)}</small></strong>
+        ${offline ? '<span class="bad">离线</span><span>—</span><span>—</span>' : `
+        ${loadMetric("CPU 使用率", load.cpu_percent, load.load_average_1m === null || load.load_average_1m === undefined ? "1 分钟负载不可用" : `1 分钟负载 ${load.load_average_1m}`)}
+        ${loadMetric("内存使用率", load.memory_used_percent, `可用 ${formatBytes(load.memory_available_bytes)} / ${formatBytes(load.memory_total_bytes)}`)}
+        ${loadMetric("磁盘使用率", load.disk_used_percent, `可用 ${formatBytes(load.disk_free_bytes)} / ${formatBytes(load.disk_total_bytes)}`)}`}
+      </div>`;
+    }).join("")}`;
+  } catch (error) {
+    byId("load-summary").textContent = error.message;
+  }
+}
+
 async function loadResources() {
-  await Promise.all([loadSystemConfig(), loadProviders(), loadNodes()]);
+  await Promise.all([loadSystemConfig(), loadProviders(), loadNodes(), loadNodeLoad()]);
 }
 
 byId("refresh-system").addEventListener("click", loadSystemConfig);
 byId("refresh-providers").addEventListener("click", loadProviders);
 byId("refresh-nodes").addEventListener("click", loadNodes);
+byId("refresh-load").addEventListener("click", loadNodeLoad);
 window.loadResources = loadResources;

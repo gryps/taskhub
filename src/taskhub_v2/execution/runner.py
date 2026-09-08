@@ -76,12 +76,14 @@ class NodeRunner:
             import shutil
 
             from taskhub_v2.config import get_settings
+            from taskhub_v2.node_agent.system_load import system_load
             from taskhub_v2.services.diagnostics import controller_diagnostics
 
             return {
                 "status": "ok",
                 "node_id": node.id,
                 "cpu_count": os.cpu_count() or 1,
+                "load": await asyncio.to_thread(system_load, Path.cwd()),
                 "capabilities": {
                     "git": bool(shutil.which("git")),
                     "python3": True,
