@@ -49,11 +49,31 @@ def browser_prerequisites() -> dict:
     marker = Path(marker_value).expanduser() if marker_value else None
     configured = bool(target and str(profile) not in {"", "."} and profile.is_dir())
     authenticated = bool(configured and marker and marker.is_file())
+    configure_command = (
+        "powershell -ExecutionPolicy Bypass -File "
+        "C:\\TaskHub\\update-browser-prerequisites.ps1 "
+        "-BrowserProfileDir '<专用Profile目录>' -BrowserAuthTarget '<授权登录地址>'"
+    )
+    authorize_command = ""
+    if configured and not authenticated:
+        safe_profile = str(profile).replace("'", "''")
+        safe_target = target.replace("'", "''")
+        authorize_command = (
+            "powershell -ExecutionPolicy Bypass -File "
+            "C:\\TaskHub\\authorize-browser-profile.ps1 -Browser edge "
+            f"-ProfileDir '{safe_profile}' -AuthTarget '{safe_target}'"
+        )
     return {
         "profile_configured": configured,
         "authenticated": authenticated,
         "target": target,
         "profile": str(profile) if str(profile) != "." else "",
+        "action": (
+            None if authenticated else {
+                "label": "启动授权登录" if configured else "配置浏览器验收",
+                "command": authorize_command or configure_command,
+            }
+        ),
         "detail": (
             "Profile 与授权登录均已就绪" if authenticated
             else "Profile 已配置，等待完成授权登录" if configured

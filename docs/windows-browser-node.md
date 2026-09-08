@@ -13,6 +13,10 @@ external login once and close the browser before creating the readiness marker. 
 reports `browser_profile` and `browser_authenticated`; browser acceptance cannot be scheduled
 until both are true.
 
+For a newly registered node, **系统配置 / 验收前置配置** displays the exact command for
+its current state with a copy button. Operators do not need to locate this document before
+admission can be completed.
+
 Install Playwright in that environment and provide system Google Chrome and Microsoft
 Edge. The installer does not download a second bundled browser; both system browsers
 must pass the interactive screenshot, video, and trace probe. First verify the isolated candidate endpoint on port

@@ -54,6 +54,15 @@ function renderCheckRows(title, checks) {
       </div>`).join("")}`;
 }
 
+function prerequisiteAction(action) {
+  if (!action?.command) return "—";
+  const command = escapeHtml(action.command);
+  return `<div class="prerequisite-action"><code>${command}</code>
+    <button type="button" class="icon-button copy-prerequisite"
+      data-command="${command}" title="复制${escapeHtml(action.label)}命令"
+      aria-label="复制${escapeHtml(action.label)}命令">⧉</button></div>`;
+}
+
 async function loadSystemConfig() {
   byId("system-summary").textContent = "正在读取系统版本、组件与前置条件";
   try {
@@ -188,7 +197,7 @@ async function loadAcceptancePrerequisites() {
           <strong>${escapeHtml(node.node_id)}<small>浏览器 Profile / 授权</small></strong>
           <span class="${checkStatusClass(browserStatus)}">${checkStatusLabel(browserStatus)}</span>
           <span>${escapeHtml(browserRelevant ? browser.detail || "未上报" : "该节点不承担浏览器验收")}</span>
-          <span>${escapeHtml(browser.target || browser.profile || "—")}</span>
+          <div>${prerequisiteAction(browser.action)}</div>
         </div>`;
     }).join("");
     const databaseReady = (data.nodes || []).filter((node) => node.test_database?.available).length;
@@ -231,4 +240,21 @@ refreshWhenExpanded("nodes-disclosure", loadNodes);
 refreshWhenExpanded("load-disclosure", loadNodeLoad);
 byId("refresh-acceptance-prerequisites").addEventListener("click", loadAcceptancePrerequisites);
 refreshWhenExpanded("acceptance-prerequisites-disclosure", loadAcceptancePrerequisites);
+byId("acceptance-prerequisites").addEventListener("click", async (event) => {
+  const button = event.target.closest(".copy-prerequisite");
+  if (!button) return;
+  const command = button.dataset.command || "";
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(command);
+  } else {
+    const input = document.createElement("textarea");
+    input.value = command;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand("copy");
+    input.remove();
+  }
+  button.textContent = "✓";
+  setTimeout(() => { button.textContent = "⧉"; }, 1200);
+});
 window.loadResources = loadResources;

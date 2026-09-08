@@ -6,7 +6,7 @@ param(
   [int]$Port = 8391,
   [string]$WorkRoot = "",
   [string]$BrowserProfileDir = "C:\TaskHub\profiles\acceptance",
-  [string]$BrowserAuthTarget = ""
+  [Parameter(Mandatory=$true)][string]$BrowserAuthTarget
 )
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Security
@@ -104,6 +104,3 @@ if ($Firewall) {
 Start-ScheduledTask -TaskName $TaskName
 
 Write-Host "TaskHub candidate node scheduled for $Identity on port $Port; work root: $Jobs"
-if ([string]::IsNullOrWhiteSpace($BrowserAuthTarget)) {
-  Write-Warning "BrowserAuthTarget is empty; browser acceptance remains unavailable until configured"
-}
