@@ -191,7 +191,7 @@
       <h1>系统配置</h1>
       <p class="muted">模型、节点、运行环境与实施前置条件统一在此检测。</p>
     </div>
-    <details class="providers-section resource-disclosure">
+    <details id="system-disclosure" class="providers-section resource-disclosure">
       <summary><span>系统检测</span><span id="system-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span></span>
@@ -199,7 +199,7 @@
       </div>
       <div id="system-checks" class="resource-table"></div>
     </details>
-    <details class="providers-section resource-disclosure">
+    <details id="providers-disclosure" class="providers-section resource-disclosure">
       <summary><span>模型资源</span><span id="provider-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span></span>
@@ -207,7 +207,7 @@
       </div>
       <div id="providers" class="resource-table"></div>
     </details>
-    <details class="providers-section resource-disclosure">
+    <details id="nodes-disclosure" class="providers-section resource-disclosure">
       <summary><span>执行节点</span><span id="node-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span></span>
@@ -215,8 +215,8 @@
       </div>
       <div id="nodes" class="resource-table"></div>
     </details>
-    <details class="providers-section resource-disclosure">
-      <summary><span>节点负载</span><span id="load-summary" class="muted">正在检查</span></summary>
+    <details id="load-disclosure" class="providers-section resource-disclosure">
+      <summary><span>节点负载（近 5 分钟峰值）</span><span id="load-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span></span>
         <button id="refresh-load" class="icon-button" title="刷新节点负载" aria-label="刷新节点负载">↻</button>

@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from taskhub_v2.domain.models import NodeDefinition, Plan
 from taskhub_v2.execution.runner import NodeRunner
 from taskhub_v2.node_agent import create_node_app
+from taskhub_v2.node_agent.system_load import RollingLoadSampler
 
 
 def archive(files: dict[str, bytes]) -> bytes:
@@ -19,6 +20,44 @@ def archive(files: dict[str, bytes]) -> bytes:
             info.size = len(content)
             bundle.addfile(info, io.BytesIO(content))
     return output.getvalue()
+
+
+def test_rolling_load_sampler_returns_five_minute_peaks():
+    sampler = RollingLoadSampler(window_seconds=300)
+    sampler.record(
+        {
+            "cpu_percent": 12.0,
+            "load_average_1m": 0.5,
+            "memory_used_percent": 40.0,
+            "memory_available_bytes": 600,
+            "disk_used_percent": 30.0,
+            "disk_free_bytes": 700,
+        },
+        sampled_at=100,
+    )
+    sampler.record(
+        {
+            "cpu_percent": 80.0,
+            "load_average_1m": 2.5,
+            "memory_used_percent": 35.0,
+            "memory_available_bytes": 650,
+            "disk_used_percent": 31.0,
+            "disk_free_bytes": 690,
+        },
+        sampled_at=200,
+    )
+
+    peak = sampler.peak(sampled_at=250)
+    assert peak["cpu_percent"] == 80.0
+    assert peak["memory_used_percent"] == 40.0
+    assert peak["disk_used_percent"] == 31.0
+    assert peak["memory_available_bytes"] == 650
+    assert peak["window_seconds"] == 300
+    assert peak["sample_count"] == 2
+
+    expired = sampler.peak(sampled_at=450)
+    assert expired["cpu_percent"] == 80.0
+    assert expired["sample_count"] == 1
 
 
 def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
@@ -61,6 +100,7 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
     assert {"cpu_percent", "memory_used_percent", "disk_used_percent"} <= set(
         health.json()["load"]
     )
+    assert health.json()["load"]["window_seconds"] == 300
     assert response.json()["tests"][0]["exit_code"] == 0
 
 

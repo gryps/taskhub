@@ -1,7 +1,76 @@
+import asyncio
 import os
 import shutil
+import threading
 import time
+from collections import deque
+from contextlib import suppress
 from pathlib import Path
+
+PEAK_FIELDS = ("cpu_percent", "load_average_1m", "memory_used_percent", "disk_used_percent")
+
+
+class RollingLoadSampler:
+    def __init__(self, window_seconds: int = 300):
+        self.window_seconds = window_seconds
+        self._samples: deque[tuple[float, dict[str, float | int | None]]] = deque()
+        self._lock = threading.Lock()
+        self._collector: asyncio.Task | None = None
+
+    async def start(self, root: Path, interval_seconds: int = 5) -> None:
+        await asyncio.to_thread(self.sample, root)
+        self._collector = asyncio.create_task(self._collect(root, interval_seconds))
+
+    async def stop(self) -> None:
+        if self._collector is None:
+            return
+        self._collector.cancel()
+        with suppress(asyncio.CancelledError):
+            await self._collector
+        self._collector = None
+
+    async def _collect(self, root: Path, interval_seconds: int) -> None:
+        while True:
+            await asyncio.sleep(interval_seconds)
+            await asyncio.to_thread(self.sample, root)
+
+    def sample(self, root: Path) -> dict[str, float | int | None]:
+        current = system_load(root)
+        self.record(current)
+        return current
+
+    def record(
+        self,
+        sample: dict[str, float | int | None],
+        sampled_at: float | None = None,
+    ) -> None:
+        now = time.monotonic() if sampled_at is None else sampled_at
+        with self._lock:
+            self._samples.append((now, sample))
+            self._discard_expired(now)
+
+    def peak(self, sampled_at: float | None = None) -> dict[str, float | int | None]:
+        now = time.monotonic() if sampled_at is None else sampled_at
+        with self._lock:
+            self._discard_expired(now)
+            if not self._samples:
+                return {"window_seconds": self.window_seconds, "sample_count": 0}
+            latest = dict(self._samples[-1][1])
+            for field in PEAK_FIELDS:
+                values = [
+                    sample[field]
+                    for _, sample in self._samples
+                    if sample.get(field) is not None
+                ]
+                latest[field] = max(values) if values else None
+            latest["window_seconds"] = self.window_seconds
+            latest["sample_count"] = len(self._samples)
+            return latest
+
+    def _discard_expired(self, now: float) -> None:
+        cutoff = now - self.window_seconds
+        while self._samples and self._samples[0][0] < cutoff:
+            self._samples.popleft()
 
 
 def system_load(root: Path) -> dict[str, float | int | None]:

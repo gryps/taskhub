@@ -143,12 +143,12 @@ function loadMetric(label, percent, detail) {
 }
 
 async function loadNodeLoad() {
-  byId("load-summary").textContent = "正在读取 CPU、内存和磁盘负载";
+  byId("load-summary").textContent = "正在读取近 5 分钟 CPU、内存和磁盘峰值";
   try {
     const data = await request("/api/nodes");
     const online = data.nodes.filter((item) => item.status === "ok");
     const busy = online.filter((item) => Number(item.load?.cpu_percent || 0) >= 85).length;
-    byId("load-summary").textContent = `${online.length}/${data.nodes.length} 在线 · ${busy} 个高负载`;
+    byId("load-summary").textContent = `${online.length}/${data.nodes.length} 在线 · ${busy} 个高负载 · 5 分钟峰值`;
     byId("node-load").innerHTML = `<div class="resource-row load-row resource-header">
       <span>节点</span><span>CPU</span><span>内存</span><span>磁盘</span>
     </div>${data.nodes.map((item) => {
@@ -157,9 +157,9 @@ async function loadNodeLoad() {
       return `<div class="resource-row load-row">
         <strong>${escapeHtml(item.node_id)}<small>${escapeHtml(offline ? item.detail || "节点不可达" : `${item.cpu_count || "—"} 核 · ${item.active}/${item.slots} 任务`)}</small></strong>
         ${offline ? '<span class="bad">离线</span><span>—</span><span>—</span>' : `
-        ${loadMetric("CPU 使用率", load.cpu_percent, load.load_average_1m === null || load.load_average_1m === undefined ? "1 分钟负载不可用" : `1 分钟负载 ${load.load_average_1m}`)}
-        ${loadMetric("内存使用率", load.memory_used_percent, `可用 ${formatBytes(load.memory_available_bytes)} / ${formatBytes(load.memory_total_bytes)}`)}
-        ${loadMetric("磁盘使用率", load.disk_used_percent, `可用 ${formatBytes(load.disk_free_bytes)} / ${formatBytes(load.disk_total_bytes)}`)}`}
+        ${loadMetric("CPU 峰值", load.cpu_percent, load.load_average_1m === null || load.load_average_1m === undefined ? "1 分钟负载不可用" : `1 分钟负载峰值 ${load.load_average_1m}`)}
+        ${loadMetric("内存峰值", load.memory_used_percent, `当前可用 ${formatBytes(load.memory_available_bytes)} / ${formatBytes(load.memory_total_bytes)}`)}
+        ${loadMetric("磁盘峰值", load.disk_used_percent, `当前可用 ${formatBytes(load.disk_free_bytes)} / ${formatBytes(load.disk_total_bytes)}`)}`}
       </div>`;
     }).join("")}`;
   } catch (error) {
@@ -168,11 +168,27 @@ async function loadNodeLoad() {
 }
 
 async function loadResources() {
-  await Promise.all([loadSystemConfig(), loadProviders(), loadNodes(), loadNodeLoad()]);
+  const sections = [
+    ["system-disclosure", loadSystemConfig],
+    ["providers-disclosure", loadProviders],
+    ["nodes-disclosure", loadNodes],
+    ["load-disclosure", loadNodeLoad],
+  ];
+  await Promise.all(sections.filter(([id]) => byId(id).open).map(([, load]) => load()));
+}
+
+function refreshWhenExpanded(id, load) {
+  byId(id).addEventListener("toggle", (event) => {
+    if (event.currentTarget.open) load();
+  });
 }
 
 byId("refresh-system").addEventListener("click", loadSystemConfig);
 byId("refresh-providers").addEventListener("click", loadProviders);
 byId("refresh-nodes").addEventListener("click", loadNodes);
 byId("refresh-load").addEventListener("click", loadNodeLoad);
+refreshWhenExpanded("system-disclosure", loadSystemConfig);
+refreshWhenExpanded("providers-disclosure", loadProviders);
+refreshWhenExpanded("nodes-disclosure", loadNodes);
+refreshWhenExpanded("load-disclosure", loadNodeLoad);
 window.loadResources = loadResources;

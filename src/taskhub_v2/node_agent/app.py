@@ -29,7 +29,7 @@ from taskhub_v2.node_agent.runtime import (
     repair_managed_virtualenv,
     run_commands,
 )
-from taskhub_v2.node_agent.system_load import system_load
+from taskhub_v2.node_agent.system_load import RollingLoadSampler
 from taskhub_v2.services.diagnostics import coding_prerequisites_ok, node_diagnostics
 
 JOB_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
@@ -59,6 +59,7 @@ class NodeRuntime:
         self.root = Path(root).resolve()
         self.max_upload_bytes = max_upload_bytes
         self.locks: dict[str, asyncio.Lock] = {}
+        self.load_sampler = RollingLoadSampler()
 
     def authorize(self, authorization: str) -> None:
         supplied = authorization.removeprefix("Bearer ")
@@ -89,7 +90,11 @@ def create_node_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         runtime.root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        yield
+        await runtime.load_sampler.start(runtime.root)
+        try:
+            yield
+        finally:
+            await runtime.load_sampler.stop()
 
     app = FastAPI(title="TaskHub Node Agent", version="0.1.0", lifespan=lifespan)
 
@@ -102,7 +107,7 @@ def create_node_app() -> FastAPI:
             "node_id": runtime.node_id,
             "cpu_count": os.cpu_count() or 1,
             "disk_free_bytes": usage.free,
-            "load": await asyncio.to_thread(system_load, runtime.root),
+            "load": runtime.load_sampler.peak(),
             "capabilities": await asyncio.to_thread(detect_capabilities),
             "versions": await asyncio.to_thread(browser_versions),
             "system": await asyncio.to_thread(node_diagnostics),

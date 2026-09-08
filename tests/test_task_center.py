@@ -114,11 +114,15 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert html.count("任务中心") >= 1
         assert 'id="nav-workflow"' in html and "开发流程" in html
         assert 'id="nav-resources"' in html and "系统配置" in html
-        assert html.count('<details class="providers-section resource-disclosure">') == 4
+        assert html.count('class="providers-section resource-disclosure">') == 4
+        assert all(
+            f'id="{name}-disclosure"' in html
+            for name in ("system", "providers", "nodes", "load")
+        )
         assert '<summary><span>系统检测</span>' in html
         assert '<summary><span>模型资源</span>' in html
         assert '<summary><span>执行节点</span>' in html
-        assert '<summary><span>节点负载</span>' in html
+        assert '<summary><span>节点负载（近 5 分钟峰值）</span>' in html
         assert 'id="revise"' in html and "退回实施" in html
         assert 'id="manual"' in html and "平台处置" in html
         assert 'id="configure-resources"' in html and "更换节点/模型" in html
