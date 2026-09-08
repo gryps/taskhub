@@ -167,12 +167,50 @@ async function loadNodeLoad() {
   }
 }
 
+async function loadAcceptancePrerequisites() {
+  byId("acceptance-prerequisites-summary").textContent = "正在检测测试数据库与浏览器授权";
+  try {
+    const data = await request("/api/system/config");
+    const rows = (data.nodes || []).map((node) => {
+      const database = node.test_database || {};
+      const browser = node.browser_prerequisites || {};
+      const databaseStatus = database.available ? "pass" : database.configured ? "fail" : "warn";
+      const browserRelevant = (node.workloads || []).includes("browser_acceptance");
+      const browserStatus = !browserRelevant ? "pass" : browser.authenticated ? "pass" : "fail";
+      return `
+        <div class="resource-row check-row">
+          <strong>${escapeHtml(node.node_id)}<small>测试数据库</small></strong>
+          <span class="${checkStatusClass(databaseStatus)}">${checkStatusLabel(databaseStatus)}</span>
+          <span>${escapeHtml(database.detail || "未配置")}</span>
+          <span>${escapeHtml((database.environment_names || []).join(" · ") || "TASKHUB_TEST_DATABASE_ADMIN_DSN")}</span>
+        </div>
+        <div class="resource-row check-row">
+          <strong>${escapeHtml(node.node_id)}<small>浏览器 Profile / 授权</small></strong>
+          <span class="${checkStatusClass(browserStatus)}">${checkStatusLabel(browserStatus)}</span>
+          <span>${escapeHtml(browserRelevant ? browser.detail || "未上报" : "该节点不承担浏览器验收")}</span>
+          <span>${escapeHtml(browser.target || browser.profile || "—")}</span>
+        </div>`;
+    }).join("");
+    const databaseReady = (data.nodes || []).filter((node) => node.test_database?.available).length;
+    const browserNodes = (data.nodes || []).filter((node) => (node.workloads || []).includes("browser_acceptance"));
+    const browserReady = browserNodes.filter((node) => node.browser_prerequisites?.authenticated).length;
+    byId("acceptance-prerequisites-summary").textContent =
+      `测试数据库 ${databaseReady} 个就绪 · 浏览器授权 ${browserReady}/${browserNodes.length} 就绪`;
+    byId("acceptance-prerequisites").innerHTML = `<div class="resource-row resource-header">
+      <span>节点 / 配置</span><span>结果</span><span>状态</span><span>目标 / 环境变量</span>
+    </div>${rows}`;
+  } catch (error) {
+    byId("acceptance-prerequisites-summary").textContent = error.message;
+  }
+}
+
 async function loadResources() {
   const sections = [
     ["system-disclosure", loadSystemConfig],
     ["providers-disclosure", loadProviders],
     ["nodes-disclosure", loadNodes],
     ["load-disclosure", loadNodeLoad],
+    ["acceptance-prerequisites-disclosure", loadAcceptancePrerequisites],
   ];
   await Promise.all(sections.filter(([id]) => byId(id).open).map(([, load]) => load()));
 }
@@ -191,4 +229,6 @@ refreshWhenExpanded("system-disclosure", loadSystemConfig);
 refreshWhenExpanded("providers-disclosure", loadProviders);
 refreshWhenExpanded("nodes-disclosure", loadNodes);
 refreshWhenExpanded("load-disclosure", loadNodeLoad);
+byId("refresh-acceptance-prerequisites").addEventListener("click", loadAcceptancePrerequisites);
+refreshWhenExpanded("acceptance-prerequisites-disclosure", loadAcceptancePrerequisites);
 window.loadResources = loadResources;

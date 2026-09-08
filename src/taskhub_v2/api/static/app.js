@@ -361,6 +361,7 @@ async function createProject(event) {
       base_ref: byId("project-branch").value,
       test_commands: byId("project-tests").value,
       acceptance_commands: byId("project-acceptance").value,
+      test_database: byId("project-test-database").checked,
     })});
     await loadProjects(project.id);
     byId("project-message").textContent = `${project.name} 已创建并设为当前项目`;
@@ -399,6 +400,7 @@ async function attachProject(event) {
       base_ref: byId("attach-project-branch").value,
       test_commands: byId("attach-project-tests").value,
       acceptance_commands: byId("attach-project-acceptance").value,
+      test_database: byId("attach-project-test-database").checked,
     })});
     await loadProjects(project.id);
     message.textContent = `${project.name} 已接入并设为当前项目`;

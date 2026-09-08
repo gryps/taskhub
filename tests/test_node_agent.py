@@ -391,3 +391,21 @@ def test_node_health_disables_coding_when_workspace_sandbox_fails(tmp_path, monk
     assert payload["capabilities"]["workspace_write_sandbox"] is False
     assert payload["capabilities"]["coding"] is False
     assert payload["system"]["checks"][0]["status"] == "fail"
+
+
+def test_runtime_capabilities_include_acceptance_prerequisites(monkeypatch):
+    import taskhub_v2.node_agent.app as agent_module
+
+    monkeypatch.setattr(agent_module, "detect_capabilities", lambda: {"python3": True})
+
+    capabilities = agent_module.runtime_capabilities(
+        {"available": True},
+        {"profile_configured": True, "authenticated": False},
+    )
+
+    assert capabilities == {
+        "python3": True,
+        "test_database": True,
+        "browser_profile": True,
+        "browser_authenticated": False,
+    }

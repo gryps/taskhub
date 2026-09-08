@@ -89,6 +89,7 @@ class ProjectDefinition(BaseModel):
     base_ref: str = "main"
     test_commands: list[list[str]] = Field(default_factory=list)
     acceptance_commands: list[list[str]] = Field(default_factory=list)
+    acceptance_capabilities: set[str] = Field(default_factory=set)
     test_timeout_seconds: int = Field(default=600, ge=1, le=3600)
     max_revision_attempts: int = Field(default=2, ge=0, le=10)
 

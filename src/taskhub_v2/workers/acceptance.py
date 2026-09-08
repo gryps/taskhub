@@ -77,6 +77,7 @@ class ProjectAcceptanceGateway:
                 project.test_timeout_seconds,
                 implementation.workspace.path,
                 workload="acceptance",
+                required_capabilities_override=project.acceptance_capabilities,
             )
             failed = [test for test in scheduled.tests if test.exit_code]
             artifact = self.artifacts.write_text(

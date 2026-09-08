@@ -105,7 +105,8 @@ def test_scheduler_treats_npx_as_npm_capability(tmp_path):
         runner = RecordingRunner(
             capabilities={
                 "node-a": {"windows_gui": True, "playwright": True, "screenshot": True,
-                           "trace": True, "npm": True},
+                    "trace": True, "npm": True, "browser_profile": True,
+                    "browser_authenticated": True},
             }
         )
         path = tmp_path / "nodes.json"
@@ -129,7 +130,9 @@ def test_scheduler_preserves_single_browser_node_execution_failure(tmp_path):
                     "playwright": True,
                     "screenshot": True,
                     "trace": True,
-                    "npm": True,
+                        "npm": True,
+                        "browser_profile": True,
+                        "browser_authenticated": True,
                 },
             },
         )
@@ -240,7 +243,8 @@ def test_browser_preflight_does_not_execute_or_reserve_slots(tmp_path):
     path.write_text(json.dumps({"nodes": [{"id": "windows-gui-34", "kind": "remote",
         "url": "http://192.168.31.34:8301", "workloads": ["browser_acceptance"]}]}))
     capabilities = dict.fromkeys(["windows_gui", "playwright", "chromium", "edge",
-                                  "screenshot", "video", "trace", "python3", "pytest"], True)
+                                  "screenshot", "video", "trace", "python3", "pytest",
+                                  "browser_profile", "browser_authenticated"], True)
     runner = RecordingRunner(capabilities={"windows-gui-34": capabilities})
     scheduler = NodeScheduler(NodeRegistry(str(path)), runner, str(tmp_path / "state.json"))
 

@@ -34,6 +34,20 @@ Test and build execution can be distributed with `TASKHUB_TEST_RUNNER=scheduled`
 The controller sends a credential-filtered workspace archive to the selected node;
 model credentials and the Git authority remain on the controller.
 
+## Acceptance Prerequisites
+
+Database acceptance is a node capability, not a project-owned credential. Install it on a
+designated Ubuntu acceptance node with `scripts/install_test_database_node.sh`. The node keeps
+the administrator DSN private, creates an isolated database for each execution, injects the
+configured environment names, and force-drops the database after success or failure. Projects
+that require it declare `acceptance_capabilities: ["test_database"]`.
+
+Windows browser nodes configure `TASKHUB_BROWSER_PROFILE_DIR`,
+`TASKHUB_BROWSER_AUTH_TARGET`, and `TASKHUB_BROWSER_AUTH_READY_FILE` during admission. Run
+`deploy/windows/authorize-browser-profile.ps1` once in the interactive desktop account. Browser
+jobs are rejected by preflight until the dedicated profile and authorization marker are present.
+Both states are visible under **系统配置 / 验收前置配置** before a project run starts.
+
 ## Create A Project
 
 The primary UI action is **Create project**. Enter a display name, select the project

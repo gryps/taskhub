@@ -4,7 +4,9 @@ param(
   [string]$TaskName = "TaskHubCandidateNodeAgent",
   [string]$NodeId = "windows-gui-34-candidate",
   [int]$Port = 8391,
-  [string]$WorkRoot = ""
+  [string]$WorkRoot = "",
+  [string]$BrowserProfileDir = "C:\TaskHub\profiles\acceptance",
+  [string]$BrowserAuthTarget = ""
 )
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Security
@@ -34,6 +36,7 @@ if (-not (Test-Path $PackagePath)) {
 }
 
 New-Item -ItemType Directory -Force -Path $Jobs, $Secrets | Out-Null
+New-Item -ItemType Directory -Force -Path $BrowserProfileDir | Out-Null
 & icacls.exe $Jobs /inheritance:r /grant:r "${Identity}:(OI)(CI)M" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Failed to grant the node account workspace access" }
 & $Python -m venv $Venv
@@ -75,6 +78,9 @@ Add-Type -AssemblyName System.Security
 `$env:TASKHUB_NODE_ID = "$NodeId"
 `$env:TASKHUB_NODE_WORK_ROOT = "$Jobs"
 `$env:TASKHUB_WINDOWS_GUI = "true"
+`$env:TASKHUB_BROWSER_PROFILE_DIR = "$BrowserProfileDir"
+`$env:TASKHUB_BROWSER_AUTH_TARGET = "$BrowserAuthTarget"
+`$env:TASKHUB_BROWSER_AUTH_READY_FILE = "$Root\browser-auth-ready.json"
 Set-Location "$Root"
 & "$VenvPython" -m uvicorn taskhub_v2.node_agent:create_node_app --factory --host 0.0.0.0 --port $Port
 "@
@@ -98,3 +104,6 @@ if ($Firewall) {
 Start-ScheduledTask -TaskName $TaskName
 
 Write-Host "TaskHub candidate node scheduled for $Identity on port $Port; work root: $Jobs"
+if ([string]::IsNullOrWhiteSpace($BrowserAuthTarget)) {
+  Write-Warning "BrowserAuthTarget is empty; browser acceptance remains unavailable until configured"
+}

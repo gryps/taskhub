@@ -16,7 +16,7 @@ class LocalTestScheduler:
         self.node = NodeDefinition(id="controller-local", kind="local")
 
     async def run(
-        self, job_id, sticky_key, commands, timeout, workdir, workload="test"
+        self, job_id, sticky_key, commands, timeout, workdir, workload="test", **kwargs
     ) -> ScheduledTests:
         return await self.runner.run(self.node, job_id, commands, timeout, workdir)
 
@@ -58,7 +58,8 @@ class NodeScheduler:
     ) -> ScheduledTests:
         required = required_capabilities(commands)
         if workload == "browser_acceptance":
-            required.update({"windows_gui", "playwright", "screenshot", "trace"})
+            required.update({"windows_gui", "playwright", "screenshot", "trace",
+                             "browser_profile", "browser_authenticated"})
         required.update(required_capabilities_override or set())
         excluded: set[str] = set()
         failures = []
@@ -74,7 +75,10 @@ class NodeScheduler:
                     return await self.runner.run(node, job_id, commands, timeout, workdir,
                         required_capabilities=required, target_url=target_url,
                         git_commit=git_commit, artifact_paths=artifact_paths or [])
-                return await self.runner.run(node, job_id, commands, timeout, workdir)
+                return await self.runner.run(
+                    node, job_id, commands, timeout, workdir,
+                    required_capabilities=required,
+                )
             except Exception as exc:
                 failures.append(str(exc))
                 excluded.add(node.id)
@@ -93,7 +97,8 @@ class NodeScheduler:
         Execution checks again when acquiring its slot because health can change.
         """
         required = required_capabilities(commands) | capabilities | {
-            "windows_gui", "playwright", "screenshot", "trace"
+            "windows_gui", "playwright", "screenshot", "trace",
+            "browser_profile", "browser_authenticated"
         }
         nodes = [node for node in self.registry.list()
                  if node.enabled and "browser_acceptance" in node.workloads

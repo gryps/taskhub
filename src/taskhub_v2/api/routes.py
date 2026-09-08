@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -6,6 +7,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from taskhub_v2.artifacts import ArtifactStore
 
 from taskhub_v2.api.dependencies import get_run_service
+from taskhub_v2.browser import load_acceptance_contract
 from taskhub_v2.domain.models import (
     AcceptanceSubmission,
     ApprovalRequest,
@@ -18,6 +20,7 @@ from taskhub_v2.domain.models import (
     TaskPage,
     TaskSummary,
 )
+from taskhub_v2.execution.runner import NodeExecutionError
 from taskhub_v2.projects import ProjectNotFoundError
 from taskhub_v2.services.runs import RunConflictError, RunNotFoundError, RunService
 
@@ -31,11 +34,32 @@ async def health() -> dict[str, str]:
 
 
 @router.post("/runs", response_model=RunView, status_code=201)
-async def start_run(payload: StartRunRequest, service: Service) -> RunView:
+async def start_run(payload: StartRunRequest, request: Request, service: Service) -> RunView:
     try:
+        if request.app.state.settings.worker_mode != "git":
+            return await service.start(payload)
+        project = request.app.state.projects.get(payload.project_id)
+        health = await request.app.state.node_scheduler.status()
+        for capability in project.acceptance_capabilities:
+            ready = any(
+                item.get("status") == "ok"
+                and "acceptance" in item.get("workloads", [])
+                and item.get("capabilities", {}).get(capability)
+                for item in health
+            )
+            if not ready:
+                raise RunConflictError(f"验收前置配置未就绪：{capability}")
+        contract_path = Path(project.repository) / ".taskhub" / "acceptance.yaml"
+        if contract_path.is_file():
+            contract = load_acceptance_contract(project.repository)
+            await request.app.state.node_scheduler.preflight_browser(
+                [contract.command], contract.required_capabilities
+            )
         return await service.start(payload)
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail="project is not registered") from exc
+    except (NodeExecutionError, RunConflictError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/runs", response_model=TaskPage)

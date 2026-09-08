@@ -9,8 +9,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import threading
-import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +18,11 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from taskhub_v2.domain.models import Plan
+from taskhub_v2.node_agent.browser_capabilities import (
+    browser_prerequisites,
+    browser_versions,
+    probe_browsers,
+)
 from taskhub_v2.node_agent.coding import coding_available, modify_workspace, provider_health
 from taskhub_v2.node_agent.runtime import (
     PROXY_VARIABLES,
@@ -30,6 +33,7 @@ from taskhub_v2.node_agent.runtime import (
     run_commands,
 )
 from taskhub_v2.node_agent.system_load import RollingLoadSampler
+from taskhub_v2.node_agent.test_database import TestDatabaseManager
 from taskhub_v2.services.diagnostics import coding_prerequisites_ok, node_diagnostics
 
 JOB_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
@@ -86,6 +90,7 @@ def create_node_app() -> FastAPI:
         root=os.getenv("TASKHUB_NODE_WORK_ROOT", "/var/lib/taskhub-node/jobs"),
         max_upload_bytes=int(os.getenv("TASKHUB_NODE_MAX_UPLOAD_BYTES", "104857600")),
     )
+    test_databases = TestDatabaseManager.from_environment()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -102,13 +107,20 @@ def create_node_app() -> FastAPI:
     async def health(authorization: str = Header(default="")) -> dict:
         runtime.authorize(authorization)
         usage = shutil.disk_usage(runtime.root)
+        database = await asyncio.to_thread(test_databases.probe)
+        prerequisites = browser_prerequisites()
+        capabilities = await asyncio.to_thread(
+            runtime_capabilities, database, prerequisites
+        )
         return {
             "status": "ok",
             "node_id": runtime.node_id,
             "cpu_count": os.cpu_count() or 1,
             "disk_free_bytes": usage.free,
             "load": runtime.load_sampler.peak(),
-            "capabilities": await asyncio.to_thread(detect_capabilities),
+            "capabilities": capabilities,
+            "test_database": database,
+            "browser_prerequisites": prerequisites,
             "versions": await asyncio.to_thread(browser_versions),
             "system": await asyncio.to_thread(node_diagnostics),
             "provider_health": provider_health(),
@@ -162,7 +174,10 @@ def create_node_app() -> FastAPI:
         authorization: str = Header(default=""),
     ) -> dict:
         runtime.authorize(authorization)
-        capabilities = await asyncio.to_thread(detect_capabilities)
+        database = await asyncio.to_thread(test_databases.probe)
+        capabilities = await asyncio.to_thread(
+            runtime_capabilities, database, browser_prerequisites()
+        )
         missing = sorted(
             name
             for name in payload.required_capabilities
@@ -172,7 +187,7 @@ def create_node_app() -> FastAPI:
             raise HTTPException(
                 status_code=409,
                 detail={
-                    "code": "browser_capability_missing",
+                    "code": "node_capability_missing",
                     "missing": missing,
                     "node": runtime.node_id,
                 },
@@ -198,16 +213,26 @@ def create_node_app() -> FastAPI:
                 target, payload.commands, payload.required_capabilities, payload.timeout_seconds
             )
             if not any(test["exit_code"] for test in tests):
-                tests.extend(await run_commands(
-                target, payload.commands, payload.timeout_seconds,
-                execution_environment={
+                environment = {
                     "TASKHUB_PREVIEW_URL": payload.target_url,
                     "TASKHUB_TARGET_URL": payload.target_url,
                     "TASKHUB_GIT_COMMIT": payload.git_commit,
                     "TASKHUB_CHROMIUM_CHANNEL": "chrome",
                     "TASKHUB_EDGE_CHANNEL": "msedge",
-                },
-                ))
+                    "TASKHUB_BROWSER_PROFILE_DIR": os.getenv("TASKHUB_BROWSER_PROFILE_DIR", ""),
+                    "TASKHUB_BROWSER_AUTH_TARGET": os.getenv("TASKHUB_BROWSER_AUTH_TARGET", ""),
+                }
+                if "test_database" in payload.required_capabilities:
+                    with test_databases.database(job_id) as database_environment:
+                        tests.extend(await run_commands(
+                            target, payload.commands, payload.timeout_seconds,
+                            execution_environment={**environment, **database_environment},
+                        ))
+                else:
+                    tests.extend(await run_commands(
+                        target, payload.commands, payload.timeout_seconds,
+                        execution_environment=environment,
+                    ))
             artifacts = _artifact_manifest(
                 target, payload.artifact_paths, runtime.max_upload_bytes
             )
@@ -283,60 +308,16 @@ def detect_capabilities() -> dict[str, bool]:
         "pytest": importlib.util.find_spec("pytest") is not None,
         "workspace_write_sandbox": coding_prerequisites_ok(),
         "coding": coding_ready,
-        **_probe_browsers()["capabilities"],
+        **probe_browsers()["capabilities"],
     }
 
 
-_probe_lock = threading.Lock()
-_probe_cache = None
-_probe_deadline = 0.0
-
-
-def _probe_browsers() -> dict:
-    global _probe_cache, _probe_deadline
-    with _probe_lock:
-        if _probe_cache is None or time.monotonic() >= _probe_deadline:
-            _probe_cache = _run_browser_probe()
-            _probe_deadline = time.monotonic() + 30
-        return _probe_cache
-
-
-def _run_browser_probe() -> dict:
-    empty = {"capabilities": dict.fromkeys(
-        ("windows_gui", "playwright", "chromium", "edge", "screenshot", "video", "trace"), False
-    ), "versions": {}}
-    if os.name != "nt":
-        return empty
-    try:
-        result = subprocess.run(
-            [sys.executable, "-m", "taskhub_v2.node_agent.browser_probe"],
-            capture_output=True, text=True, timeout=90, check=True,
-        )
-        return json.loads(result.stdout)
-    except (OSError, subprocess.SubprocessError, ValueError):
-        return empty
-
-
-def _browser_path(*names: str) -> str | None:
-    for name in names:
-        found = shutil.which(name)
-        if found:
-            return found
-    if os.name == "nt":
-        roots = [os.getenv("PROGRAMFILES"), os.getenv("PROGRAMFILES(X86)"), os.getenv("LOCALAPPDATA")]
-        relatives = ["Microsoft/Edge/Application/msedge.exe", "Google/Chrome/Application/chrome.exe"]
-        for root in filter(None, roots):
-            for relative in relatives:
-                candidate = Path(root) / relative
-                if candidate.is_file() and any(name.lower() in candidate.name.lower() for name in names):
-                    return str(candidate)
-    return None
-
-
-def browser_versions() -> dict[str, str]:
-    versions = {"platform": platform.platform(), "python": platform.python_version()}
-    versions.update(_probe_browsers()["versions"])
-    return versions
+def runtime_capabilities(database: dict, browser: dict) -> dict[str, bool]:
+    capabilities = detect_capabilities()
+    capabilities["test_database"] = bool(database.get("available"))
+    capabilities["browser_profile"] = bool(browser.get("profile_configured"))
+    capabilities["browser_authenticated"] = bool(browser.get("authenticated"))
+    return capabilities
 
 
 def _artifact_manifest(root: Path, requested: list[str], max_bytes: int) -> list[dict]:

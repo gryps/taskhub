@@ -15,6 +15,7 @@ class ProjectCreateRequest(BaseModel):
     base_ref: str = Field(default="main", pattern=r"^[A-Za-z0-9._/-]{1,200}$")
     test_commands: str = Field(default="", max_length=4000)
     acceptance_commands: str = Field(default="", max_length=4000)
+    test_database: bool = False
 
 
 class ProjectAttachRequest(BaseModel):
@@ -23,6 +24,7 @@ class ProjectAttachRequest(BaseModel):
     base_ref: str = Field(default="main", pattern=r"^[A-Za-z0-9._/-]{1,200}$")
     test_commands: str = Field(default="", max_length=4000)
     acceptance_commands: str = Field(default="", max_length=4000)
+    test_database: bool = False
 
 
 def parse_test_commands(value: str) -> list[list[str]]:
@@ -44,6 +46,7 @@ def project_view(item: ProjectDefinition) -> dict:
         "base_ref": item.base_ref,
         "test_commands": item.test_commands,
         "acceptance_commands": item.acceptance_commands,
+        "test_database": "test_database" in item.acceptance_capabilities,
         "repository_ready": True,
     }
 
@@ -71,6 +74,7 @@ async def create_project(payload: ProjectCreateRequest, request: Request) -> dic
             payload.base_ref,
             parse_test_commands(payload.test_commands),
             parse_test_commands(payload.acceptance_commands),
+            {"test_database"} if payload.test_database else set(),
         )
     except ProjectConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -88,6 +92,7 @@ async def attach_project(payload: ProjectAttachRequest, request: Request) -> dic
             payload.base_ref,
             parse_test_commands(payload.test_commands),
             parse_test_commands(payload.acceptance_commands),
+            {"test_database"} if payload.test_database else set(),
         )
     except ProjectConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

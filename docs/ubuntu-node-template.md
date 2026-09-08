@@ -45,3 +45,8 @@ The command must return `status: qualified` before the VM is sealed.
 Ubuntu nodes with a different OS release, interpreter, Node.js version, package
 set, or dependency fingerprint are rejected. A project venv must never be reused
 as a TaskHub node venv. Windows browser nodes use their separate Windows baseline.
+
+An Ubuntu node assigned PostgreSQL acceptance uses
+`scripts/install_test_database_node.sh`. The installer provisions a localhost-only administrator
+role in the node-private environment file. Projects opt in with the `test_database` acceptance
+capability; the Agent creates and destroys a separate database around every actual execution.
