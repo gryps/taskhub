@@ -59,9 +59,12 @@ def test_openai_provider_parses_structured_plan():
 
 
 def test_openai_supervision_uses_strict_backward_compatible_schema():
+    requests = []
+
     async def handler(request: httpx.Request) -> httpx.Response:
         body = request.read()
         payload = json.loads(body)
+        requests.append(payload)
         schema = payload["text"]["format"]["schema"]
         assert set(schema["required"]) == set(schema["properties"])
         assert "missing_evidence" in schema["required"]
@@ -93,6 +96,9 @@ def test_openai_supervision_uses_strict_backward_compatible_schema():
         await client.aclose()
         assert result.content.decision == "approve"
         assert result.content.missing_evidence == []
+        prompt = requests[0]["input"]
+        assert "A missing_evidence category means no passed evidence" in prompt
+        assert "Do not invent a database-engine" in prompt
 
     asyncio.run(scenario())
 
