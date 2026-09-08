@@ -479,6 +479,7 @@ def test_revision_limit_requires_owner_decision():
         assert manual.status == RunStatus.WAITING
         assert manual.stage == Stage.SUPERVISION
         assert manual.pending_action["type"] == "manual_intervention"
+        assert "Do not modify the managed-project" in manual.pending_action["description"]
         assert manual.next_nodes == ["revision_limit"]
         assert worker.calls == 3
         rejected = await service.resume(

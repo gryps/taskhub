@@ -115,7 +115,7 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="nav-workflow"' in html and "开发流程" in html
         assert 'id="nav-resources"' in html and "系统资源" in html
         assert 'id="revise"' in html and "退回实施" in html
-        assert 'id="manual"' in html and "转人工处理" in html
+        assert 'id="manual"' in html and "平台处置" in html
         assert 'id="configure-resources"' in html and "更换节点/模型" in html
         assert 'id="add-evidence"' in html and "补充证据" in html
         assert html.count('id="archive-task"') == 1

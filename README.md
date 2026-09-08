@@ -80,6 +80,9 @@ make run
 
 ## Architecture Rules
 
+- TaskHub maintainers never implement or repair managed-project code directly.
+  Managed-project changes must come from a recorded TaskHub coding run; operators
+  may repair only the platform, deployment, node environment, or configuration.
 - Workflow transitions belong in `src/taskhub_v2/workflows/` only.
 - API handlers call application services and never mutate workflow state directly.
 - Providers and workers implement protocols; graphs do not contain vendor or host logic.

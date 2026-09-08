@@ -20,7 +20,6 @@ from taskhub_v2.providers.egress import (
     provider_proxy,
 )
 
-
 _ACCOUNT_LOCKS: dict[str, asyncio.Lock] = {}
 
 
@@ -110,6 +109,9 @@ class CodexAccountProvider:
     ) -> ModelResult[CodeChangeSummary]:
         prompt = (
             "Implement the approved requirement in the current Git worktree. "
+            "You are the authorized TaskHub coding worker for managed-project changes; "
+            "make every required source and test change yourself in this worktree so "
+            "the work is attributable to this run. "
             "Do not commit. Do not modify credentials or environment files. "
             "Return a concise summary and tests you ran.\n"
             f"Requirement:\n{requirement}\nApproved plan:\n{plan.model_dump_json()}"

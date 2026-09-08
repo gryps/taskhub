@@ -26,6 +26,9 @@ which adapter receives the next call.
 
 ## Recovery Contract
 
+- A blocked managed-project run is recovered by fixing TaskHub, its node environment,
+  or project configuration and then rerunning the workflow. Platform maintainers do
+  not edit the managed-project worktree as a substitute for the coding worker.
 - A run ID is also the LangGraph `thread_id`.
 - Every graph uses a durable production checkpointer.
 - Human decisions enter only through `Command(resume=...)`.
@@ -34,6 +37,19 @@ which adapter receives the next call.
 - Publication is a separate gateway and only runs after a graph-owned human interrupt.
 - Stale production lines rebase and retest before a fast-forward authority merge.
 - Timeline records are graph state deltas accumulated by the parent graph.
+
+## Managed-Project Change Authority
+
+The TaskHub coding worker is the sole writer for managed-project implementation
+changes. Every such change must be attributable to a run and retain model, test,
+artifact, and Git evidence. Human intervention at a workflow boundary is limited
+to decisions, evidence submission, and remediation of TaskHub, deployment,
+execution-node, or configuration faults. It never authorizes a TaskHub maintainer
+to implement the product change outside the workflow.
+
+Maintainers may inspect managed projects without mutation to diagnose failures.
+Convenience, retry exhaustion, and schedule pressure are not exceptions to the
+no-modification boundary.
 
 ## Dependency Direction
 

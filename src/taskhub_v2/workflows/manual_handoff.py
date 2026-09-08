@@ -25,14 +25,18 @@ async def handle_revision_limit(state: CodingState) -> dict:
             "decision": decision,
             "pending_action": {
                 "type": "manual_intervention",
-                "title": "Task transferred to manual handling",
+                "title": "Platform or environment remediation required",
+                "description": (
+                    "Repair TaskHub, node environment, or configuration, then retry. "
+                    "Do not modify the managed-project implementation manually."
+                ),
                 "choices": ["reassess", "retry", "cancel"],
             },
             "current_stage": Stage.SUPERVISION.value,
             "status": RunStatus.WAITING.value,
             "timeline": event(
                 Stage.SUPERVISION,
-                "Transferred to manual handling",
+                "Transferred for platform or environment remediation",
                 "owner",
                 response.get("comment", "") if isinstance(response, dict) else "",
             ),
