@@ -146,6 +146,8 @@ def test_candidate_approval_consistency(browser_name, record_property):
             expect(pages[0].locator("#acceptance-submit")).to_be_visible()
             pages[0].locator("#configure-resources").click()
             expect(pages[0].locator("#resource-page")).to_be_visible()
+            expect(pages[0].locator(".resource-disclosure[open]")).to_have_count(0)
+            pages[0].locator(".resource-disclosure summary").nth(2).click()
             expect(pages[0].locator("#nodes")).to_contain_text(
                 "windows-gui-34", timeout=120_000
             )

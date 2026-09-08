@@ -129,6 +129,13 @@ h2 { margin-top: 28px; font-size: 16px; }
 .resource-title h1 { margin: 0; font-size: 22px; }
 .resource-title p { margin: 6px 0 0; }
 .providers-section { margin-top: 34px; border-top: 1px solid #d5dcd9; padding-top: 20px; }
+.resource-disclosure > summary { display: flex; align-items: center; gap: 16px; padding: 2px 4px 14px; cursor: pointer; list-style: none; }
+.resource-disclosure > summary::-webkit-details-marker { display: none; }
+.resource-disclosure > summary::after { content: "⌄"; margin-left: auto; color: #687771; font-size: 18px; }
+.resource-disclosure[open] > summary::after { content: "⌃"; }
+.resource-disclosure > summary > span:first-child { font-size: 16px; font-weight: 700; color: #18201d; }
+.resource-disclosure > summary .muted { margin-left: auto; text-align: right; }
+.resource-actions { min-height: 36px; margin: -6px 0 8px; }
 .section-head { display: flex; align-items: center; justify-content: space-between; }
 .section-head h2 { margin: 0; }
 .icon-button { width: 36px; min-height: 36px; padding: 0; font-size: 20px; }

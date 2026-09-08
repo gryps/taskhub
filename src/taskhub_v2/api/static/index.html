@@ -191,30 +191,30 @@
       <h1>系统配置</h1>
       <p class="muted">模型、节点、运行环境与实施前置条件统一在此检测。</p>
     </div>
-    <section class="providers-section">
-      <div class="section-head">
-        <h2>系统检测</h2>
+    <details class="providers-section resource-disclosure">
+      <summary><span>系统检测</span><span id="system-summary" class="muted">正在检查</span></summary>
+      <div class="section-head resource-actions">
+        <span></span>
         <button id="refresh-system" class="icon-button" title="刷新系统检测" aria-label="刷新系统检测">↻</button>
       </div>
-      <p id="system-summary" class="muted">正在检查</p>
       <div id="system-checks" class="resource-table"></div>
-    </section>
-    <section class="providers-section">
-      <div class="section-head">
-        <h2>模型资源</h2>
+    </details>
+    <details class="providers-section resource-disclosure">
+      <summary><span>模型资源</span><span id="provider-summary" class="muted">正在检查</span></summary>
+      <div class="section-head resource-actions">
+        <span></span>
         <button id="refresh-providers" class="icon-button" title="刷新模型状态" aria-label="刷新模型状态">↻</button>
       </div>
-      <p id="provider-summary" class="muted">正在检查</p>
       <div id="providers" class="resource-table"></div>
-    </section>
-    <section class="providers-section">
-      <div class="section-head">
-        <h2>执行节点</h2>
+    </details>
+    <details class="providers-section resource-disclosure">
+      <summary><span>执行节点</span><span id="node-summary" class="muted">正在检查</span></summary>
+      <div class="section-head resource-actions">
+        <span></span>
         <button id="refresh-nodes" class="icon-button" title="刷新节点状态" aria-label="刷新节点状态">↻</button>
       </div>
-      <p id="node-summary" class="muted">正在检查</p>
       <div id="nodes" class="resource-table"></div>
-    </section>
+    </details>
     </section>
     </div>
   </main>
