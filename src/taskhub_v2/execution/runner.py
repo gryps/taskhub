@@ -23,7 +23,9 @@ from taskhub_v2.domain.models import (
 )
 from taskhub_v2.providers.egress import direct_environment
 
-EXCLUDED_PARTS = {".git", "__pycache__", ".pytest_cache", "node_modules", "dist", "build"}
+EXCLUDED_PARTS = {
+    ".git", ".venv", "__pycache__", ".pytest_cache", "node_modules", "dist", "build"
+}
 EXCLUDED_NAMES = {".env", ".env.local", "auth.json", "credentials.json", ".coverage"}
 
 

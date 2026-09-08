@@ -12,7 +12,9 @@ from taskhub_v2.providers.health import ProviderHealthStore
 from taskhub_v2.workers.factory import build_coder
 
 FORBIDDEN_NAMES = {".env", ".env.local", "auth.json", "credentials.json"}
-EXCLUDED_PARTS = {".git", "__pycache__", ".pytest_cache", "node_modules", "dist", "build"}
+EXCLUDED_PARTS = {
+    ".git", ".venv", "__pycache__", ".pytest_cache", "node_modules", "dist", "build"
+}
 
 
 def coding_available() -> bool:

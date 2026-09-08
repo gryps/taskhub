@@ -26,6 +26,7 @@ from taskhub_v2.node_agent.runtime import (
     UnsafeArchiveError,
     extract_workspace,
     normalize_command,
+    repair_managed_virtualenv,
     run_commands,
 )
 from taskhub_v2.services.diagnostics import coding_prerequisites_ok, node_diagnostics
@@ -179,6 +180,8 @@ def create_node_app() -> FastAPI:
         async with lock:
             request_key = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
             result_file = runtime.result_file(target)
+            if repair_managed_virtualenv(target):
+                result_file.unlink(missing_ok=True)
             if result_file.is_file():
                 saved = json.loads(result_file.read_text(encoding="utf-8"))
                 if saved.get("request_key") == request_key:

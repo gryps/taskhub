@@ -4,7 +4,6 @@ import shutil
 import sys
 import tarfile
 import tempfile
-import platform
 from pathlib import Path
 
 FORBIDDEN_NAMES = {".env", ".env.local", "auth.json", "credentials.json"}
@@ -62,6 +61,20 @@ def extract_workspace(archive: Path, target: Path, root: Path) -> None:
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise
+
+
+def repair_managed_virtualenv(workdir: Path) -> bool:
+    venv = workdir / ".venv"
+    if not venv.exists():
+        return False
+    python_candidates = (venv / "bin" / "python", venv / "Scripts" / "python.exe")
+    if any(candidate.is_file() for candidate in python_candidates):
+        return False
+    if venv.is_symlink() or not venv.is_dir():
+        venv.unlink()
+    else:
+        shutil.rmtree(venv)
+    return True
 
 
 async def run_commands(

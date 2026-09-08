@@ -12,7 +12,9 @@ from taskhub_v2.workers.coding_router import CodexCodingRouter
 from taskhub_v2.workers.test_diagnostics import failed_test_diagnostics
 
 FORBIDDEN_FILES = {".env", ".env.local", "auth.json", "credentials.json"}
-GENERATED_PARTS = {"__pycache__", ".pytest_cache", "node_modules", "dist", "build"}
+GENERATED_PARTS = {
+    ".venv", "__pycache__", ".pytest_cache", "node_modules", "dist", "build"
+}
 GENERATED_SUFFIXES = {".pyc", ".pyo", ".coverage"}
 
 

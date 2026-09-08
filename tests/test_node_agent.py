@@ -92,6 +92,46 @@ def test_node_reuses_persisted_execution_result(tmp_path, monkeypatch):
     assert calls == 1
 
 
+def test_node_repairs_incomplete_managed_virtualenv_before_execute(
+    tmp_path, monkeypatch
+):
+    import taskhub_v2.node_agent.app as agent_module
+
+    monkeypatch.setenv("TASKHUB_NODE_ID", "node-test")
+    monkeypatch.setenv("TASKHUB_NODE_TOKEN", "node-secret")
+    monkeypatch.setenv("TASKHUB_NODE_WORK_ROOT", str(tmp_path / "jobs"))
+    payload = archive({"value.txt": b"ready\n"})
+    digest = hashlib.sha256(payload).hexdigest()
+    headers = {"Authorization": "Bearer node-secret"}
+    observed = []
+
+    async def fake_run_commands(workdir, *args, **kwargs):
+        observed.append(not (workdir / ".venv").exists())
+        return [{"command": ["test"], "exit_code": 0, "output_tail": "ok"}]
+
+    monkeypatch.setattr(agent_module, "run_commands", fake_run_commands)
+    request = {
+        "commands": [["test"]], "timeout_seconds": 30, "archive_sha256": digest
+    }
+    with TestClient(create_node_app()) as client:
+        client.put(
+            f"/api/jobs/job-repair/workspace?sha256={digest}",
+            content=payload,
+            headers=headers,
+        ).raise_for_status()
+        job = tmp_path / "jobs" / "job-repair"
+        (job / ".venv" / "bin").mkdir(parents=True)
+        stale = job / ".taskhub-execution-result.json"
+        stale.write_text('{"request_key":"stale","result":{}}', encoding="utf-8")
+        response = client.post(
+            "/api/jobs/job-repair/execute", json=request, headers=headers
+        )
+
+    assert response.status_code == 200
+    assert observed == [True]
+    assert response.json()["tests"][0]["exit_code"] == 0
+
+
 def test_browser_node_installs_npm_dependencies_before_npx(tmp_path, monkeypatch):
     import taskhub_v2.node_agent.app as agent_module
 
