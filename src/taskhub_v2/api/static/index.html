@@ -74,6 +74,7 @@
           <label>基准分支<input id="project-branch" required value="main" maxlength="200"></label>
           <label class="wide">测试命令（每行一条）<textarea id="project-tests" rows="3" placeholder="python3 -m pytest -q"></textarea></label>
           <label class="wide">验收命令（每行一条，可选）<textarea id="project-acceptance" rows="3" placeholder="python3 -m pytest tests/acceptance -q"></textarea></label>
+          <label class="wide"><input id="project-test-database" type="checkbox"> 验收需要隔离 PostgreSQL 测试数据库</label>
         </div>
         <div class="form-actions">
           <button id="create-project" type="submit">创建并接入</button>
@@ -92,6 +93,7 @@
           <label class="wide">项目名称<input id="attach-project-name" required maxlength="100"></label>
           <label class="wide">测试命令（每行一条）<textarea id="attach-project-tests" rows="3"></textarea></label>
           <label class="wide">验收命令（每行一条，可选）<textarea id="attach-project-acceptance" rows="3"></textarea></label>
+          <label class="wide"><input id="attach-project-test-database" type="checkbox"> 验收需要隔离 PostgreSQL 测试数据库</label>
           <div class="form-actions wide">
             <button id="attach-project" type="submit" class="secondary">接入所选项目</button>
             <span id="attach-project-message" role="status"></span>
@@ -222,6 +224,14 @@
         <button id="refresh-load" class="icon-button" title="刷新节点负载" aria-label="刷新节点负载">↻</button>
       </div>
       <div id="node-load" class="resource-table"></div>
+    </details>
+    <details id="acceptance-prerequisites-disclosure" class="providers-section resource-disclosure">
+      <summary><span>验收前置配置</span><span id="acceptance-prerequisites-summary" class="muted">正在检查</span></summary>
+      <div class="section-head resource-actions">
+        <span></span>
+        <button id="refresh-acceptance-prerequisites" class="icon-button" title="刷新验收前置配置" aria-label="刷新验收前置配置">↻</button>
+      </div>
+      <div id="acceptance-prerequisites" class="resource-table"></div>
     </details>
     </section>
     </div>

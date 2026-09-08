@@ -29,7 +29,8 @@ class FakeProvisioner:
         self.repository_path = repository_path
 
     async def create(
-        self, name, project_id, base_ref, test_commands, acceptance_commands=None
+        self, name, project_id, base_ref, test_commands, acceptance_commands=None,
+        acceptance_capabilities=None,
     ):
         return self.registry.add(
             ProjectDefinition(
@@ -40,6 +41,7 @@ class FakeProvisioner:
                 base_ref=base_ref,
                 test_commands=test_commands,
                 acceptance_commands=acceptance_commands or [],
+                acceptance_capabilities=acceptance_capabilities or set(),
             )
         )
 
@@ -55,7 +57,8 @@ class FakeProvisioner:
         ]
 
     async def attach(
-        self, repository, name, base_ref, test_commands, acceptance_commands=None
+        self, repository, name, base_ref, test_commands, acceptance_commands=None,
+        acceptance_capabilities=None,
     ):
         assert repository == "shop.git"
         return self.registry.add(
@@ -67,6 +70,7 @@ class FakeProvisioner:
                 base_ref=base_ref,
                 test_commands=test_commands,
                 acceptance_commands=acceptance_commands or [],
+                acceptance_capabilities=acceptance_capabilities or set(),
             )
         )
 

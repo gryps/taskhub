@@ -40,6 +40,7 @@ def host_checks(settings: Settings | None, *, role: str) -> list[dict]:
         _command_check("runtime", "zip", "zip", "-v", optional=True),
         _command_check("runtime", "unzip", "unzip", "-v", optional=True),
         _command_check("runtime", "PostgreSQL client", "psql", "--version", optional=True),
+        _test_database_check(),
         _user_namespace_check(),
         _bubblewrap_check(),
     ]
@@ -146,6 +147,17 @@ def _bubblewrap_check() -> dict:
         "系统未安装，Codex 会尝试使用 bundled bubblewrap",
         status="warn",
         recommendation="建议安装 bubblewrap，并确认 user namespace 可用",
+    )
+
+
+def _test_database_check() -> dict:
+    from taskhub_v2.node_agent.test_database import TestDatabaseManager
+
+    result = TestDatabaseManager.from_environment().probe()
+    return _check(
+        "test_database", "隔离测试数据库", result["detail"],
+        status="pass" if result["available"] else "warn",
+        recommendation="配置 TASKHUB_TEST_DATABASE_ADMIN_DSN 并授予建库权限",
     )
 
 

@@ -7,6 +7,12 @@ the existing `TASKHUB_NODE_TOKEN` with that account's DPAPI key, and registers a
 interactive at-logon scheduled task. Never put the token in the repository or an
 installer argument.
 
+Set `BrowserProfileDir` and `BrowserAuthTarget` during installation, then run
+`deploy/windows/authorize-browser-profile.ps1` in the same interactive account. Complete the
+external login once and close the browser before creating the readiness marker. Node health
+reports `browser_profile` and `browser_authenticated`; browser acceptance cannot be scheduled
+until both are true.
+
 Install Playwright in that environment and provide system Google Chrome and Microsoft
 Edge. The installer does not download a second bundled browser; both system browsers
 must pass the interactive screenshot, video, and trace probe. First verify the isolated candidate endpoint on port

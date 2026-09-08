@@ -22,7 +22,7 @@ class RecordingScheduler:
         self.exit_code = exit_code
         self.calls = []
 
-    async def run(self, job_id, sticky_key, commands, timeout, workdir, workload="test"):
+    async def run(self, job_id, sticky_key, commands, timeout, workdir, workload="test", **kwargs):
         self.calls.append((commands, workload, workdir))
         return ScheduledTests(
             node_id="acceptance-node",
