@@ -1,8 +1,71 @@
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import interrupt
 
 from taskhub_v2.domain.models import Plan, RunStatus, Stage
 from taskhub_v2.workers.base import WorkerGateway
-from taskhub_v2.workflows.state import StepState, event
+from taskhub_v2.workflows.state import CodingState, StepState, event
+
+
+def implementation_recovery_feedback(reason: dict) -> str:
+    code = reason.get("code", "implementation_failed")
+    detail = reason.get("detail", "")
+    return (
+        f"The previous implementation attempt was blocked with {code}. "
+        "Fix the concrete failure below, preserve the existing implementation, and rerun "
+        f"the failing command before returning.\n\n{detail}"
+    )[-16_000:]
+
+
+async def prepare_test_failure_revision(state: CodingState) -> dict:
+    reason = state.get("blocking_reason") or {}
+    revision = int(state.get("revision_count", 0)) + 1
+    feedback = implementation_recovery_feedback(reason)
+    return {
+        "revision_count": revision,
+        "revision_feedback": feedback,
+        "current_stage": Stage.IMPLEMENTATION.value,
+        "status": RunStatus.RUNNING.value,
+        "pending_action": None,
+        "blocking_reason": None,
+        "timeline": event(
+            Stage.IMPLEMENTATION,
+            f"Automatic test-failure revision {revision} started",
+            "system",
+            feedback[:500],
+        ),
+    }
+
+
+async def recover_implementation(state: CodingState) -> dict:
+    reason = state.get("blocking_reason") or {}
+    response = interrupt(
+        {
+            "type": "implementation_recovery",
+            "run_id": state["run_id"],
+            "reason": reason,
+            "choices": ["retry", "cancel"],
+        }
+    )
+    decision = response.get("decision") if isinstance(response, dict) else response
+    retry = decision == "retry"
+    return {
+        "decision": decision,
+        "attempt": int(state.get("attempt", 0)) + (1 if retry else 0),
+        "pending_action": None,
+        "blocking_reason": None if retry else reason,
+        "revision_feedback": (
+            implementation_recovery_feedback(reason)
+            if retry
+            else state.get("revision_feedback", "")
+        ),
+        "current_stage": Stage.IMPLEMENTATION.value if retry else Stage.REJECTED.value,
+        "status": RunStatus.RUNNING.value if retry else RunStatus.REJECTED.value,
+        "timeline": event(
+            Stage.IMPLEMENTATION_BLOCKED,
+            "Implementation retry requested" if retry else "Run cancelled",
+            "owner",
+        ),
+    }
 
 
 def build_implementation_graph(worker: WorkerGateway):

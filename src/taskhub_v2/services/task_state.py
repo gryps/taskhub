@@ -9,6 +9,7 @@ NODE_STAGES = {
     "revision_limit": "supervision", "publication": "merging",
     "publication_recovery": "merge_blocked",
     "implementation_recovery": "implementation_blocked",
+    "implementation_revision": "implementation",
 }
 
 

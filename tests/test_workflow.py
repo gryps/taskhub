@@ -332,7 +332,7 @@ def test_implementation_block_preserves_failed_coder_runs():
     asyncio.run(scenario())
 
 
-def test_implementation_retry_passes_test_failure_to_coder():
+def test_test_failure_automatically_returns_diagnostics_to_coder():
     async def scenario():
         provider = RecordingProvider()
         worker = FailureRecoveringWorker()
@@ -340,19 +340,19 @@ def test_implementation_retry_passes_test_failure_to_coder():
         run = await service.start(
             StartRunRequest(project_id="shop", requirement="Implement shop isolation")
         )
-        blocked = await service.approve(
+        completed = await service.approve(
             run.run_id, ApprovalRequest(decision="approve")
         )
 
-        assert blocked.stage == Stage.IMPLEMENTATION_BLOCKED
-        assert blocked.blocking_reason["diagnostics"][0]["exit_code"] == 1
-        completed = await service.resume(
-            blocked.run_id, ResumeRequest(decision="retry")
-        )
-
         assert completed.stage == Stage.MERGE_APPROVAL
+        assert completed.revision_count == 1
+        assert worker.calls == 2
         assert "npm run api:test" in worker.feedback[1]
         assert "test_isolation" in worker.feedback[1]
+        assert any(
+            item.title == "Automatic test-failure revision 1 started"
+            for item in completed.timeline
+        )
 
     asyncio.run(scenario())
 

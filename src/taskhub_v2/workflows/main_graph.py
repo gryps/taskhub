@@ -16,7 +16,11 @@ from taskhub_v2.workflows.browser_acceptance import (
     request_browser_acceptance,
     route_browser_acceptance,
 )
-from taskhub_v2.workflows.implementation import build_implementation_graph
+from taskhub_v2.workflows.implementation import (
+    build_implementation_graph,
+    prepare_test_failure_revision,
+    recover_implementation,
+)
 from taskhub_v2.workflows.intake import build_intake_graph
 from taskhub_v2.workflows.manual_handoff import handle_revision_limit, route_revision_limit
 from taskhub_v2.workflows.planning import build_planning_graph
@@ -24,16 +28,6 @@ from taskhub_v2.workflows.review import build_review_graph
 from taskhub_v2.workflows.risk import build_risk_graph
 from taskhub_v2.workflows.state import CodingState, event
 from taskhub_v2.workflows.supervisor import build_supervisor_graph
-
-
-def _implementation_recovery_feedback(reason: dict) -> str:
-    code = reason.get("code", "implementation_failed")
-    detail = reason.get("detail", "")
-    return (
-        f"The previous implementation attempt was blocked with {code}. "
-        "Fix the concrete failure below, preserve the existing implementation, and rerun "
-        f"the failing command before returning.\n\n{detail}"
-    )[-16_000:]
 
 
 def build_main_graph(
@@ -77,38 +71,6 @@ def build_main_graph(
             "current_stage": Stage.REJECTED.value,
             "status": RunStatus.REJECTED.value,
             "timeline": event(Stage.REJECTED, "Run stopped", "system"),
-        }
-
-    async def recover_implementation(state: CodingState) -> dict:
-        reason = state.get("blocking_reason") or {}
-        response = interrupt(
-            {
-                "type": "implementation_recovery",
-                "run_id": state["run_id"],
-                "reason": state.get("blocking_reason"),
-                "choices": ["retry", "cancel"],
-            }
-        )
-        decision = response.get("decision") if isinstance(response, dict) else response
-        retry = decision == "retry"
-        return {
-            "decision": decision,
-            "attempt": int(state.get("attempt", 0)) + (1 if retry else 0),
-            "pending_action": None,
-            "blocking_reason": None if retry else state.get("blocking_reason"),
-            "revision_feedback": (
-                _implementation_recovery_feedback(reason) if retry
-                else state.get("revision_feedback", "")
-            ),
-            "current_stage": (
-                Stage.IMPLEMENTATION.value if retry else Stage.REJECTED.value
-            ),
-            "status": RunStatus.RUNNING.value if retry else RunStatus.REJECTED.value,
-            "timeline": event(
-                Stage.IMPLEMENTATION_BLOCKED,
-                "Implementation retry requested" if retry else "Run cancelled",
-                "owner",
-            ),
         }
 
     async def recover_supervision(state: CodingState) -> dict:
@@ -202,8 +164,19 @@ def build_main_graph(
                 "current_stage": Stage.MERGE_BLOCKED.value,
                 "status": RunStatus.BLOCKED.value,
                 "blocking_reason": dict(
-                    code=reason, detail=detail, responsible_node=implementation.execution_node or "publisher",
-                    model=implementation.model_run.model if implementation.model_run else "none", recommended_action="retry publication or cancel the task", retry_after_seconds=max(0, int(getattr(exc, "retry_after_seconds", 0)))),
+                    code=reason,
+                    detail=detail,
+                    responsible_node=implementation.execution_node or "publisher",
+                    model=(
+                        implementation.model_run.model
+                        if implementation.model_run
+                        else "none"
+                    ),
+                    recommended_action="retry publication or cancel the task",
+                    retry_after_seconds=max(
+                        0, int(getattr(exc, "retry_after_seconds", 0))
+                    ),
+                ),
                 "pending_action": {
                     "type": "publication_recovery",
                     "title": "Publication needs attention",
@@ -255,7 +228,15 @@ def build_main_graph(
         return "implementation" if state.get("decision") == "approve" else "reject"
 
     def route_implementation(state: CodingState) -> str:
-        return "recovery" if state.get("status") == RunStatus.BLOCKED else "acceptance"
+        if state.get("status") != RunStatus.BLOCKED:
+            return "acceptance"
+        reason = state.get("blocking_reason") or {}
+        revision_available = int(state.get("revision_count", 0)) < int(
+            state.get("max_revision_attempts", 2)
+        )
+        if reason.get("code") == "tests_failed" and revision_available:
+            return "revision"
+        return "recovery"
     def route_acceptance(state: CodingState) -> str:
         return "recovery" if state.get("status") == RunStatus.BLOCKED else "review"
 
@@ -295,6 +276,7 @@ def build_main_graph(
     builder.add_node("planning", build_planning_graph(provider))
     builder.add_node("plan_approval", request_plan_approval)
     builder.add_node("implementation", build_implementation_graph(worker))
+    builder.add_node("implementation_revision", prepare_test_failure_revision)
     builder.add_node("acceptance", build_acceptance_graph(acceptance))
     builder.add_node("review", build_review_graph(provider))
     builder.add_node("risk", build_risk_graph(provider))
@@ -329,8 +311,13 @@ def build_main_graph(
     builder.add_conditional_edges(
         "implementation",
         route_implementation,
-        {"recovery": "implementation_recovery", "acceptance": "acceptance"},
+        {
+            "recovery": "implementation_recovery",
+            "revision": "implementation_revision",
+            "acceptance": "acceptance",
+        },
     )
+    builder.add_edge("implementation_revision", "implementation")
     builder.add_conditional_edges(
         "implementation_recovery",
         route_recovery,
