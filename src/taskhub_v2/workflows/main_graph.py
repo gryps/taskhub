@@ -269,14 +269,16 @@ def build_main_graph(
         supervision = state.get("supervision") or {}
         if supervision.get("decision") == "approve":
             return "merge_approval"
-        if "browser" in supervision.get("missing_evidence", []):
+        missing_evidence = supervision.get("missing_evidence", [])
+        if missing_evidence == ["browser"]:
             return "browser_acceptance"
+        if missing_evidence:
+            return "revision_limit"
         if int(state.get("revision_count", 0)) < int(
             state.get("max_revision_attempts", 2)
         ):
             return "revision"
         return "revision_limit"
-
     def route_supervision_recovery(state: CodingState) -> str:
         return "supervisor" if state.get("decision") == "retry" else "reject"
 

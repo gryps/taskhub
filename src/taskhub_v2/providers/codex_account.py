@@ -97,7 +97,12 @@ class CodexAccountProvider:
     ) -> ModelResult[SupervisionDecision]:
         prompt = (
             "Make the final delivery decision from the evidence. Reject if evidence is "
-            "insufficient or a material defect remains.\n"
+            "insufficient or a material defect remains. Classify every evidence-only gap in "
+            "missing_evidence so the workflow can request evidence without sending it to the "
+            "coding worker. Use browser, database, openapi, test, or manual as appropriate. "
+            "Leave missing_evidence empty only when source changes are required. Do not require "
+            "a production deployment or production-data rehearsal unless the requirement or "
+            "acceptance criteria explicitly require it.\n"
             f"Requirement:\n{requirement}\nImplementation:\n{implementation}\n"
             f"Review:\n{review}\nRisk:\n{risk}"
         )

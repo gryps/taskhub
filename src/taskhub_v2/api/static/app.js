@@ -159,9 +159,14 @@ function render(run) {
     byId("approve").textContent = "重新检查并发布";
     byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "revision_limit") {
+    const missing = run.supervision?.missing_evidence || [];
     byId("action-stage").textContent = "第 8 环 · 监督";
-    byId("action-title").textContent = "返工次数已达上限";
-    byId("action-detail").textContent = run.supervision?.summary || "监督仍发现未解决的问题";
+    byId("action-title").textContent = missing.length
+      ? "关键验收证据不足" : "返工次数已达上限";
+    byId("action-detail").textContent = [
+      run.supervision?.summary || "监督仍发现未解决的问题",
+      ...(run.supervision?.reasons || []),
+    ].join("\n");
     byId("approve").textContent = "批准再返工一次";
     byId("reject").textContent = "终止任务";
   } else if (pendingAction?.type === "supervision_recovery") {

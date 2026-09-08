@@ -767,3 +767,35 @@ def test_structured_browser_rejection_never_consumes_revision(tmp_path, offline)
             assert result.stage == Stage.MERGE_APPROVAL
             assert provider.supervisor_calls == 2
     asyncio.run(scenario())
+
+
+def test_non_browser_evidence_gap_does_not_consume_coding_revision():
+    class Provider(RecordingProvider):
+        async def supervise(self, requirement, implementation, review, risk):
+            self.supervisor_calls += 1
+            return ModelResult(content=SupervisionDecision(
+                decision="reject",
+                summary="database rehearsal evidence required",
+                reasons=["submit restored PostgreSQL counts"],
+                missing_evidence=["database"],
+            ), provider="recording", model="test")
+
+    async def scenario():
+        provider = Provider()
+        worker = RecordingWorker()
+        service = RunService(build_main_graph(provider, worker, InMemorySaver()))
+        waiting = await service.start(StartRunRequest(
+            project_id="shop", requirement="Preserve production data counts"
+        ))
+        result = await service.approve(
+            waiting.run_id, ApprovalRequest(decision="approve")
+        )
+
+        assert result.stage == Stage.SUPERVISION
+        assert result.status == RunStatus.WAITING
+        assert result.pending_action["type"] == "revision_limit"
+        assert result.supervision.missing_evidence == ["database"]
+        assert result.revision_count == 0
+        assert worker.calls == 1
+
+    asyncio.run(scenario())

@@ -49,6 +49,7 @@ def build_supervisor_graph(provider: ModelProvider):
             }
         decision = result.content
         approved = decision.decision == "approve"
+        evidence_only = bool(decision.missing_evidence)
         revision_available = int(state.get("revision_count", 0)) < int(
             state.get("max_revision_attempts", 2)
         )
@@ -60,7 +61,7 @@ def build_supervisor_graph(provider: ModelProvider):
             ),
             "status": (
                 RunStatus.WAITING.value
-                if approved or not revision_available
+                if approved or evidence_only or not revision_available
                 else RunStatus.RUNNING.value
             ),
             "pending_action": (
@@ -73,10 +74,14 @@ def build_supervisor_graph(provider: ModelProvider):
                 else (
                     {
                         "type": "revision_limit",
-                        "title": "Automatic revision limit reached",
+                        "title": (
+                            "Acceptance evidence required"
+                            if evidence_only
+                            else "Automatic revision limit reached"
+                        ),
                         "choices": ["reassess", "retry", "manual", "cancel"],
                     }
-                    if not revision_available
+                    if evidence_only or not revision_available
                     else None
                 )
             ),

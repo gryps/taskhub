@@ -194,7 +194,9 @@ class SupervisionDecision(BaseModel):
     decision: Literal["approve", "reject"]
     summary: str
     reasons: list[str]
-    missing_evidence: list[Literal["browser"]] = Field(default_factory=list)
+    missing_evidence: list[
+        Literal["browser", "database", "openapi", "test", "manual"]
+    ] = Field(default_factory=list)
 
     @classmethod
     def response_json_schema(cls) -> dict[str, Any]:
