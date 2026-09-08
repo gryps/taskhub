@@ -798,4 +798,17 @@ def test_non_browser_evidence_gap_does_not_consume_coding_revision():
         assert result.revision_count == 0
         assert worker.calls == 1
 
+        recollected = await service.resume(
+            result.run_id, ResumeRequest(decision="recheck")
+        )
+        assert recollected.stage == Stage.SUPERVISION
+        assert recollected.status == RunStatus.WAITING
+        assert recollected.revision_count == 0
+        assert worker.calls == 1
+        assert provider.supervisor_calls == 2
+        assert any(
+            item.title == "Acceptance evidence recollection requested"
+            for item in recollected.timeline
+        )
+
     asyncio.run(scenario())

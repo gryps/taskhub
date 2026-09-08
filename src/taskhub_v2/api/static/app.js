@@ -8,6 +8,7 @@ const stages = [
   ["merging", "发布", "自动"], ["completed", "完成", "终态"],
 ];
 let currentRun = null;
+let currentRunState = null;
 let retryCountdownTimer = null;
 let currentProjectId = localStorage.getItem("taskhub_project_id");
 let eventSource;
@@ -53,6 +54,7 @@ function cookie(name) {
 }
 
 function render(run) {
+  currentRunState = run;
   if (retryCountdownTimer) clearInterval(retryCountdownTimer);
   retryCountdownTimer = null;
   byId("run").classList.remove("hidden");
@@ -168,6 +170,7 @@ function render(run) {
       ...(run.supervision?.reasons || []),
     ].join("\n");
     byId("approve").textContent = "批准再返工一次";
+    if (missing.length) byId("approve").textContent = "重新采集验收证据";
     byId("reject").textContent = "终止任务";
   } else if (pendingAction?.type === "supervision_recovery") {
     byId("action-stage").textContent = "第 8 环 · 监督";
@@ -197,7 +200,9 @@ function render(run) {
     "hidden", !["revision_limit", "manual_intervention"].includes(pendingAction?.type)
   );
   byId("approve").classList.toggle("hidden", !choices.some((choice) =>
-    ["approve", "retry"].includes(choice)));
+    ["approve", "retry", "recheck"].includes(choice)) && !(
+      pendingAction?.type === "revision_limit" && run.supervision?.missing_evidence?.length
+    ));
   byId("reject").classList.toggle("hidden", !choices.some((choice) =>
     ["reject", "cancel"].includes(choice)));
   byId("revise").classList.toggle(
@@ -483,7 +488,10 @@ async function decide(decision) {
   const endpoint = planApproval ? "approval" : "resume";
   const recovery = ["implementation_recovery", "acceptance_recovery", "publication_recovery", "supervision_recovery", "revision_limit", "manual_intervention"].includes(pendingAction?.type);
   const resolved = recovery
-    ? (decision === "manual" ? "manual" : decision === "approve" ? "retry" : decision === "revise" ? "revise" : "cancel")
+    ? (decision === "manual" ? "manual" : decision === "approve"
+      ? (pendingAction?.type === "revision_limit"
+        && currentRunState?.supervision?.missing_evidence?.length ? "recheck" : "retry")
+      : decision === "revise" ? "revise" : "cancel")
     : decision;
   const run = await request(`/api/runs/${currentRun}/${endpoint}`, {
     method: "POST", body: JSON.stringify({decision: resolved, comment: ""}),

@@ -253,6 +253,13 @@ class RunService:
             choices.append("revise")
         if action.get("type") == "revision_limit" and "manual" not in choices:
             choices.append("manual")
+        if (
+            action.get("type") == "revision_limit"
+            and current.supervision
+            and current.supervision.missing_evidence
+            and "recheck" not in choices
+        ):
+            choices.append("recheck")
         if not current.next_nodes or request.decision not in choices:
             raise RunConflictError("decision is not valid for the pending action")
         update = {"project_id": current.project_id} if current.original_project_id else None

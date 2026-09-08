@@ -79,7 +79,11 @@ def build_supervisor_graph(provider: ModelProvider):
                             if evidence_only
                             else "Automatic revision limit reached"
                         ),
-                        "choices": ["reassess", "retry", "manual", "cancel"],
+                        "choices": (
+                            ["recheck", "reassess", "manual", "cancel"]
+                            if evidence_only
+                            else ["reassess", "retry", "manual", "cancel"]
+                        ),
                     }
                     if evidence_only or not revision_available
                     else None

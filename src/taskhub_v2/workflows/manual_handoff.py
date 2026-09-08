@@ -6,6 +6,7 @@ from taskhub_v2.workflows.state import CodingState, event
 
 async def handle_revision_limit(state: CodingState) -> dict:
     manual = (state.get("pending_action") or {}).get("type") == "manual_intervention"
+    evidence_only = bool((state.get("supervision") or {}).get("missing_evidence"))
     response = interrupt(
         {
             "type": "manual_intervention" if manual else "revision_limit",
@@ -15,7 +16,11 @@ async def handle_revision_limit(state: CodingState) -> dict:
             "choices": (
                 ["reassess", "retry", "cancel"]
                 if manual
-                else ["reassess", "retry", "manual", "cancel"]
+                else (
+                    ["recheck", "reassess", "manual", "cancel"]
+                    if evidence_only
+                    else ["reassess", "retry", "manual", "cancel"]
+                )
             ),
         }
     )
@@ -43,6 +48,7 @@ async def handle_revision_limit(state: CodingState) -> dict:
         }
 
     retry = decision == "retry"
+    recheck = decision == "recheck"
     reassess = decision == "reassess"
     submitted = response.get("evidence", []) if isinstance(response, dict) else []
     existing = (state.get("acceptance") or {}).get("evidence", [])
@@ -68,17 +74,24 @@ async def handle_revision_limit(state: CodingState) -> dict:
         ),
         "pending_action": None,
         "current_stage": (
-            Stage.REVIEW.value
+            Stage.ACCEPTANCE.value
+            if recheck
+            else Stage.REVIEW.value
             if reassess
             else Stage.IMPLEMENTATION.value
             if retry
             else Stage.REJECTED.value
         ),
-        "status": RunStatus.RUNNING.value if retry or reassess else RunStatus.REJECTED.value,
+        "status": (
+            RunStatus.RUNNING.value
+            if retry or recheck or reassess else RunStatus.REJECTED.value
+        ),
         "timeline": event(
             Stage.SUPERVISION,
             (
-                "Acceptance evidence submitted"
+                "Acceptance evidence recollection requested"
+                if recheck
+                else "Acceptance evidence submitted"
                 if reassess
                 else "Extra revision approved"
                 if retry
@@ -92,6 +105,8 @@ async def handle_revision_limit(state: CodingState) -> dict:
 
 def route_revision_limit(state: CodingState) -> str:
     decision = state.get("decision")
+    if decision == "recheck":
+        return "acceptance"
     if decision == "manual":
         return "manual"
     if decision == "reassess":

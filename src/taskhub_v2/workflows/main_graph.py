@@ -256,7 +256,6 @@ def build_main_graph(
 
     def route_implementation(state: CodingState) -> str:
         return "recovery" if state.get("status") == RunStatus.BLOCKED else "acceptance"
-
     def route_acceptance(state: CodingState) -> str:
         return "recovery" if state.get("status") == RunStatus.BLOCKED else "review"
 
@@ -375,6 +374,7 @@ def build_main_graph(
         "revision_limit",
         route_revision_limit,
         {
+            "acceptance": "acceptance",
             "manual": "revision_limit",
             "review": "review",
             "revision": "revision",
