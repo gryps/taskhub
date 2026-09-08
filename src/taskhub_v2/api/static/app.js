@@ -119,7 +119,8 @@ function render(run) {
   const actionStages = {plan_approval: "plan_approval", implementation_recovery: "implementation",
     acceptance_recovery: "acceptance", merge_approval: "merge_approval",
     publication_recovery: "merging", revision_limit: "supervision",
-    manual_intervention: "supervision", supervision_recovery: "supervision"};
+    manual_intervention: "supervision", supervision_recovery: "supervision",
+    risk_recovery: "risk"};
   action.dataset.stage = actionStages[pendingAction?.type] || normalizedStage;
   action.classList.toggle("hidden", !waiting);
   if (pendingAction?.type === "plan_approval") {
@@ -172,7 +173,7 @@ function render(run) {
     byId("approve").textContent = "批准再返工一次";
     if (missing.length) byId("approve").textContent = "重新采集验收证据";
     byId("reject").textContent = "终止任务";
-  } else if (pendingAction?.type === "supervision_recovery") {
+  } else if (["supervision_recovery", "risk_recovery"].includes(pendingAction?.type)) {
     byId("action-stage").textContent = "第 8 环 · 监督";
     byId("action-title").textContent = "监督模型资源暂不可用";
     byId("action-detail").textContent = run.blocking_reason?.detail || "等待模型资源恢复后重试";
@@ -486,7 +487,7 @@ byId("start").addEventListener("click", async () => {
 async function decide(decision) {
   const planApproval = pendingAction?.type === "plan_approval";
   const endpoint = planApproval ? "approval" : "resume";
-  const recovery = ["implementation_recovery", "acceptance_recovery", "publication_recovery", "supervision_recovery", "revision_limit", "manual_intervention"].includes(pendingAction?.type);
+  const recovery = ["implementation_recovery", "acceptance_recovery", "publication_recovery", "supervision_recovery", "risk_recovery", "revision_limit", "manual_intervention"].includes(pendingAction?.type);
   const resolved = recovery
     ? (decision === "manual" ? "manual" : decision === "approve"
       ? (pendingAction?.type === "revision_limit"

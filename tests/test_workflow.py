@@ -123,6 +123,14 @@ class RecoveringSupervisorProvider(RecordingProvider):
         )
 
 
+class RecoveringRiskProvider(RecordingProvider):
+    async def assess_risk(self, requirement, implementation):
+        self.risk_calls += 1
+        if self.risk_calls == 1:
+            raise ProvidersExhaustedError("risk", ["minimax_api:ReadTimeout"])
+        return ModelResult(content="low", provider="recording", model="test")
+
+
 class RevisionRecordingWorker(RecordingWorker):
     def __init__(self):
         super().__init__()
@@ -528,6 +536,37 @@ def test_supervisor_model_exhaustion_blocks_and_retries_only_supervision():
         assert provider.review_calls == 1
         assert provider.risk_calls == 1
         assert provider.supervisor_calls == 2
+
+    asyncio.run(scenario())
+
+
+def test_risk_model_exhaustion_blocks_and_retries_only_risk():
+    async def scenario():
+        provider = RecoveringRiskProvider()
+        worker = RecordingWorker()
+        service = RunService(build_main_graph(provider, worker, InMemorySaver()))
+        waiting = await service.start(
+            StartRunRequest(project_id="shop", requirement="Preserve acceptance evidence")
+        )
+        blocked = await service.approve(
+            waiting.run_id, ApprovalRequest(decision="approve")
+        )
+
+        assert blocked.status == RunStatus.BLOCKED
+        assert blocked.stage == Stage.RISK
+        assert blocked.next_nodes == ["risk_recovery"]
+        assert blocked.pending_action["type"] == "risk_recovery"
+        assert blocked.blocking_reason["code"] == "model_resources_unavailable"
+
+        publishing = await service.resume(
+            blocked.run_id, ResumeRequest(decision="retry")
+        )
+        assert publishing.stage == Stage.MERGE_APPROVAL
+        assert publishing.status == RunStatus.WAITING
+        assert worker.calls == 1
+        assert provider.review_calls == 1
+        assert provider.risk_calls == 2
+        assert provider.supervisor_calls == 1
 
     asyncio.run(scenario())
 

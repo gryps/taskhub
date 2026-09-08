@@ -26,6 +26,7 @@ from taskhub_v2.workflows.manual_handoff import handle_revision_limit, route_rev
 from taskhub_v2.workflows.planning import build_planning_graph
 from taskhub_v2.workflows.review import build_review_graph
 from taskhub_v2.workflows.risk import build_risk_graph
+from taskhub_v2.workflows.risk_recovery import recover_risk, route_risk_recovery
 from taskhub_v2.workflows.state import CodingState, event
 from taskhub_v2.workflows.supervisor import build_supervisor_graph
 
@@ -259,6 +260,8 @@ def build_main_graph(
         ):
             return "revision"
         return "revision_limit"
+    def route_risk(state: CodingState) -> str:
+        return "risk_recovery" if state.get("status") == RunStatus.BLOCKED else "supervisor"
     def route_supervision_recovery(state: CodingState) -> str:
         return "supervisor" if state.get("decision") == "retry" else "reject"
 
@@ -280,6 +283,7 @@ def build_main_graph(
     builder.add_node("acceptance", build_acceptance_graph(acceptance))
     builder.add_node("review", build_review_graph(provider))
     builder.add_node("risk", build_risk_graph(provider))
+    builder.add_node("risk_recovery", recover_risk)
     builder.add_node("browser_acceptance", request_browser_acceptance)
     builder.add_conditional_edges(
         "browser_acceptance",
@@ -339,7 +343,12 @@ def build_main_graph(
     )
     builder.add_edge("acceptance_revision", "implementation")
     builder.add_edge("review", "risk")
-    builder.add_edge("risk", "supervisor")
+    builder.add_conditional_edges(
+        "risk", route_risk, {"risk_recovery": "risk_recovery", "supervisor": "supervisor"}
+    )
+    builder.add_conditional_edges(
+        "risk_recovery", route_risk_recovery, {"risk": "risk", "reject": "reject"}
+    )
     builder.add_conditional_edges(
         "supervisor",
         route_supervisor,
