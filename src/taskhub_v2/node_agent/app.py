@@ -3,16 +3,16 @@ import hashlib
 import hmac
 import json
 import os
+import platform
 import re
 import shutil
-import tempfile
-import platform
 import subprocess
 import sys
-import time
+import tempfile
 import threading
-from datetime import UTC, datetime
+import time
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
@@ -71,6 +71,10 @@ class NodeRuntime:
             raise HTTPException(status_code=422, detail="invalid job path")
         return target
 
+    @staticmethod
+    def result_file(target: Path) -> Path:
+        return target / ".taskhub-execution-result.json"
+
 
 def create_node_app() -> FastAPI:
     runtime = NodeRuntime(
@@ -115,6 +119,10 @@ def create_node_app() -> FastAPI:
         target = runtime.job_dir(job_id)
         lock = runtime.locks.setdefault(job_id, asyncio.Lock())
         async with lock:
+            metadata = target / ".taskhub-workspace.json"
+            if metadata.is_file() and json.loads(metadata.read_text()).get("sha256") == sha256:
+                return {"job_id": job_id, "archive_sha256": sha256, "size": 0,
+                        "reused": True}
             digest = hashlib.sha256()
             size = 0
             descriptor, archive_name = tempfile.mkstemp(dir=runtime.root, suffix=".tar.gz")
@@ -168,8 +176,14 @@ def create_node_app() -> FastAPI:
         if json.loads(metadata.read_text(encoding="utf-8")).get("sha256") != payload.archive_sha256:
             raise HTTPException(status_code=409, detail="workspace version changed")
         lock = runtime.locks.setdefault(job_id, asyncio.Lock())
-        started_at = datetime.now(UTC)
         async with lock:
+            request_key = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
+            result_file = runtime.result_file(target)
+            if result_file.is_file():
+                saved = json.loads(result_file.read_text(encoding="utf-8"))
+                if saved.get("request_key") == request_key:
+                    return saved["result"]
+            started_at = datetime.now(UTC)
             tests = await _prepare_browser_acceptance_dependencies(
                 target, payload.commands, payload.required_capabilities, payload.timeout_seconds
             )
@@ -184,20 +198,29 @@ def create_node_app() -> FastAPI:
                     "TASKHUB_EDGE_CHANNEL": "msedge",
                 },
                 ))
-        artifacts = _artifact_manifest(target, payload.artifact_paths, runtime.max_upload_bytes)
-        return {
-            "node_id": runtime.node_id,
-            "job_id": job_id,
-            "tests": tests,
-            "metadata": {
-                "target_url": payload.target_url,
-                "git_commit": payload.git_commit,
-                "versions": await asyncio.to_thread(browser_versions),
-                "started_at": started_at.isoformat(),
-                "finished_at": datetime.now(UTC).isoformat(),
-            },
-            "artifacts": artifacts,
-        }
+            artifacts = _artifact_manifest(
+                target, payload.artifact_paths, runtime.max_upload_bytes
+            )
+            result = {
+                "node_id": runtime.node_id,
+                "job_id": job_id,
+                "tests": tests,
+                "metadata": {
+                    "target_url": payload.target_url,
+                    "git_commit": payload.git_commit,
+                    "versions": await asyncio.to_thread(browser_versions),
+                    "started_at": started_at.isoformat(),
+                    "finished_at": datetime.now(UTC).isoformat(),
+                },
+                "artifacts": artifacts,
+            }
+            temporary = result_file.with_suffix(".tmp")
+            temporary.write_text(
+                json.dumps({"request_key": request_key, "result": result}),
+                encoding="utf-8",
+            )
+            temporary.replace(result_file)
+            return result
 
     @app.get("/api/jobs/{job_id}/artifacts/{artifact_path:path}")
     async def download_artifact(job_id: str, artifact_path: str, authorization: str = Header(default="")):

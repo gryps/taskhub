@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
@@ -16,6 +17,8 @@ from taskhub_v2.domain.models import (
     StartRunRequest,
 )
 from taskhub_v2.services.task_state import NODE_STAGES, checkpoint_values, workflow_steps
+
+logger = logging.getLogger(__name__)
 
 
 class RunNotFoundError(LookupError):
@@ -176,6 +179,20 @@ class RunService:
             snapshot = await self.graph.aget_state(self._config(run_id))
             await self.task_index.upsert(checkpoint_values(snapshot),
                                          values.get("production_line"))
+
+    async def recover_interrupted(self) -> None:
+        """Replay graph-owned running checkpoints after a controller restart."""
+        if self.task_index is None:
+            return
+        page = await self.task_index.list(status=RunStatus.RUNNING, page_size=100)
+        for item in page.items:
+            try:
+                current = await self.get(item.run_id)
+                if current.pending_action or not current.next_nodes or current.archived_at:
+                    continue
+                await self.replay(item.run_id)
+            except Exception:
+                logger.exception("failed to recover interrupted run %s", item.run_id)
 
     async def _execute(self, run_id, payload):
         values = payload if isinstance(payload, dict) else None

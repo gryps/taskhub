@@ -91,3 +91,8 @@ receives a sanitized archive without `.git` or project credentials. A coding-ena
 node invokes its own configured model profiles and returns a validated change bundle;
 test/build nodes return structured command results. A run keeps its assigned node while
 it remains healthy and capable; transport failure permits controlled failover.
+
+Command results are persisted by job ID, workspace digest, and request content on the
+execution node. Reconnected controllers retrieve the same result instead of repeating
+the command. After a controller restart, graph checkpoints still marked running are
+replayed automatically when they have a next node and are not waiting for owner input.

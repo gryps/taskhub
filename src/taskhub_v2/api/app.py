@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from importlib.resources import files
 
@@ -77,11 +78,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # PostgreSQL can contain runs created before the task index existed.
             if settings.checkpointer == "postgres":
                 await app.state.run_service.backfill(checkpointer)
+                app.state.recovery_task = asyncio.create_task(
+                    app.state.run_service.recover_interrupted()
+                )
             app.state.provider_catalog = ProviderCatalog(settings, provider_health)
             app.state.node_scheduler = test_scheduler
             try:
                 yield
             finally:
+                recovery = getattr(app.state, "recovery_task", None)
+                if recovery and not recovery.done():
+                    recovery.cancel()
                 close = getattr(provider, "close", None)
                 if close:
                     await close()

@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
@@ -160,6 +161,34 @@ def make_service(checkpointer=None):
     worker = RecordingWorker()
     graph = build_main_graph(provider, worker, checkpointer or InMemorySaver())
     return RunService(graph), provider, worker
+
+
+def test_startup_recovery_replays_running_checkpoint():
+    async def scenario():
+        class Index:
+            async def list(self, **filters):
+                assert filters["status"] == RunStatus.RUNNING
+                return SimpleNamespace(items=[SimpleNamespace(run_id="run-1")])
+
+        service, _, _ = make_service()
+        service.task_index = Index()
+        replayed = []
+
+        async def get(run_id):
+            return SimpleNamespace(
+                run_id=run_id, pending_action=None, next_nodes=["implementation"],
+                archived_at=None,
+            )
+
+        async def replay(run_id):
+            replayed.append(run_id)
+
+        service.get = get
+        service.replay = replay
+        await service.recover_interrupted()
+        assert replayed == ["run-1"]
+
+    asyncio.run(scenario())
 
 
 def test_run_pauses_for_plan_approval_then_completes():

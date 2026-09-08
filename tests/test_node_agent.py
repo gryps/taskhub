@@ -59,6 +59,39 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
     assert response.json()["tests"][0]["exit_code"] == 0
 
 
+def test_node_reuses_persisted_execution_result(tmp_path, monkeypatch):
+    import taskhub_v2.node_agent.app as agent_module
+
+    monkeypatch.setenv("TASKHUB_NODE_ID", "node-test")
+    monkeypatch.setenv("TASKHUB_NODE_TOKEN", "node-secret")
+    monkeypatch.setenv("TASKHUB_NODE_WORK_ROOT", str(tmp_path / "jobs"))
+    payload = archive({"value.txt": b"ready\n"})
+    digest = hashlib.sha256(payload).hexdigest()
+    headers = {"Authorization": "Bearer node-secret"}
+    calls = 0
+
+    async def fake_run_commands(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return [{"command": ["test"], "exit_code": 0, "output_tail": "ok"}]
+
+    monkeypatch.setattr(agent_module, "run_commands", fake_run_commands)
+    request = {"commands": [["test"]], "timeout_seconds": 30,
+               "archive_sha256": digest}
+    with TestClient(create_node_app()) as client:
+        client.put(f"/api/jobs/job-reuse/workspace?sha256={digest}",
+                   content=payload, headers=headers).raise_for_status()
+        first = client.post("/api/jobs/job-reuse/execute", json=request, headers=headers)
+        uploaded = client.put(f"/api/jobs/job-reuse/workspace?sha256={digest}",
+                              content=payload, headers=headers)
+        second = client.post("/api/jobs/job-reuse/execute", json=request, headers=headers)
+
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+    assert uploaded.json()["reused"] is True
+    assert calls == 1
+
+
 def test_browser_node_installs_npm_dependencies_before_npx(tmp_path, monkeypatch):
     import taskhub_v2.node_agent.app as agent_module
 
