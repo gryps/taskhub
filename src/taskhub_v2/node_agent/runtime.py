@@ -84,6 +84,8 @@ async def run_commands(
     results = []
     environment = dict(os.environ)
     environment.update(execution_environment or {})
+    # Keep skip names and reasons reviewable when projects invoke pytest with -q.
+    environment.setdefault("PYTEST_ADDOPTS", "-ra")
     environment["PATH"] = os.pathsep.join(
         (str(Path(sys.executable).parent), environment.get("PATH", ""))
     )

@@ -46,7 +46,8 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
                         "assert Path('value.txt').read_text() == 'ready\\n'; "
                         "import os; "
                         "assert os.environ['TASKHUB_CHROMIUM_CHANNEL'] == 'chrome'; "
-                        "assert os.environ['TASKHUB_EDGE_CHANNEL'] == 'msedge'",
+                        "assert os.environ['TASKHUB_EDGE_CHANNEL'] == 'msedge'; "
+                        "assert os.environ['PYTEST_ADDOPTS'] == '-ra'",
                     ]
                 ],
                 "timeout_seconds": 30,
