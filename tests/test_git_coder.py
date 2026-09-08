@@ -229,9 +229,9 @@ def test_git_worker_creates_and_recovers_revision_commit(tmp_path: Path):
     assert coder.calls == 2
     assert "initial" in revised.evidence
     assert "fixed" in revised.evidence
-    assert git(Path(revised.workspace.path), "log", "-1", "--format=%B").endswith(
-        "TaskHub-Revision: 1"
-    )
+    message = git(Path(revised.workspace.path), "log", "-1", "--format=%B")
+    assert "TaskHub-Revision: 1" in message
+    assert "TaskHub-Feedback:" in message
 
 
 def test_git_worker_accepts_evidence_only_revision_but_not_empty_initial_work(tmp_path: Path):
@@ -288,8 +288,9 @@ def test_git_worker_accepts_evidence_only_revision_but_not_empty_initial_work(tm
         ArtifactStore(str(tmp_path / "artifacts")),
     )
     first = asyncio.run(writing_worker.execute("evidence", "demo", "Do work", plan))
+    evidence_coder = NoChangeCoder()
     evidence_worker = GitCodingWorker(
-        ProjectRegistry(str(projects_file)), workspaces, NoChangeCoder(),
+        ProjectRegistry(str(projects_file)), workspaces, evidence_coder,
         ArtifactStore(str(tmp_path / "artifacts")),
     )
     revised = asyncio.run(
@@ -304,6 +305,7 @@ def test_git_worker_accepts_evidence_only_revision_but_not_empty_initial_work(tm
     )
 
     assert revised.commit == first.commit
+    assert evidence_coder.calls == 1
     assert revised.tests[0].exit_code == 0
     assert revised.changed_files == ["feature.txt"]
     assert revised.artifacts[0].sha256

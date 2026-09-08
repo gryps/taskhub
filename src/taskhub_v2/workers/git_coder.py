@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import shutil
 from pathlib import Path
 
@@ -52,7 +53,7 @@ class GitCodingWorker:
         workspace = await self.workspaces.prepare(project, run_id)
         await self._cleanup_generated_untracked(workspace.path)
         existing = await self._existing_result(
-            workspace.path, workspace.base_commit, revision
+            workspace.path, workspace.base_commit, revision, feedback
         )
         if existing:
             existing.workspace = workspace
@@ -126,6 +127,9 @@ class GitCodingWorker:
 
         await self._cleanup_generated_untracked(workspace.path)
         await self._git(workspace.path, "add", "-A", "--", *changed_files)
+        commit_metadata = f"TaskHub-Run: {run_id}\nTaskHub-Revision: {revision}"
+        if feedback:
+            commit_metadata += f"\nTaskHub-Feedback: {self._feedback_key(feedback)}"
         await self._git(
             workspace.path,
             "-c",
@@ -136,7 +140,7 @@ class GitCodingWorker:
             "-m",
             f"taskhub: {model_result.content.summary[:120]}",
             "-m",
-            f"TaskHub-Run: {run_id}\nTaskHub-Revision: {revision}",
+            commit_metadata,
         )
         commit = (await self._git(workspace.path, "rev-parse", "HEAD")).strip()
         diff = await self._git(
@@ -230,7 +234,7 @@ class GitCodingWorker:
         )
 
     async def _existing_result(
-        self, workdir: str, base_commit: str, revision: int
+        self, workdir: str, base_commit: str, revision: int, feedback: str = ""
     ) -> ExecutionResult | None:
         status = (await self._git(workdir, "status", "--porcelain")).strip()
         head = (await self._git(workdir, "rev-parse", "HEAD")).strip()
@@ -246,7 +250,17 @@ class GitCodingWorker:
                     f"--grep=TaskHub-Revision: {revision}",
                 )
             ).strip()
-        recoverable = head != base_commit and (revision == 0 or expected == head)
+        feedback_recorded = True
+        if feedback and expected == head:
+            message = await self._git(workdir, "log", "-1", "--format=%B")
+            feedback_recorded = (
+                f"TaskHub-Feedback: {self._feedback_key(feedback)}" in message
+            )
+        recoverable = (
+            head != base_commit
+            and (revision == 0 or expected == head)
+            and feedback_recorded
+        )
         if not status and recoverable:
             diff = await self._git(workdir, "diff", "--binary", f"{base_commit}..{head}")
             changed = (await self._git(workdir, "diff", "--name-only", f"{base_commit}..{head}"))
@@ -257,6 +271,10 @@ class GitCodingWorker:
                 changed_files=[line for line in changed.splitlines() if line],
             )
         return None
+
+    @staticmethod
+    def _feedback_key(feedback: str) -> str:
+        return hashlib.sha256(feedback.encode()).hexdigest()[:16]
 
     @staticmethod
     def _artifact_name(revision: int) -> str:
