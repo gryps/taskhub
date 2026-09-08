@@ -295,7 +295,7 @@ class NodeRunner:
                 TestExecution(
                     command=command,
                     exit_code=process.returncode,
-                    output_tail=stdout.decode(errors="replace")[-4000:],
+                    output_tail=stdout.decode(errors="replace")[-32_000:],
                 )
             )
             if process.returncode:

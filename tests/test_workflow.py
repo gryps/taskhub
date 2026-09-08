@@ -21,6 +21,7 @@ from taskhub_v2.domain.models import (
 from taskhub_v2.persistence.task_index import MemoryTaskIndex
 from taskhub_v2.providers.fallback import ProvidersExhaustedError
 from taskhub_v2.services.runs import RunConflictError, RunService
+from taskhub_v2.workers.git_coder import WorkerExecutionError
 from taskhub_v2.workflows import build_main_graph
 from tests.fakes import RecordingProvider, RecordingWorker
 
@@ -33,6 +34,30 @@ class RecoveringWorker(RecordingWorker):
         if self.calls == 1:
             raise RuntimeError("temporary worker failure")
         return ExecutionResult(summary="recovered")
+
+
+class FailureRecoveringWorker(RecordingWorker):
+    def __init__(self):
+        super().__init__()
+        self.feedback = []
+
+    async def execute(
+        self, run_id, project_id, requirement, plan, revision=0, feedback=""
+    ):
+        self.calls += 1
+        self.feedback.append(feedback)
+        if self.calls == 1:
+            raise WorkerExecutionError(
+                "tests_failed",
+                "Command failed (exit 1): npm run api:test\n"
+                "FAILED tests/test_shop.py::test_isolation",
+                diagnostics=[{
+                    "command": ["npm", "run", "api:test"],
+                    "exit_code": 1,
+                    "output": "FAILED tests/test_shop.py::test_isolation",
+                }],
+            )
+        return ExecutionResult(summary="tests repaired")
 
 
 class RecoveringPublisher:
@@ -303,6 +328,31 @@ def test_implementation_block_preserves_failed_coder_runs():
         ]
         assert [item.provider for item in blocked.model_runs[-2:]] == ["plus", "pro"]
         assert [item.duration_ms for item in blocked.model_runs[-2:]] == [10, 20]
+
+    asyncio.run(scenario())
+
+
+def test_implementation_retry_passes_test_failure_to_coder():
+    async def scenario():
+        provider = RecordingProvider()
+        worker = FailureRecoveringWorker()
+        service = RunService(build_main_graph(provider, worker, InMemorySaver()))
+        run = await service.start(
+            StartRunRequest(project_id="shop", requirement="Implement shop isolation")
+        )
+        blocked = await service.approve(
+            run.run_id, ApprovalRequest(decision="approve")
+        )
+
+        assert blocked.stage == Stage.IMPLEMENTATION_BLOCKED
+        assert blocked.blocking_reason["diagnostics"][0]["exit_code"] == 1
+        completed = await service.resume(
+            blocked.run_id, ResumeRequest(decision="retry")
+        )
+
+        assert completed.stage == Stage.MERGE_APPROVAL
+        assert "npm run api:test" in worker.feedback[1]
+        assert "test_isolation" in worker.feedback[1]
 
     asyncio.run(scenario())
 

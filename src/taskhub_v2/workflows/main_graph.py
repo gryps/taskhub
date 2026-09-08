@@ -26,6 +26,16 @@ from taskhub_v2.workflows.state import CodingState, event
 from taskhub_v2.workflows.supervisor import build_supervisor_graph
 
 
+def _implementation_recovery_feedback(reason: dict) -> str:
+    code = reason.get("code", "implementation_failed")
+    detail = reason.get("detail", "")
+    return (
+        f"The previous implementation attempt was blocked with {code}. "
+        "Fix the concrete failure below, preserve the existing implementation, and rerun "
+        f"the failing command before returning.\n\n{detail}"
+    )[-16_000:]
+
+
 def build_main_graph(
     provider: ModelProvider,
     worker: WorkerGateway,
@@ -70,6 +80,7 @@ def build_main_graph(
         }
 
     async def recover_implementation(state: CodingState) -> dict:
+        reason = state.get("blocking_reason") or {}
         response = interrupt(
             {
                 "type": "implementation_recovery",
@@ -85,6 +96,10 @@ def build_main_graph(
             "attempt": int(state.get("attempt", 0)) + (1 if retry else 0),
             "pending_action": None,
             "blocking_reason": None if retry else state.get("blocking_reason"),
+            "revision_feedback": (
+                _implementation_recovery_feedback(reason) if retry
+                else state.get("revision_feedback", "")
+            ),
             "current_stage": (
                 Stage.IMPLEMENTATION.value if retry else Stage.REJECTED.value
             ),

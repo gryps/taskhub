@@ -96,7 +96,7 @@ async def run_commands(
         try:
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
             exit_code = process.returncode
-            output = stdout.decode(errors="replace")[-4000:]
+            output = stdout.decode(errors="replace")[-32_000:]
         except TimeoutError:
             process.kill()
             await process.wait()

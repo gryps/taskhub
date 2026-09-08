@@ -8,6 +8,7 @@ from taskhub_v2.execution import LocalTestScheduler
 from taskhub_v2.git import GitWorkspaceManager
 from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.workers.coding_router import CodexCodingRouter
+from taskhub_v2.workers.test_diagnostics import failed_test_diagnostics
 
 FORBIDDEN_FILES = {".env", ".env.local", "auth.json", "credentials.json"}
 GENERATED_PARTS = {"__pycache__", ".pytest_cache", "node_modules", "dist", "build"}
@@ -15,11 +16,12 @@ GENERATED_SUFFIXES = {".pyc", ".pyo", ".coverage"}
 
 
 class WorkerExecutionError(RuntimeError):
-    def __init__(self, reason: str, detail: str, model_results=None):
+    def __init__(self, reason: str, detail: str, model_results=None, diagnostics=None):
         super().__init__(detail)
         self.reason = reason
         self.detail = detail
         self.model_results = model_results or []
+        self.diagnostics = diagnostics or []
 
 
 class GitCodingWorker:
@@ -65,7 +67,8 @@ class GitCodingWorker:
             existing.execution_node = scheduled.node_id
             failed = [test for test in existing.tests if test.exit_code]
             if failed:
-                raise WorkerExecutionError("tests_failed", failed[0].output_tail)
+                detail, diagnostics = failed_test_diagnostics(existing.tests)
+                raise WorkerExecutionError("tests_failed", detail, diagnostics=diagnostics)
             existing.artifacts = [
                 self.artifacts.write_text(
                     run_id, self._artifact_name(revision), "git_diff", existing.evidence
@@ -118,7 +121,8 @@ class GitCodingWorker:
         tests = scheduled.tests
         failed = [test for test in tests if test.exit_code]
         if failed:
-            raise WorkerExecutionError("tests_failed", failed[0].output_tail)
+            detail, diagnostics = failed_test_diagnostics(tests)
+            raise WorkerExecutionError("tests_failed", detail, diagnostics=diagnostics)
 
         await self._cleanup_generated_untracked(workspace.path)
         await self._git(workspace.path, "add", "-A", "--", *changed_files)
@@ -194,7 +198,8 @@ class GitCodingWorker:
         )
         failed = [test for test in scheduled.tests if test.exit_code]
         if failed:
-            raise WorkerExecutionError("tests_failed", failed[0].output_tail)
+            detail, diagnostics = failed_test_diagnostics(scheduled.tests)
+            raise WorkerExecutionError("tests_failed", detail, diagnostics=diagnostics)
         commit = (await self._git(workspace.path, "rev-parse", "HEAD")).strip()
         diff = await self._git(
             workspace.path, "diff", "--binary", f"{workspace.base_commit}..{commit}"

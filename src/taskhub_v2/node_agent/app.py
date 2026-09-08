@@ -380,7 +380,7 @@ async def _prepare_browser_acceptance_dependencies(
                 text=True,
                 timeout=min(max(timeout, 60), 600),
             )
-            output = (result.stdout + result.stderr)[-4000:]
+            output = (result.stdout + result.stderr)[-32_000:]
             return {"command": command, "exit_code": result.returncode, "output_tail": output}
         except FileNotFoundError:
             return {"command": command, "exit_code": 127, "output_tail": "command not found"}

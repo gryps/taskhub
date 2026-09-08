@@ -19,7 +19,7 @@ def build_implementation_graph(worker: WorkerGateway):
             )
         except Exception as exc:
             reason = getattr(exc, "reason", exc.__class__.__name__)
-            detail = getattr(exc, "detail", str(exc))[:500]
+            detail = getattr(exc, "detail", str(exc))[:16_000]
             failed_model_runs = [
                 {
                     "role": "coder",
@@ -31,6 +31,8 @@ def build_implementation_graph(worker: WorkerGateway):
                 for result in getattr(exc, "model_results", [])
             ]
             blocking_reason = {"code": reason, "detail": detail}
+            if getattr(exc, "diagnostics", []):
+                blocking_reason["diagnostics"] = exc.diagnostics
             if getattr(exc, "model_results", []):
                 blocking_reason["attempts"] = [
                     {
