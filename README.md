@@ -42,8 +42,11 @@ the administrator DSN private, creates an isolated database for each execution, 
 configured environment names, and force-drops the database after success or failure. Projects
 that require it declare `acceptance_capabilities: ["test_database"]`.
 
-A managed project can register one dedicated deployed test environment through
-`PUT /api/projects/{project_id}/test-environment`. TaskHub stores only its non-secret target URL,
+A managed project can register one dedicated deployed test environment from
+**系统配置 / 预生产环境** or through `PUT /api/projects/{project_id}/test-environment`.
+The form is available after a project is created or attached, persists the configuration in the
+project registry, and can disable it without editing configuration files. TaskHub stores its
+non-secret target URL,
 edge host, origin host, and expected environment. Acceptance commands receive these values as
 `TASKHUB_TEST_TARGET_URL`, `TASKHUB_TEST_EDGE_HOST`, `TASKHUB_TEST_ORIGIN_HOST`,
 `TASKHUB_TEST_EXPECTED_ENVIRONMENT`, and `TASKHUB_TEST_ENVIRONMENT_PROFILE`. SSH credentials and

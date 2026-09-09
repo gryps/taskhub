@@ -14,6 +14,7 @@ let currentProjectId = localStorage.getItem("taskhub_project_id");
 let eventSource;
 let pendingAction;
 let deploymentTimer;
+let registeredProjects = [];
 
 const byId = (id) => document.getElementById(id);
 const stageIndex = (name) => stages.findIndex(([id]) => id === (
@@ -338,6 +339,7 @@ function watch(runId) {
 
 async function loadProjects(preferredProjectId = currentProjectId) {
   const data = await request("/api/projects");
+  registeredProjects = data.projects;
   let active = data.projects.find((project) => project.id === preferredProjectId);
   if (!active && data.projects.length > 0) active = data.projects[data.projects.length - 1];
   currentProjectId = active?.id || null;
@@ -347,6 +349,7 @@ async function loadProjects(preferredProjectId = currentProjectId) {
     ? `当前项目：${active.name}`
     : "请先创建或接入项目";
   byId("start").disabled = !active;
+  window.dispatchEvent(new CustomEvent("taskhub:projects", {detail: data.projects}));
 }
 
 async function createProject(event) {

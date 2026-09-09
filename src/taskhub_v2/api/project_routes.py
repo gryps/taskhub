@@ -126,3 +126,15 @@ async def update_test_environment(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return project_view(updated)
+
+
+@router.delete("/{project_id}/test-environment")
+async def delete_test_environment(project_id: str, request: Request) -> dict:
+    try:
+        project = request.app.state.projects.get(project_id)
+        updated = request.app.state.projects.update(
+            project.model_copy(update={"test_environment": None})
+        )
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="项目不存在") from exc
+    return project_view(updated)

@@ -213,6 +213,75 @@ async function loadAcceptancePrerequisites() {
   }
 }
 
+function selectedTestEnvironmentProject() {
+  return registeredProjects.find((item) => item.id === byId("test-environment-project").value);
+}
+
+function fillTestEnvironmentForm() {
+  const project = selectedTestEnvironmentProject();
+  const environment = project?.test_environment;
+  byId("test-environment-url").value = environment?.target_url || "";
+  byId("test-environment-edge").value = environment?.edge_host || "";
+  byId("test-environment-origin").value = environment?.origin_host || "";
+  byId("test-environment-name").value = environment?.expected_environment || "production";
+  byId("delete-test-environment").disabled = !environment;
+  byId("test-environment-summary").textContent = !project ? "没有已接入项目"
+    : environment ? `${project.name} · 已配置` : `${project.name} · 未配置`;
+  byId("test-environment-message").textContent = "";
+}
+
+function loadTestEnvironmentConfig() {
+  const select = byId("test-environment-project");
+  const previous = select.value || currentProjectId;
+  select.innerHTML = registeredProjects.map((project) =>
+    `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`).join("");
+  select.value = registeredProjects.some((item) => item.id === previous)
+    ? previous : registeredProjects[0]?.id || "";
+  byId("save-test-environment").disabled = registeredProjects.length === 0;
+  fillTestEnvironmentForm();
+}
+
+async function saveTestEnvironment(event) {
+  event.preventDefault();
+  const projectId = byId("test-environment-project").value;
+  const button = byId("save-test-environment");
+  button.disabled = true;
+  byId("test-environment-message").textContent = "正在保存";
+  try {
+    await request(`/api/projects/${encodeURIComponent(projectId)}/test-environment`, {
+      method: "PUT",
+      body: JSON.stringify({
+        target_url: byId("test-environment-url").value,
+        edge_host: byId("test-environment-edge").value,
+        origin_host: byId("test-environment-origin").value,
+        expected_environment: byId("test-environment-name").value,
+      }),
+    });
+    await loadProjects(projectId);
+    loadTestEnvironmentConfig();
+    byId("test-environment-message").textContent = "配置已保存，后续验收将自动使用";
+  } catch (error) {
+    byId("test-environment-message").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function deleteTestEnvironment() {
+  const projectId = byId("test-environment-project").value;
+  byId("test-environment-message").textContent = "正在停用";
+  try {
+    await request(`/api/projects/${encodeURIComponent(projectId)}/test-environment`, {
+      method: "DELETE",
+    });
+    await loadProjects(projectId);
+    loadTestEnvironmentConfig();
+    byId("test-environment-message").textContent = "预生产配置已停用";
+  } catch (error) {
+    byId("test-environment-message").textContent = error.message;
+  }
+}
+
 async function loadResources() {
   const sections = [
     ["system-disclosure", loadSystemConfig],
@@ -220,6 +289,7 @@ async function loadResources() {
     ["nodes-disclosure", loadNodes],
     ["load-disclosure", loadNodeLoad],
     ["acceptance-prerequisites-disclosure", loadAcceptancePrerequisites],
+    ["test-environment-disclosure", loadTestEnvironmentConfig],
   ];
   await Promise.all(sections.filter(([id]) => byId(id).open).map(([, load]) => load()));
 }
@@ -240,6 +310,13 @@ refreshWhenExpanded("nodes-disclosure", loadNodes);
 refreshWhenExpanded("load-disclosure", loadNodeLoad);
 byId("refresh-acceptance-prerequisites").addEventListener("click", loadAcceptancePrerequisites);
 refreshWhenExpanded("acceptance-prerequisites-disclosure", loadAcceptancePrerequisites);
+refreshWhenExpanded("test-environment-disclosure", loadTestEnvironmentConfig);
+byId("test-environment-project").addEventListener("change", fillTestEnvironmentForm);
+byId("test-environment-form").addEventListener("submit", saveTestEnvironment);
+byId("delete-test-environment").addEventListener("click", deleteTestEnvironment);
+window.addEventListener("taskhub:projects", () => {
+  if (byId("test-environment-disclosure").open) loadTestEnvironmentConfig();
+});
 byId("acceptance-prerequisites").addEventListener("click", async (event) => {
   const button = event.target.closest(".copy-prerequisite");
   if (!button) return;

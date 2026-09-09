@@ -233,6 +233,23 @@
       </div>
       <div id="acceptance-prerequisites" class="resource-table"></div>
     </details>
+    <details id="test-environment-disclosure" class="providers-section resource-disclosure">
+      <summary><span>预生产环境</span><span id="test-environment-summary" class="muted">未读取</span></summary>
+      <form id="test-environment-form" class="project-form resource-form">
+        <div class="form-grid">
+          <label class="wide">项目<select id="test-environment-project" required></select></label>
+          <label class="wide">验收入口 URL<input id="test-environment-url" type="url" required maxlength="500" placeholder="https://preprod.example.com"></label>
+          <label>入口节点<input id="test-environment-edge" required maxlength="253" placeholder="edge-host"></label>
+          <label>业务节点<input id="test-environment-origin" required maxlength="253" placeholder="origin-host"></label>
+          <label class="wide">预期环境标识<input id="test-environment-name" required maxlength="40" value="production"></label>
+        </div>
+        <div class="form-actions">
+          <button id="save-test-environment" type="submit">保存配置</button>
+          <button id="delete-test-environment" type="button" class="secondary">停用配置</button>
+          <span id="test-environment-message" role="status"></span>
+        </div>
+      </form>
+    </details>
     </section>
     </div>
   </main>
