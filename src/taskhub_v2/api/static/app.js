@@ -63,6 +63,7 @@ function render(run) {
   const statuses = {running: "运行中", waiting: "待处理", completed: "已完成",
     rejected: "已终止", blocked: "已阻塞", failed: "失败"};
   byId("status").textContent = statuses[run.status] || run.status;
+  byId("status").className = `badge task-status status-${run.status}`;
   pendingAction = run.pending_action;
   const orphanPanel = byId("orphan-action");
   orphanPanel.classList.toggle("hidden", !run.project_missing || Boolean(run.archived_at));
@@ -574,7 +575,12 @@ byId("add-evidence").addEventListener("click", () => {
   byId("acceptance-source").focus();
 });
 
-request("/api/health").then(() => { byId("health").textContent = "服务正常"; });
+request("/api/health").then(() => {
+  byId("health").innerHTML = '<i aria-hidden="true"></i>服务正常';
+}).catch(() => {
+  byId("health").classList.add("health-error");
+  byId("health").innerHTML = '<i aria-hidden="true"></i>服务异常';
+});
 byId("login-button").addEventListener("click", login);
 byId("admin-token").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
 byId("logout").addEventListener("click", async () => { await request("/api/auth/logout", {method: "POST"}); await bootstrap(); });

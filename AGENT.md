@@ -31,3 +31,15 @@ the coding worker with an exact contract diagnostic; it is never converted into 
 request for the operator to write commands, edit project code, or manufacture
 evidence. Unsatisfied infrastructure prerequisites must fail before a run starts,
 not appear for the first time during supervision.
+
+## Frontend Maintenance Context
+
+Before changing the TaskHub V2 frontend, read these files in order:
+
+1. `docs/agent/project-context.md`
+2. `docs/agent/memory-notes.md`
+3. `docs/frontend-design.md`
+
+The design document is the frontend specification. The memory notes record the
+currently deployed implementation and operational handoff. Keep both current
+when frontend behavior or deployment state changes.

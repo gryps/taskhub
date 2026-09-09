@@ -10,6 +10,20 @@ function taskDetailText(task) {
   return "—";
 }
 
+function expandableCellText(value, limit = 20, emphasis = false) {
+  const text = String(value ?? "");
+  const characters = Array.from(text);
+  const textClass = emphasis ? " task-title" : "";
+  if (characters.length <= limit) {
+    return `<span class="cell-text${textClass}">${escapeHtml(text)}</span>`;
+  }
+  return `<div class="cell-expandable">
+    <span class="cell-preview${textClass}">${escapeHtml(characters.slice(0, limit).join(""))}…</span>
+    <span class="cell-full${textClass} hidden">${escapeHtml(text)}</span>
+    <button type="button" class="cell-expand" aria-expanded="false">⌄ 展开</button>
+  </div>`;
+}
+
 let taskPage = 1;
 let taskRequest = 0;
 
@@ -31,19 +45,34 @@ async function loadTaskCenter() {
     byId("task-message").textContent = `共 ${page.total} 个任务 · 第 ${page.page} / ${Math.max(1, Math.ceil(page.total / page.page_size))} 页`;
     byId("previous-tasks").disabled = page.page <= 1;
     byId("next-tasks").disabled = page.page * page.page_size >= page.total;
-    byId("task-rows").innerHTML = page.items.map((task) => `
+    byId("task-rows").innerHTML = page.items.length ? page.items.map((task) => `
       <tr tabindex="0" data-run-id="${escapeHtml(task.run_id)}">
-        <td><strong>${escapeHtml(task.requirement_summary)}</strong><small>${escapeHtml(task.run_id)}</small></td>
+        <td>${expandableCellText(task.requirement_summary, 15, true)}<small>${escapeHtml(task.run_id)}</small></td>
         <td>${escapeHtml(task.project_id)}</td><td>${escapeHtml(task.production_line)}</td>
         <td>${escapeHtml(stageLabels[task.stage] || task.stage)}</td>
         <td><span class="task-status status-${task.status}">${escapeHtml(statusLabels[task.status] || task.status)}</span></td>
-        <td class="task-attention">${escapeHtml(taskDetailText(task))}</td>
+        <td class="task-attention">${expandableCellText(taskDetailText(task))}</td>
         <td>${new Date(task.updated_at).toLocaleString()}</td>
-      </tr>`).join("");
-    byId("task-rows").querySelectorAll("tr").forEach((row) => {
+      </tr>`).join("") : '<tr class="empty-row"><td colspan="7"><strong>没有符合条件的任务</strong><small>调整筛选条件，或前往“开发流程”创建新任务。</small></td></tr>';
+    byId("task-rows").querySelectorAll("tr[data-run-id]").forEach((row) => {
       const open = () => openTask(row.dataset.runId);
-      row.addEventListener("click", open);
-      row.addEventListener("keydown", (event) => { if (event.key === "Enter") open(); });
+      row.addEventListener("click", (event) => {
+        if (!event.target.closest(".cell-expand")) open();
+      });
+      row.addEventListener("keydown", (event) => {
+        if (event.target === row && event.key === "Enter") open();
+      });
+    });
+    byId("task-rows").querySelectorAll(".cell-expand").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const container = button.closest(".cell-expandable");
+        const expanded = button.getAttribute("aria-expanded") === "true";
+        container.querySelector(".cell-preview").classList.toggle("hidden", !expanded);
+        container.querySelector(".cell-full").classList.toggle("hidden", expanded);
+        button.setAttribute("aria-expanded", String(!expanded));
+        button.textContent = expanded ? "⌄ 展开" : "⌃ 收起";
+      });
     });
   } catch (error) { byId("task-message").textContent = error.message; }
 }
@@ -71,6 +100,10 @@ function showPage(page) {
   byId("nav-tasks").classList.toggle("nav-active", tasks || page === "detail");
   byId("nav-workflow").classList.toggle("nav-active", page === "workflow");
   byId("nav-resources").classList.toggle("nav-active", resources);
+  byId("nav-tasks").setAttribute("aria-current", tasks || page === "detail" ? "page" : "false");
+  byId("nav-workflow").setAttribute("aria-current", page === "workflow" ? "page" : "false");
+  byId("nav-resources").setAttribute("aria-current", resources ? "page" : "false");
+  document.title = `${resources ? "系统配置" : page === "workflow" ? "开发流程" : page === "detail" ? "任务详情" : "任务中心"} · TaskHub`;
   if (tasks) { eventSource?.close(); loadTaskCenter(); }
   if (resources) { eventSource?.close(); window.loadResources?.(); }
 }

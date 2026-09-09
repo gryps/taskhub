@@ -1,0 +1,4 @@
+interface:
+  display_name: "TaskHub 前端设计"
+  short_description: "统一 TaskHub 控制台界面并安全发布到预生产环境"
+  default_prompt: "Use $taskhub-frontend-design to refine the TaskHub V2 frontend and verify its design consistency."

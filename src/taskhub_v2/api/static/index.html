@@ -4,54 +4,57 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=12">
 </head>
 <body>
-  <header>
-    <div>
-      <strong>TaskHub V2</strong>
-      <span>LangGraph 控制台</span>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">T</span>
+      <span class="brand-copy"><strong>TaskHub</strong><small>AI 交付控制台</small></span>
     </div>
     <div class="header-actions">
-      <span id="health" class="badge">检查服务</span>
+      <span id="health" class="badge health-badge"><i aria-hidden="true"></i>检查服务</span>
       <button id="logout" class="header-button hidden">退出</button>
     </div>
   </header>
   <main>
-    <section id="login" class="login">
-      <label>管理口令<input id="admin-token" type="password" autocomplete="current-password"></label>
-      <button id="login-button">登录</button>
+    <section id="login" class="login" aria-labelledby="login-title">
+      <div class="login-intro">
+        <span class="eyebrow">TASKHUB V2</span>
+        <h1 id="login-title">登录控制台</h1>
+        <p>管理 AI 软件交付任务、运行节点与验收证据。</p>
+      </div>
+      <label>管理口令<input id="admin-token" type="password" autocomplete="current-password" placeholder="输入管理口令"></label>
+      <button id="login-button">安全登录</button>
       <p id="login-message" role="status"></p>
     </section>
     <div id="workspace" class="hidden">
     <nav class="side-menu" aria-label="主菜单">
       <span class="menu-label">工作区</span>
-      <button id="nav-tasks" class="nav-active">任务中心</button>
-      <button id="nav-workflow" class="secondary">开发流程</button>
+      <button id="nav-tasks" class="nav-active"><i aria-hidden="true">▦</i><span>任务中心</span></button>
+      <button id="nav-workflow"><i aria-hidden="true">↗</i><span>开发流程</span></button>
       <span class="menu-label">系统</span>
-      <button id="nav-resources" class="secondary">系统配置</button>
+      <button id="nav-resources"><i aria-hidden="true">◇</i><span>系统配置</span></button>
     </nav>
     <section id="task-center" class="task-center">
-      <div class="section-head"><h1>任务中心</h1><button id="refresh-tasks" class="secondary">刷新</button></div>
+      <div class="page-head"><div class="page-head-copy"><span class="eyebrow">DELIVERY RUNS</span><h1>任务中心</h1><p>集中查看交付进度、人工待办与阻塞事项。</p></div><div class="page-actions"><button id="refresh-tasks" class="secondary">↻ 刷新</button></div></div>
       <div class="task-filters">
-        <input id="filter-project" placeholder="项目">
-        <input id="filter-line" placeholder="生产线">
-        <select id="filter-status"><option value="">全部状态</option><option value="running">运行中</option><option value="waiting">等待人工处理</option><option value="blocked">已阻塞</option><option value="failed">失败</option><option value="completed">已完成</option></select>
-        <select id="filter-stage"><option value="">全部环节</option></select>
+        <label><span>项目</span><input id="filter-project" placeholder="按项目编号筛选"></label>
+        <label><span>生产线</span><input id="filter-line" placeholder="按生产线筛选"></label>
+        <label><span>状态</span><select id="filter-status"><option value="">全部状态</option><option value="running">运行中</option><option value="waiting">等待人工处理</option><option value="blocked">已阻塞</option><option value="failed">失败</option><option value="completed">已完成</option></select></label>
+        <label><span>当前环节</span><select id="filter-stage"><option value="">全部环节</option></select></label>
       </div>
-      <p id="task-message" role="status"></p>
-      <button id="previous-tasks" type="button" disabled>上一页</button>
-      <button id="next-tasks" type="button" disabled>下一页</button>
-      <div class="task-table-wrap"><table class="task-table"><thead><tr><th>任务</th><th>项目</th><th>生产线</th><th>当前环节</th><th>状态</th><th>待办 / 阻塞原因</th><th>更新时间</th></tr></thead><tbody id="task-rows"></tbody></table></div>
+      <div class="table-toolbar"><p id="task-message" role="status"></p><div><button id="previous-tasks" class="secondary" type="button" disabled>上一页</button><button id="next-tasks" class="secondary" type="button" disabled>下一页</button></div></div>
+      <div class="task-table-wrap"><table class="task-table"><colgroup><col class="col-task"><col class="col-project"><col class="col-line"><col class="col-stage"><col class="col-status"><col class="col-attention"><col class="col-updated"></colgroup><thead><tr><th>任务</th><th>项目</th><th>生产线</th><th>当前环节</th><th>状态</th><th>待办 / 阻塞原因</th><th>更新时间</th></tr></thead><tbody id="task-rows"></tbody></table></div>
     </section>
     <div id="workflow-page" class="hidden">
     <section class="project-tools">
-      <div class="project-toolbar">
-        <div>
-          <h2>项目</h2>
-          <span id="active-project" class="muted">请先创建或接入项目</span>
+      <div class="project-toolbar page-head">
+        <div class="page-head-copy">
+          <span class="eyebrow">DELIVERY WORKSPACE</span><h1>开发流程</h1>
+          <p id="active-project">请先创建或接入项目</p>
         </div>
-        <div class="project-actions">
+        <div class="project-actions page-actions">
           <button id="show-project-form">创建项目</button>
           <button id="show-attach-project-form" class="secondary">接入项目</button>
         </div>
@@ -101,13 +104,13 @@
         </div>
       </form>
     </section>
-    <section class="composer">
+    <section class="composer card">
       <label>生产线<input id="production-line" value="default" maxlength="80"></label>
       <label>开发需求<textarea id="requirement" rows="4" placeholder="输入需要实现的功能"></textarea></label>
       <button id="start">开始流程</button>
       <p id="message" role="status"></p>
     </section>
-    <section class="process-overview" aria-labelledby="process-title">
+    <section class="process-overview card" aria-labelledby="process-title">
       <div class="section-head">
         <h2 id="process-title">开发流程</h2>
         <div class="flow-legend" aria-label="流程状态图例">
@@ -184,14 +187,16 @@
         <details><summary>监督裁决 <span id="decision-summary">尚未裁决</span></summary><div id="decision-detail" class="evidence">尚未裁决</div></details>
         <details><summary>模型调用 <span id="model-run-summary">0 次</span></summary><div id="model-run-detail" class="evidence">尚未调用</div></details>
         <details><summary>权威发布 <span id="publication-summary">尚未发布</span></summary><div id="publication-detail" class="evidence">尚未发布</div></details>
-        <details><summary>执行记录 <span id="timeline-summary">0 条</span></summary><ol id="timeline" class="timeline"></ol></details>
+        <details><summary>执行记录 <span id="timeline-summary">0 条</span></summary><ol id="timeline" class="timeline evidence"></ol></details>
       </div>
     </section>
     </div>
     <section id="resource-page" class="resource-page hidden">
-    <div class="resource-title">
-      <h1>系统配置</h1>
-      <p class="muted">模型、节点、运行环境与实施前置条件统一在此检测。</p>
+    <div class="resource-title page-head">
+      <div class="page-head-copy">
+        <span class="eyebrow">RUNTIME READINESS</span><h1>系统配置</h1>
+        <p>模型、节点、运行环境与实施前置条件统一在此检测。</p>
+      </div>
     </div>
     <details id="system-disclosure" class="providers-section resource-disclosure">
       <summary><span>系统检测</span><span id="system-summary" class="muted">正在检查</span></summary>
@@ -256,8 +261,8 @@
     </section>
     </div>
   </main>
-  <script src="/static/app.js?v=4"></script>
-  <script src="/static/task-center.js?v=4"></script>
-  <script src="/static/resource-center.js?v=4"></script>
+  <script src="/static/app.js?v=5"></script>
+  <script src="/static/task-center.js?v=12"></script>
+  <script src="/static/resource-center.js?v=5"></script>
 </body>
 </html>
