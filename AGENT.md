@@ -16,3 +16,18 @@ They do not bypass the platform by completing the managed-project work manually.
 Reading a managed project and collecting non-mutating diagnostics is permitted.
 Direct managed-project modification by TaskHub maintainers or assisting agents is
 not permitted.
+
+## Operational Self-Sufficiency
+
+TaskHub V2 must not depend on a TaskHub maintainer or an external coding assistant
+for routine project delivery. Operators provide hardware, network access, and
+credentials through documented admission/configuration flows. The platform owns
+node bootstrap checks, candidate deployment, database preparation, acceptance
+execution, evidence collection, cleanup, and recovery.
+
+Project-specific automation belongs in a versioned TaskHub contract generated and
+maintained by the managed project's coding runs. Missing automation is returned to
+the coding worker with an exact contract diagnostic; it is never converted into a
+request for the operator to write commands, edit project code, or manufacture
+evidence. Unsatisfied infrastructure prerequisites must fail before a run starts,
+not appear for the first time during supervision.

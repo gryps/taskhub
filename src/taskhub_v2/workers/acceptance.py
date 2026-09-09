@@ -1,11 +1,14 @@
+import asyncio
 import json
 import subprocess
 from pathlib import Path
 from uuid import uuid4
 
+import httpx
+
 from taskhub_v2.artifacts import ArtifactStore
 from taskhub_v2.browser import PreviewManager, load_acceptance_contract
-from taskhub_v2.browser.contract import load_acceptance_suite
+from taskhub_v2.browser.contract import PREPRODUCTION_EXAMPLE, load_acceptance_suite
 from taskhub_v2.browser.reports import validate_junit
 from taskhub_v2.domain.models import AcceptanceEvidence, AcceptanceResult
 from taskhub_v2.projects import ProjectRegistry
@@ -17,6 +20,14 @@ class AcceptanceExecutionError(RuntimeError):
     def __init__(self, detail: str):
         super().__init__(detail)
         self.detail = detail
+
+
+class PreproductionContractRequiredError(AcceptanceExecutionError):
+    reason = "preproduction_contract_missing"
+
+
+class PreproductionVerificationError(AcceptanceExecutionError):
+    reason = "preproduction_verification_failed"
 
 
 class LocalAcceptanceGateway:
@@ -118,32 +129,78 @@ class ProjectAcceptanceGateway:
         if contract_path.is_file():
             if not implementation.workspace or not implementation.commit:
                 raise AcceptanceExecutionError("browser acceptance requires a committed workspace")
-            if self.preview_manager is None:
-                raise AcceptanceExecutionError("browser preview manager is not configured")
             contract = load_acceptance_contract(implementation.workspace.path)
             suite = load_acceptance_suite(implementation.workspace.path, contract)
             actual_commit = _browser_acceptance_commit(
                 implementation.workspace.path, implementation.commit
             )
-            await self.scheduler.preflight_browser([contract.command], contract.required_capabilities)
+            if project.test_environment and contract.target != "preproduction":
+                raise PreproductionContractRequiredError(
+                    "项目已配置托管预生产环境，验收契约必须使用 target: preproduction，"
+                    "并提供 preproduction.prepare_command。该命令由编码模型实现，"
+                    "TaskHub 自动执行；不得要求使用者手工部署或补交证据。\n"
+                    f"契约结构：\n{PREPRODUCTION_EXAMPLE}\n"
+                    "健康接口必须返回 git_commit、environment 和 database_revision。"
+                )
+            if contract.target == "preproduction" and not project.test_environment:
+                raise PreproductionContractRequiredError(
+                    "验收契约要求预生产目标，但项目尚未配置预生产主机"
+                )
+            await self.scheduler.preflight_browser(
+                [contract.command], contract.required_capabilities
+            )
             preview_id = f"{run_id}-{uuid4().hex[:8]}"
             preview = None
+            target_url = ""
+            execution_environment = (
+                project.test_environment.execution_environment()
+                if project.test_environment else {}
+            )
+            execution_environment["TASKHUB_GIT_COMMIT"] = actual_commit
             try:
-                preview = await self.preview_manager.start(
-                    preview_id, implementation.workspace.path, actual_commit, contract.preview
-                )
+                if contract.target == "preproduction":
+                    prepared, health = await self._prepare_preproduction(
+                        run_id, project, implementation.workspace.path, actual_commit, contract
+                    )
+                    target_url = project.test_environment.target_url
+                    records.append(AcceptanceEvidence(
+                        id="preproduction-deployment",
+                        kind=(
+                            "database"
+                            if contract.preproduction.expected_database_revision
+                            else "other"
+                        ),
+                        status="passed",
+                        source=prepared.node_id,
+                        summary=(
+                            f"Candidate {actual_commit} deployed to {target_url}; "
+                            f"environment {health['environment']} and database revision "
+                            f"{health['database_revision']} verified"
+                        ),
+                        tests=prepared.tests,
+                    ))
+                else:
+                    if self.preview_manager is None:
+                        raise AcceptanceExecutionError(
+                            "browser preview manager is not configured"
+                        )
+                    preview = await self.preview_manager.start(
+                        preview_id, implementation.workspace.path, actual_commit, contract.preview
+                    )
+                    target_url = preview.url
                 browser_job_id = f"{run_id}-browser-{uuid4().hex[:8]}"
                 scheduled = await self.scheduler.run(
                     browser_job_id, f"{run_id}-browser", [contract.command],
                     contract.timeout_seconds, implementation.workspace.path,
                     workload=contract.workload,
                     required_capabilities_override=contract.required_capabilities,
-                    target_url=preview.url, git_commit=actual_commit,
+                    target_url=target_url, git_commit=actual_commit,
                     artifact_paths=contract.required_artifacts,
+                    execution_environment=execution_environment,
                 )
                 if scheduled.metadata.get("git_commit") != actual_commit:
                     raise AcceptanceExecutionError("browser evidence commit mismatch")
-                if scheduled.metadata.get("target_url") != preview.url:
+                if scheduled.metadata.get("target_url") != target_url:
                     raise AcceptanceExecutionError("browser evidence target URL mismatch")
                 browser_artifacts = []
                 junit_reports = []
@@ -159,7 +216,7 @@ class ProjectAcceptanceGateway:
                 failed = [test for test in scheduled.tests if test.exit_code]
                 try:
                     validate_junit(junit_reports, contract.browsers,
-                                   target_url=preview.url, git_commit=actual_commit,
+                                   target_url=target_url, git_commit=actual_commit,
                                    scenarios={item.id: item.browsers for item in suite.scenarios})
                 except ValueError as exc:
                     if failed and str(exc) == "browser acceptance requires executed test cases":
@@ -174,12 +231,14 @@ class ProjectAcceptanceGateway:
                     )
                 ]
                 if missing:
-                    raise AcceptanceExecutionError("required browser artifacts missing: " + ", ".join(missing))
+                    raise AcceptanceExecutionError(
+                        "required browser artifacts missing: " + ", ".join(missing)
+                    )
                 records.append(AcceptanceEvidence(
                     id="windows-browser-acceptance", kind="browser",
                     status="failed" if failed else "passed", source=scheduled.node_id,
                     summary=(
-                        f"Chromium and Edge acceptance at {preview.url} for {actual_commit}; "
+                        f"Chromium and Edge acceptance at {target_url} for {actual_commit}; "
                         "zero failures and skips; verified scenarios: "
                         + ", ".join(item.id for item in suite.scenarios)
                     ),
@@ -188,7 +247,8 @@ class ProjectAcceptanceGateway:
                 if failed:
                     raise AcceptanceExecutionError(failed[0].output_tail)
             finally:
-                await self.preview_manager.stop(preview_id)
+                if preview is not None:
+                    await self.preview_manager.stop(preview_id)
         if not records:
             records.append(
                 AcceptanceEvidence(
@@ -202,6 +262,30 @@ class ProjectAcceptanceGateway:
             )
         return AcceptanceResult(status="passed", evidence=records)
 
+    async def _prepare_preproduction(
+        self, run_id, project, workspace: str, commit: str, contract
+    ):
+        specification = contract.preproduction
+        environment = project.test_environment.execution_environment()
+        environment["TASKHUB_GIT_COMMIT"] = commit
+        scheduled = await self.scheduler.run(
+            f"{run_id}-preproduction-{uuid4().hex[:8]}",
+            f"{run_id}-preproduction",
+            [specification.prepare_command],
+            specification.timeout_seconds,
+            workspace,
+            workload="acceptance",
+            required_capabilities_override=project.acceptance_capabilities,
+            execution_environment=environment,
+        )
+        failed = [test for test in scheduled.tests if test.exit_code]
+        if failed:
+            raise PreproductionVerificationError(failed[0].output_tail)
+        health = await _wait_for_preproduction(
+            project.test_environment, specification, commit
+        )
+        return scheduled, health
+
 
 def _artifact_kind(path: str) -> str:
     if path.endswith("trace.zip"):
@@ -213,6 +297,49 @@ def _artifact_kind(path: str) -> str:
     if path.lower().endswith((".webm", ".mp4")):
         return "browser_video"
     return "playwright_report"
+
+
+async def _wait_for_preproduction(environment, specification, commit: str) -> dict:
+    url = environment.target_url + specification.health_path
+    deadline = asyncio.get_running_loop().time() + specification.timeout_seconds
+    last_detail = "预生产健康检查超时"
+    async with httpx.AsyncClient(follow_redirects=False) as client:
+        while asyncio.get_running_loop().time() < deadline:
+            try:
+                response = await client.get(url, timeout=5)
+                response.raise_for_status()
+                payload = response.json()
+                actual_commit = payload.get(specification.commit_field)
+                actual_environment = payload.get(specification.environment_field)
+                database_revision = payload.get(specification.database_revision_field)
+                if actual_commit != commit:
+                    last_detail = (
+                        f"预生产提交不匹配：期望 {commit}，实际 {actual_commit or '未上报'}"
+                    )
+                elif actual_environment != environment.expected_environment:
+                    last_detail = (
+                        "预生产环境标识不匹配：期望 "
+                        f"{environment.expected_environment}，实际 {actual_environment or '未上报'}"
+                    )
+                elif (
+                    specification.expected_database_revision
+                    and database_revision != specification.expected_database_revision
+                ):
+                    last_detail = (
+                        "数据库迁移版本不匹配：期望 "
+                        f"{specification.expected_database_revision}，"
+                        f"实际 {database_revision or '未上报'}"
+                    )
+                else:
+                    return {
+                        "git_commit": actual_commit,
+                        "environment": actual_environment,
+                        "database_revision": database_revision or "not-required",
+                    }
+            except (httpx.HTTPError, ValueError) as exc:
+                last_detail = f"预生产健康检查失败：{type(exc).__name__}"
+            await asyncio.sleep(1)
+    raise PreproductionVerificationError(last_detail)
 
 
 def _browser_acceptance_commit(worktree: str, expected_commit: str) -> str:

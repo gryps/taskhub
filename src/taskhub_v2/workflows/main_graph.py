@@ -239,8 +239,12 @@ def build_main_graph(
             return "revision"
         return "recovery"
     def route_acceptance(state: CodingState) -> str:
-        return "recovery" if state.get("status") == RunStatus.BLOCKED else "review"
-
+        if state.get("status") != RunStatus.BLOCKED:
+            return "review"
+        reason = state.get("blocking_reason") or {}
+        return "revision" if reason.get("responsible_node") == "implementation" and int(
+            state.get("revision_count", 0)
+        ) < int(state.get("max_revision_attempts", 2)) else "recovery"
     def route_recovery(state: CodingState) -> str:
         return "implementation" if state.get("decision") == "retry" else "reject"
 
@@ -330,7 +334,7 @@ def build_main_graph(
     builder.add_conditional_edges(
         "acceptance",
         route_acceptance,
-        {"recovery": "acceptance_recovery", "review": "review"},
+        {"recovery": "acceptance_recovery", "revision": "acceptance_revision", "review": "review"},
     )
     builder.add_conditional_edges(
         "acceptance_recovery",

@@ -52,6 +52,15 @@ edge host, origin host, and expected environment. Acceptance commands receive th
 `TASKHUB_TEST_EXPECTED_ENVIRONMENT`, and `TASKHUB_TEST_ENVIRONMENT_PROFILE`. SSH credentials and
 database administrator credentials remain node-private and are never project configuration.
 
+When a project has a dedicated preproduction environment, its browser contract must use
+`target: preproduction` and define `preproduction.prepare_command`. The managed-project coding
+worker owns that command; the operator does not write it. TaskHub runs the command on an
+acceptance node with the target hosts and candidate commit injected, then requires the target
+health response to prove the exact Git commit, environment name, and database revision before
+dispatching Windows browser acceptance. A local preview result cannot satisfy a configured
+preproduction gate. Missing contract automation is automatically returned to the coding worker
+while a revision remains available.
+
 Windows browser nodes configure `TASKHUB_BROWSER_PROFILE_DIR`,
 `TASKHUB_BROWSER_AUTH_TARGET`, and `TASKHUB_BROWSER_AUTH_READY_FILE` during admission. Run
 `deploy/windows/authorize-browser-profile.ps1` once in the interactive desktop account. Browser
@@ -111,6 +120,8 @@ make run
 - API handlers call application services and never mutate workflow state directly.
 - Providers and workers implement protocols; graphs do not contain vendor or host logic.
 - Project-specific commands and paths do not belong in platform core.
+- Operators provide infrastructure and credentials only. TaskHub executes deployment,
+  migration, acceptance, evidence collection, and cleanup without maintainer assistance.
 - Python modules must remain below 400 lines; CI enforces this limit.
 - Side effects must be idempotent because interrupted nodes restart from their beginning.
 

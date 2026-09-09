@@ -43,8 +43,9 @@ which adapter receives the next call.
 The TaskHub coding worker is the sole writer for managed-project implementation
 changes. Every such change must be attributable to a run and retain model, test,
 artifact, and Git evidence. Human intervention at a workflow boundary is limited
-to decisions, evidence submission, and remediation of TaskHub, deployment,
-execution-node, or configuration faults. It never authorizes a TaskHub maintainer
+to governance decisions and providing base infrastructure credentials through system
+configuration. Routine deployment and evidence collection are platform responsibilities.
+Intervention never authorizes a TaskHub maintainer
 to implement the product change outside the workflow.
 
 Maintainers may inspect managed projects without mutation to diagnose failures.
@@ -68,10 +69,12 @@ workload against the task workspace and persists command output plus artifact
 digests in LangGraph state. Review, risk, and supervision receive both the code
 change and structured acceptance evidence.
 
-An acceptance failure pauses at `acceptance_recovery` without rerunning the
-coding model. At the revision limit, authenticated operators can submit database,
-browser, or manual evidence through `POST /api/runs/{run_id}/acceptance`; the graph
-then returns directly to review. API handlers never patch checkpoint state.
+An execution-environment failure pauses at `acceptance_recovery` without rerunning the
+coding model. Contract and suite defects are returned automatically to the coding worker
+while a revision remains available. For a configured preproduction environment, TaskHub
+runs the contract's deployment command, verifies the candidate commit, environment identity,
+and database revision from the target health endpoint, and only then dispatches browser
+acceptance against that exact target. API handlers never patch checkpoint state.
 
 Project-specific paths, build commands, and product names are forbidden in
 platform source and checked by an architecture test.

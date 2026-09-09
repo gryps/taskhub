@@ -3,8 +3,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-
 CONTRACT_EXAMPLE = """workload: browser_acceptance
+target: preview
 required_capabilities: [windows_gui, playwright, screenshot, trace]
 preview:
   command: [python3, -m, uvicorn, app:create_app, --factory, --host, 0.0.0.0, --port, "{port}"]
@@ -19,6 +19,17 @@ required_artifacts: [playwright-report, junit.xml, screenshots, trace.zip]
 # health_path must return JSON containing git_commit equal to TASKHUB_GIT_COMMIT.
 # On Windows, launch the installed browsers from TASKHUB_CHROMIUM_CHANNEL=chrome
 # and TASKHUB_EDGE_CHANNEL=msedge; do not require Playwright-downloaded Chromium.
+"""
+
+PREPRODUCTION_EXAMPLE = """target: preproduction
+preproduction:
+  prepare_command: [python3, deploy/preproduction.py]
+  health_path: /api/health
+  timeout_seconds: 300
+  commit_field: git_commit
+  environment_field: environment
+  database_revision_field: database_revision
+  expected_database_revision: 0016_listing_workflow_v2
 """
 
 SUITE_EXAMPLE = """scenarios:
@@ -68,13 +79,28 @@ class PreviewContract(BaseModel):
         return self
 
 
+class PreproductionContract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    prepare_command: list[str] = Field(min_length=1)
+    health_path: str = Field(default="/api/health", pattern=r"^/")
+    timeout_seconds: int = Field(default=300, ge=1, le=1800)
+    commit_field: str = Field(default="git_commit", min_length=1, max_length=100)
+    environment_field: str = Field(default="environment", min_length=1, max_length=100)
+    database_revision_field: str = Field(
+        default="database_revision", min_length=1, max_length=100
+    )
+    expected_database_revision: str = Field(default="", max_length=200)
+
+
 class AcceptanceContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
     workload: str = "browser_acceptance"
+    target: str = "preview"
     required_capabilities: set[str] = Field(
         default_factory=lambda: {"windows_gui", "playwright", "screenshot", "trace"}
     )
-    preview: PreviewContract
+    preview: PreviewContract | None = None
+    preproduction: PreproductionContract | None = None
     browsers: list[str] = Field(default_factory=lambda: ["chromium", "edge"], min_length=1)
     command: list[str] = Field(min_length=1)
     suite: str = "tests/e2e/acceptance.yaml"
@@ -90,6 +116,15 @@ class AcceptanceContract(BaseModel):
         unsupported = set(self.browsers) - {"chromium", "edge"}
         if unsupported:
             raise ValueError(f"unsupported browsers: {', '.join(sorted(unsupported))}")
+        if self.target not in {"preview", "preproduction"}:
+            raise ValueError("acceptance target must be preview or preproduction")
+        if self.target == "preview" and self.preview is None:
+            raise ValueError("preview target requires preview configuration")
+        if self.target == "preproduction" and self.preproduction is None:
+            raise ValueError(
+                "preproduction target requires preproduction configuration:\n"
+                f"{PREPRODUCTION_EXAMPLE}"
+            )
         self.required_capabilities.update(self.browsers)
         return self
 
@@ -138,7 +173,10 @@ def load_acceptance_contract(repository: str | Path) -> AcceptanceContract:
             browser for scenario in suite.scenarios for browser in scenario.browsers
         } - set(contract.browsers)
         if unsupported:
-            raise ValueError("acceptance suite uses undeclared browsers: " + ", ".join(sorted(unsupported)))
+            raise ValueError(
+                "acceptance suite uses undeclared browsers: "
+                + ", ".join(sorted(unsupported))
+            )
     return contract
 
 

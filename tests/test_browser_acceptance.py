@@ -263,6 +263,105 @@ required_artifacts: [junit.xml]
     assert all(job_id.startswith("run-1-browser-") for job_id in scheduler.job_ids)
 
 
+def test_preproduction_acceptance_deploys_and_binds_real_target(monkeypatch, tmp_path):
+    import subprocess
+
+    from taskhub_v2.projects import ProjectRegistry
+    from taskhub_v2.workers import acceptance as acceptance_module
+    from taskhub_v2.workers.acceptance import ProjectAcceptanceGateway
+
+    repository = tmp_path / "repo"
+    (repository / ".taskhub").mkdir(parents=True)
+    (repository / "tests" / "e2e").mkdir(parents=True)
+    (repository / ".taskhub" / "acceptance.yaml").write_text(
+        """
+target: preproduction
+preproduction:
+  prepare_command: [python3, ops/deploy_preproduction.py]
+  expected_database_revision: migration-16
+browsers: [chromium]
+command: [npx, playwright, test]
+suite: tests/e2e/acceptance.yaml
+required_artifacts: [junit.xml]
+""",
+        encoding="utf-8",
+    )
+    (repository / "tests" / "e2e" / "acceptance.yaml").write_text(
+        "scenarios:\n  - id: task-list\n    description: Task list\n"
+        "    browsers: [chromium]\n",
+        encoding="utf-8",
+    )
+    projects_file = tmp_path / "projects.json"
+    projects_file.write_text(json.dumps({"projects": [{
+        "id": "shop", "repository": str(repository),
+        "acceptance_capabilities": ["test_database"],
+        "test_environment": {
+            "target_url": "https://preprod.example.com",
+            "edge_host": "edge.example.com", "origin_host": "origin.example.com",
+        },
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(subprocess, "run", lambda command, **kwargs:
+        subprocess.CompletedProcess(command, 0, "a" * 40))
+
+    async def healthy(environment, specification, commit):
+        return {"git_commit": commit, "environment": "production",
+                "database_revision": "migration-16"}
+
+    monkeypatch.setattr(acceptance_module, "_wait_for_preproduction", healthy)
+    junit = (f'<testsuite><testcase><properties>'
+             f'<property name="browser" value="chromium"/>'
+             f'<property name="target_url" value="https://preprod.example.com"/>'
+             f'<property name="git_commit" value="{"a" * 40}"/>'
+             f'<property name="scenario.task-list" value="passed"/>'
+             f'</properties></testcase></testsuite>').encode()
+
+    class Scheduler:
+        def __init__(self):
+            self.calls = []
+
+        async def preflight_browser(self, commands, capabilities):
+            pass
+
+        async def run(self, job_id, sticky_key, commands, timeout, workdir, **kwargs):
+            self.calls.append((commands, kwargs))
+            if kwargs["workload"] == "acceptance":
+                return ScheduledTests(node_id="acceptance-54", tests=[TestExecution(
+                    command=commands[0], exit_code=0, output_tail="deployed")])
+            return ScheduledTests(node_id="windows-gui-34", tests=[TestExecution(
+                command=commands[0], exit_code=0, output_tail="passed")], metadata={
+                    "target_url": "https://preprod.example.com",
+                    "git_commit": "a" * 40,
+                    "downloaded_artifacts": [{
+                        "path": "junit.xml", "sha256": hashlib.sha256(junit).hexdigest(),
+                        "size": len(junit), "content": junit,
+                    }],
+                })
+
+    class NoPreview:
+        async def start(self, *args):
+            raise AssertionError("preproduction acceptance must not start a local preview")
+
+    scheduler = Scheduler()
+    gateway = ProjectAcceptanceGateway(
+        ProjectRegistry(str(projects_file)), scheduler,
+        ArtifactStore(str(tmp_path / "artifacts")), NoPreview(),
+    )
+    result = asyncio.run(gateway.verify("run-1", "shop", ExecutionResult(
+        summary="done", workspace=Workspace(
+            project_id="shop", path=str(repository), branch="task", base_commit="a" * 40
+        ), commit="a" * 40,
+    )))
+
+    assert [item.id for item in result.evidence] == [
+        "preproduction-deployment", "windows-browser-acceptance"
+    ]
+    assert scheduler.calls[0][0] == [["python3", "ops/deploy_preproduction.py"]]
+    assert scheduler.calls[1][1]["target_url"] == "https://preprod.example.com"
+    assert scheduler.calls[1][1]["execution_environment"]["TASKHUB_TEST_EDGE_HOST"] == (
+        "edge.example.com"
+    )
+
+
 def test_browser_acceptance_surfaces_collection_failure(monkeypatch, tmp_path):
     import subprocess
     from taskhub_v2.browser.preview import PreviewInstance

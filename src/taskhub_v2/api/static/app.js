@@ -183,7 +183,7 @@ function render(run) {
   } else if (pendingAction?.type === "manual_intervention") {
     byId("action-stage").textContent = "第 8 环 · 平台处置";
     byId("action-title").textContent = "修复平台、节点环境或配置后重试，禁止人工代改业务项目";
-    byId("action-detail").textContent = "完成候选环境操作后，提交真实验收证据以重新审查";
+    byId("action-detail").textContent = "平台将重新检测基础资源，并自动执行部署与验收";
     byId("approve").textContent = "返回自动返工";
     byId("reject").textContent = "终止任务";
   }
@@ -198,8 +198,12 @@ function render(run) {
   byId("configure-resources").classList.toggle(
     "hidden", !resourceActions.includes(pendingAction?.type)
   );
+  const managedEvidence = Boolean(
+    registeredProjects.find((project) => project.id === run.project_id)?.test_environment
+  );
   byId("add-evidence").classList.toggle(
-    "hidden", !["revision_limit", "manual_intervention"].includes(pendingAction?.type)
+    "hidden", managedEvidence
+      || !["revision_limit", "manual_intervention"].includes(pendingAction?.type)
   );
   byId("approve").classList.toggle("hidden", !choices.some((choice) =>
     ["approve", "retry", "recheck"].includes(choice)) && !(

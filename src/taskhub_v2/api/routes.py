@@ -2,17 +2,18 @@ import json
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
-from taskhub_v2.artifacts import ArtifactStore
 
 from taskhub_v2.api.dependencies import get_run_service
+from taskhub_v2.artifacts import ArtifactStore
 from taskhub_v2.browser import load_acceptance_contract
 from taskhub_v2.domain.models import (
     AcceptanceSubmission,
     ApprovalRequest,
-    ResumeRequest,
     RebindProjectRequest,
+    ResumeRequest,
     RunStatus,
     RunView,
     Stage,
@@ -39,6 +40,18 @@ async def start_run(payload: StartRunRequest, request: Request, service: Service
         if request.app.state.settings.worker_mode != "git":
             return await service.start(payload)
         project = request.app.state.projects.get(payload.project_id)
+        if project.test_environment:
+            try:
+                async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
+                    response = await client.get(project.test_environment.target_url)
+                if response.status_code >= 500:
+                    raise RunConflictError(
+                        f"预生产环境未就绪：HTTP {response.status_code}"
+                    )
+            except httpx.HTTPError as exc:
+                raise RunConflictError(
+                    f"预生产环境未就绪：{type(exc).__name__}"
+                ) from exc
         health = await request.app.state.node_scheduler.status()
         for capability in project.acceptance_capabilities:
             ready = any(

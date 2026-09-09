@@ -57,7 +57,7 @@ async def handle_revision_limit(state: CodingState) -> dict:
         "decision": decision,
         "max_revision_attempts": (
             int(state.get("max_revision_attempts", 2)) + 1
-            if retry
+            if retry or recheck
             else int(state.get("max_revision_attempts", 2))
         ),
         "acceptance": (

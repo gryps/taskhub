@@ -19,6 +19,7 @@ def build_acceptance_graph(gateway: AcceptanceGateway):
                 "acceptance_contract_invalid",
                 "acceptance_contract_missing",
                 "acceptance_suite_invalid",
+                "preproduction_contract_missing",
             }
             return {
                 "current_stage": Stage.ACCEPTANCE_BLOCKED.value,

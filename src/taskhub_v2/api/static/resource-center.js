@@ -237,7 +237,7 @@ function fillTestEnvironmentForm(forceEditing = false) {
   byId("test-environment-name").value = environment?.expected_environment || "production";
   byId("delete-test-environment").disabled = !environment;
   byId("test-environment-summary").textContent = !project ? "没有已接入项目"
-    : environment ? `${project.name} · 已配置` : `${project.name} · 未配置`;
+    : environment ? `${project.name} · 基础资源已配置` : `${project.name} · 未配置`;
   byId("test-environment-message").textContent = "";
   const editing = forceEditing || Boolean(project && !environment);
   setTestEnvironmentEditMode(editing, Boolean(environment));
