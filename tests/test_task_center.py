@@ -125,6 +125,9 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert '<summary><span>节点负载（近 5 分钟峰值）</span>' in html
         assert '<summary><span>预生产环境</span>' in html
         assert 'id="test-environment-form"' in html
+        assert 'id="check-test-environment"' in html
+        assert 'id="edit-test-environment"' in html
+        assert "测试访问地址" in html
         assert 'id="revise"' in html and "退回实施" in html
         assert 'id="manual"' in html and "平台处置" in html
         assert 'id="configure-resources"' in html and "更换节点/模型" in html

@@ -1,6 +1,7 @@
 import subprocess
 from pathlib import Path
 
+import httpx
 from fastapi.testclient import TestClient
 
 from taskhub_v2.api.app import create_app
@@ -228,3 +229,35 @@ def test_project_test_environment_can_be_disabled(tmp_path: Path):
     assert response.status_code == 200
     assert response.json()["test_environment"] is None
     assert ProjectRegistry(str(projects_file)).get("shop").test_environment is None
+
+
+def test_project_test_environment_can_be_checked(tmp_path: Path, monkeypatch):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    app = create_app(Settings(admin_token="admin-secret", session_secret="session-secret",
+                              projects_file=str(projects_file)))
+    app.state.projects.add(ProjectDefinition(
+        id="shop", repository=str(repo), test_environment={
+            "target_url": "https://preprod.example.com",
+            "edge_host": "edge.example.com",
+            "origin_host": "origin.example.com",
+        },
+    ))
+
+    async def successful_get(self, url):
+        return httpx.Response(200, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", successful_get)
+    with TestClient(app) as client:
+        login = client.post("/api/auth/login", json={"token": "admin-secret"})
+        response = client.post(
+            "/api/projects/shop/test-environment/check",
+            headers={"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "available": True,
+        "status_code": 200,
+        "detail": "验收入口已响应 HTTP 200",
+    }

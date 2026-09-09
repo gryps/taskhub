@@ -1,5 +1,6 @@
 import shlex
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
@@ -138,3 +139,27 @@ async def delete_test_environment(project_id: str, request: Request) -> dict:
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail="项目不存在") from exc
     return project_view(updated)
+
+
+@router.post("/{project_id}/test-environment/check")
+async def check_test_environment(project_id: str, request: Request) -> dict:
+    try:
+        project = request.app.state.projects.get(project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="项目不存在") from exc
+    if project.test_environment is None:
+        raise HTTPException(status_code=409, detail="请先配置预生产环境")
+
+    try:
+        async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
+            response = await client.get(project.test_environment.target_url)
+    except httpx.HTTPError as exc:
+        return {
+            "available": False,
+            "detail": f"无法连接验收入口：{type(exc).__name__}",
+        }
+    return {
+        "available": response.status_code < 500,
+        "status_code": response.status_code,
+        "detail": f"验收入口已响应 HTTP {response.status_code}",
+    }

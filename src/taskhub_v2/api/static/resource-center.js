@@ -217,7 +217,18 @@ function selectedTestEnvironmentProject() {
   return registeredProjects.find((item) => item.id === byId("test-environment-project").value);
 }
 
-function fillTestEnvironmentForm() {
+function setTestEnvironmentEditMode(editing, lockProject = editing) {
+  ["test-environment-url", "test-environment-edge", "test-environment-origin",
+    "test-environment-name"].forEach((id) => { byId(id).disabled = !editing; });
+  byId("test-environment-project").disabled = lockProject;
+  byId("check-test-environment").classList.toggle("hidden", editing);
+  byId("edit-test-environment").classList.toggle("hidden", editing);
+  byId("save-test-environment").classList.toggle("hidden", !editing);
+  byId("cancel-test-environment").classList.toggle("hidden", !editing);
+  byId("delete-test-environment").classList.toggle("hidden", !editing);
+}
+
+function fillTestEnvironmentForm(forceEditing = false) {
   const project = selectedTestEnvironmentProject();
   const environment = project?.test_environment;
   byId("test-environment-url").value = environment?.target_url || "";
@@ -228,6 +239,10 @@ function fillTestEnvironmentForm() {
   byId("test-environment-summary").textContent = !project ? "没有已接入项目"
     : environment ? `${project.name} · 已配置` : `${project.name} · 未配置`;
   byId("test-environment-message").textContent = "";
+  const editing = forceEditing || Boolean(project && !environment);
+  setTestEnvironmentEditMode(editing, Boolean(environment));
+  byId("check-test-environment").disabled = !environment;
+  byId("edit-test-environment").disabled = !project;
 }
 
 function loadTestEnvironmentConfig() {
@@ -282,6 +297,25 @@ async function deleteTestEnvironment() {
   }
 }
 
+async function checkTestEnvironment() {
+  const projectId = byId("test-environment-project").value;
+  const button = byId("check-test-environment");
+  button.disabled = true;
+  byId("test-environment-message").textContent = "正在检测";
+  try {
+    const result = await request(
+      `/api/projects/${encodeURIComponent(projectId)}/test-environment/check`,
+      {method: "POST"},
+    );
+    byId("test-environment-message").textContent = result.available
+      ? `可用：${result.detail}` : `不可用：${result.detail}`;
+  } catch (error) {
+    byId("test-environment-message").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function loadResources() {
   const sections = [
     ["system-disclosure", loadSystemConfig],
@@ -314,6 +348,9 @@ refreshWhenExpanded("test-environment-disclosure", loadTestEnvironmentConfig);
 byId("test-environment-project").addEventListener("change", fillTestEnvironmentForm);
 byId("test-environment-form").addEventListener("submit", saveTestEnvironment);
 byId("delete-test-environment").addEventListener("click", deleteTestEnvironment);
+byId("check-test-environment").addEventListener("click", checkTestEnvironment);
+byId("edit-test-environment").addEventListener("click", () => setTestEnvironmentEditMode(true));
+byId("cancel-test-environment").addEventListener("click", () => fillTestEnvironmentForm());
 window.addEventListener("taskhub:projects", () => {
   if (byId("test-environment-disclosure").open) loadTestEnvironmentConfig();
 });
