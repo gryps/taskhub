@@ -55,9 +55,12 @@ class NodeRunner:
         target_url: str = "",
         git_commit: str = "",
         artifact_paths: list[str] | None = None,
+        execution_environment: dict[str, str] | None = None,
     ) -> ScheduledTests:
         if node.kind == "local":
-            tests = await self._run_local(commands, timeout, workdir)
+            tests = await self._run_local(
+                commands, timeout, workdir, execution_environment or {}
+            )
             return ScheduledTests(node_id=node.id, tests=tests)
         return await self._run_remote(
             node,
@@ -69,6 +72,7 @@ class NodeRunner:
             target_url,
             git_commit,
             artifact_paths or [],
+            execution_environment or {},
         )
 
     async def health(self, node: NodeDefinition) -> dict:
@@ -154,6 +158,7 @@ class NodeRunner:
         target_url: str,
         git_commit: str,
         artifact_paths: list[str],
+        execution_environment: dict[str, str],
     ) -> ScheduledTests:
         archive = await asyncio.to_thread(self._archive, Path(workdir))
         digest = hashlib.sha256(archive).hexdigest()
@@ -170,6 +175,7 @@ class NodeRunner:
                         "target_url": target_url,
                         "git_commit": git_commit,
                         "artifact_paths": artifact_paths,
+                        "execution_environment": execution_environment,
                     },
                     headers=self._headers(),
                 )
@@ -270,7 +276,8 @@ class NodeRunner:
 
     @staticmethod
     async def _run_local(
-        commands: list[list[str]], timeout: int, workdir: str
+        commands: list[list[str]], timeout: int, workdir: str,
+        execution_environment: dict[str, str] | None = None,
     ) -> list[TestExecution]:
         results = []
         for command in commands:
@@ -282,7 +289,10 @@ class NodeRunner:
             process = await asyncio.create_subprocess_exec(
                 *command,
                 cwd=workdir,
-                env=direct_environment(dict(os.environ)),
+                env={
+                    **direct_environment(dict(os.environ)),
+                    **(execution_environment or {}),
+                },
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )

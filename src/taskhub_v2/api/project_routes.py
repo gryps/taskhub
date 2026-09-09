@@ -3,8 +3,8 @@ import shlex
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from taskhub_v2.domain.models import ProjectDefinition
-from taskhub_v2.projects import ProjectConflictError, ProjectProvisionError
+from taskhub_v2.domain.models import ProjectDefinition, TestEnvironmentDefinition
+from taskhub_v2.projects import ProjectConflictError, ProjectNotFoundError, ProjectProvisionError
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -27,6 +27,13 @@ class ProjectAttachRequest(BaseModel):
     test_database: bool = False
 
 
+class TestEnvironmentRequest(BaseModel):
+    target_url: str = Field(max_length=500)
+    edge_host: str = Field(max_length=253)
+    origin_host: str = Field(max_length=253)
+    expected_environment: str = Field(default="production", max_length=40)
+
+
 def parse_test_commands(value: str) -> list[list[str]]:
     commands = []
     for line in value.splitlines():
@@ -47,6 +54,9 @@ def project_view(item: ProjectDefinition) -> dict:
         "test_commands": item.test_commands,
         "acceptance_commands": item.acceptance_commands,
         "test_database": "test_database" in item.acceptance_capabilities,
+        "test_environment": (
+            item.test_environment.model_dump(mode="json") if item.test_environment else None
+        ),
         "repository_ready": True,
     }
 
@@ -99,3 +109,20 @@ async def attach_project(payload: ProjectAttachRequest, request: Request) -> dic
     except (ProjectProvisionError, ValueError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return project_view(created)
+
+
+@router.put("/{project_id}/test-environment")
+async def update_test_environment(
+    project_id: str, payload: TestEnvironmentRequest, request: Request
+) -> dict:
+    try:
+        project = request.app.state.projects.get(project_id)
+        environment = TestEnvironmentDefinition(**payload.model_dump())
+        updated = request.app.state.projects.update(
+            project.model_copy(update={"test_environment": environment})
+        )
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="项目不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return project_view(updated)

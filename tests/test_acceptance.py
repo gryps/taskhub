@@ -23,7 +23,7 @@ class RecordingScheduler:
         self.calls = []
 
     async def run(self, job_id, sticky_key, commands, timeout, workdir, workload="test", **kwargs):
-        self.calls.append((commands, workload, workdir))
+        self.calls.append((commands, workload, workdir, kwargs))
         return ScheduledTests(
             node_id="acceptance-node",
             tests=[
@@ -48,6 +48,11 @@ def gateway(tmp_path, exit_code=0):
                         "id": "shop",
                         "repository": str(repository),
                         "acceptance_commands": [["python3", "accept.py"]],
+                        "test_environment": {
+                            "target_url": "https://192.168.31.55",
+                            "edge_host": "192.168.31.55",
+                            "origin_host": "192.168.31.56",
+                        },
                     }
                 ]
             }
@@ -83,7 +88,21 @@ def test_project_acceptance_runs_as_separate_workload_and_records_artifact(tmp_p
     assert result.evidence[0].source == "acceptance-node"
     assert result.evidence[0].artifacts[0].kind == "acceptance_report"
     assert scheduler.calls == [
-        ([["python3", "accept.py"]], "acceptance", str(repository))
+        (
+            [["python3", "accept.py"]],
+            "acceptance",
+            str(repository),
+            {
+                "required_capabilities_override": set(),
+                "execution_environment": {
+                    "TASKHUB_TEST_TARGET_URL": "https://192.168.31.55",
+                    "TASKHUB_TEST_EDGE_HOST": "192.168.31.55",
+                    "TASKHUB_TEST_ORIGIN_HOST": "192.168.31.56",
+                    "TASKHUB_TEST_EXPECTED_ENVIRONMENT": "production",
+                    "TASKHUB_TEST_ENVIRONMENT_PROFILE": "dedicated",
+                },
+            },
+        )
     ]
 
 

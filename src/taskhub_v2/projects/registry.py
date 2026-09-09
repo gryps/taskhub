@@ -51,6 +51,14 @@ class ProjectRegistry:
             self._write([*projects, normalized])
         return normalized
 
+    def update(self, project: ProjectDefinition) -> ProjectDefinition:
+        with self._lock:
+            projects = self.list()
+            if not any(item.id == project.id for item in projects):
+                raise ProjectNotFoundError(project.id)
+            self._write([project if item.id == project.id else item for item in projects])
+        return project
+
     def _write(self, projects: list[ProjectDefinition]) -> None:
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         temporary = self.path.with_suffix(f"{self.path.suffix}.tmp")

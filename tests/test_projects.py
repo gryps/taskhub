@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from taskhub_v2.api.app import create_app
 from taskhub_v2.config import Settings
 from taskhub_v2.domain.models import ProjectDefinition
+from taskhub_v2.projects import ProjectRegistry
 
 
 def git(path: Path, *args: str) -> None:
@@ -166,3 +167,39 @@ def test_project_registration_rejects_an_invalid_authority_repository(tmp_path: 
         )
 
     assert response.status_code == 422
+
+
+def test_project_test_environment_can_be_configured(tmp_path: Path):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+        )
+    )
+    app.state.projects.add(ProjectDefinition(id="shop", repository=str(repo)))
+
+    with TestClient(app) as client:
+        login = client.post("/api/auth/login", json={"token": "admin-secret"})
+        response = client.put(
+            "/api/projects/shop/test-environment",
+            headers={"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]},
+            json={
+                "target_url": "https://192.168.31.55/",
+                "edge_host": "192.168.31.55",
+                "origin_host": "192.168.31.56",
+                "expected_environment": "production",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["test_environment"] == {
+        "profile": "dedicated",
+        "target_url": "https://192.168.31.55",
+        "edge_host": "192.168.31.55",
+        "origin_host": "192.168.31.56",
+        "expected_environment": "production",
+    }
+    assert ProjectRegistry(str(projects_file)).get("shop").test_environment is not None

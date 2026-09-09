@@ -42,6 +42,13 @@ the administrator DSN private, creates an isolated database for each execution, 
 configured environment names, and force-drops the database after success or failure. Projects
 that require it declare `acceptance_capabilities: ["test_database"]`.
 
+A managed project can register one dedicated deployed test environment through
+`PUT /api/projects/{project_id}/test-environment`. TaskHub stores only its non-secret target URL,
+edge host, origin host, and expected environment. Acceptance commands receive these values as
+`TASKHUB_TEST_TARGET_URL`, `TASKHUB_TEST_EDGE_HOST`, `TASKHUB_TEST_ORIGIN_HOST`,
+`TASKHUB_TEST_EXPECTED_ENVIRONMENT`, and `TASKHUB_TEST_ENVIRONMENT_PROFILE`. SSH credentials and
+database administrator credentials remain node-private and are never project configuration.
+
 Windows browser nodes configure `TASKHUB_BROWSER_PROFILE_DIR`,
 `TASKHUB_BROWSER_AUTH_TARGET`, and `TASKHUB_BROWSER_AUTH_READY_FILE` during admission. Run
 `deploy/windows/authorize-browser-profile.ps1` once in the interactive desktop account. Browser

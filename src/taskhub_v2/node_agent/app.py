@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from taskhub_v2.domain.models import Plan
 from taskhub_v2.node_agent.browser_capabilities import (
@@ -47,6 +47,19 @@ class ExecuteRequest(BaseModel):
     target_url: str = Field(default="", max_length=500)
     git_commit: str = Field(default="", pattern=r"^$|^[a-fA-F0-9]{7,64}$")
     artifact_paths: list[str] = Field(default_factory=list, max_length=30)
+    execution_environment: dict[str, str] = Field(default_factory=dict, max_length=20)
+
+    @field_validator("execution_environment")
+    @classmethod
+    def safe_execution_environment(cls, value: dict[str, str]) -> dict[str, str]:
+        allowed = {
+            "TASKHUB_TEST_TARGET_URL", "TASKHUB_TEST_EDGE_HOST",
+            "TASKHUB_TEST_ORIGIN_HOST", "TASKHUB_TEST_EXPECTED_ENVIRONMENT",
+            "TASKHUB_TEST_ENVIRONMENT_PROFILE",
+        }
+        if not set(value).issubset(allowed) or any(len(item) > 500 for item in value.values()):
+            raise ValueError("invalid test environment variables")
+        return value
 
 
 class CodingRequest(BaseModel):
@@ -221,6 +234,7 @@ def create_node_app() -> FastAPI:
                     "TASKHUB_EDGE_CHANNEL": "msedge",
                     "TASKHUB_BROWSER_PROFILE_DIR": os.getenv("TASKHUB_BROWSER_PROFILE_DIR", ""),
                     "TASKHUB_BROWSER_AUTH_TARGET": os.getenv("TASKHUB_BROWSER_AUTH_TARGET", ""),
+                    **payload.execution_environment,
                 }
                 if "test_database" in payload.required_capabilities:
                     with test_databases.database(job_id) as database_environment:

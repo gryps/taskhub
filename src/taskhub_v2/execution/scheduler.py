@@ -18,7 +18,7 @@ class LocalTestScheduler:
     async def run(
         self, job_id, sticky_key, commands, timeout, workdir, workload="test", **kwargs
     ) -> ScheduledTests:
-        return await self.runner.run(self.node, job_id, commands, timeout, workdir)
+        return await self.runner.run(self.node, job_id, commands, timeout, workdir, **kwargs)
 
     async def status(self) -> list[dict]:
         return [{**await self.runner.health(self.node), "slots": 1, "active": 0}]
@@ -55,6 +55,7 @@ class NodeScheduler:
         target_url: str = "",
         git_commit: str = "",
         artifact_paths: list[str] | None = None,
+        execution_environment: dict[str, str] | None = None,
     ) -> ScheduledTests:
         required = required_capabilities(commands)
         if workload == "browser_acceptance":
@@ -74,10 +75,12 @@ class NodeScheduler:
                 if workload == "browser_acceptance":
                     return await self.runner.run(node, job_id, commands, timeout, workdir,
                         required_capabilities=required, target_url=target_url,
-                        git_commit=git_commit, artifact_paths=artifact_paths or [])
+                        git_commit=git_commit, artifact_paths=artifact_paths or [],
+                        execution_environment=execution_environment or {})
                 return await self.runner.run(
                     node, job_id, commands, timeout, workdir,
                     required_capabilities=required,
+                    execution_environment=execution_environment or {},
                 )
             except Exception as exc:
                 failures.append(str(exc))

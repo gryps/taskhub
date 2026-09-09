@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Generic, Literal, TypeVar
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Stage(StrEnum):
@@ -79,6 +80,43 @@ class Artifact(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class TestEnvironmentDefinition(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile: Literal["dedicated"] = "dedicated"
+    target_url: str = Field(max_length=500)
+    edge_host: str = Field(max_length=253)
+    origin_host: str = Field(max_length=253)
+    expected_environment: str = Field(default="production", pattern=r"^[A-Za-z0-9._-]{1,40}$")
+
+    @field_validator("target_url")
+    @classmethod
+    def valid_target_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("test environment target URL must use HTTP or HTTPS")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("test environment target URL cannot contain credentials or parameters")
+        return value.rstrip("/")
+
+    @field_validator("edge_host", "origin_host")
+    @classmethod
+    def valid_host(cls, value: str) -> str:
+        allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:"
+        if not value or any(character not in allowed for character in value):
+            raise ValueError("test environment host is invalid")
+        return value
+
+    def execution_environment(self) -> dict[str, str]:
+        return {
+            "TASKHUB_TEST_TARGET_URL": self.target_url,
+            "TASKHUB_TEST_EDGE_HOST": self.edge_host,
+            "TASKHUB_TEST_ORIGIN_HOST": self.origin_host,
+            "TASKHUB_TEST_EXPECTED_ENVIRONMENT": self.expected_environment,
+            "TASKHUB_TEST_ENVIRONMENT_PROFILE": self.profile,
+        }
+
+
 class ProjectDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -90,6 +128,7 @@ class ProjectDefinition(BaseModel):
     test_commands: list[list[str]] = Field(default_factory=list)
     acceptance_commands: list[list[str]] = Field(default_factory=list)
     acceptance_capabilities: set[str] = Field(default_factory=set)
+    test_environment: TestEnvironmentDefinition | None = None
     test_timeout_seconds: int = Field(default=600, ge=1, le=3600)
     max_revision_attempts: int = Field(default=2, ge=0, le=10)
 

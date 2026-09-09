@@ -292,9 +292,12 @@ def test_remote_runner_uploads_and_executes_workspace(tmp_path, monkeypatch):
         runner.run(
             NodeDefinition(id="remote-test", kind="remote", url="http://node"),
             "job-remote",
-            [["python3", "-c", "from pathlib import Path; assert Path('value.txt').is_file()"]],
+            [["python3", "-c", "import os; from pathlib import Path; "
+              "assert Path('value.txt').is_file(); "
+              "assert os.environ['TASKHUB_TEST_EDGE_HOST'] == '192.168.31.55'"]],
             30,
             str(worktree),
+            execution_environment={"TASKHUB_TEST_EDGE_HOST": "192.168.31.55"},
         )
     )
     assert result.node_id == "remote-test"

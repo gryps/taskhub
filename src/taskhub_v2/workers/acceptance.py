@@ -78,6 +78,10 @@ class ProjectAcceptanceGateway:
                 implementation.workspace.path,
                 workload="acceptance",
                 required_capabilities_override=project.acceptance_capabilities,
+                execution_environment=(
+                    project.test_environment.execution_environment()
+                    if project.test_environment else {}
+                ),
             )
             failed = [test for test in scheduled.tests if test.exit_code]
             artifact = self.artifacts.write_text(
