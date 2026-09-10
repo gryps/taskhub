@@ -56,6 +56,24 @@ def test_release_compose_preloads_unified_node_reference():
     assert "TASKHUB_NODE_CONTAINER_IMAGE: ${TASKHUB_NODE_IMAGE" in text
     assert "TASKHUB_CODEX_CLI_BIN: /usr/local/bin/codex" in text
     assert "/var/run/docker.sock:/var/run/docker.sock" in text
+    assert "TASKHUB_OPERATIONS_LOG_FILE: /var/lib/taskhub/state/operations.jsonl" in text
+
+
+def test_backup_restore_binds_encryption_key_to_database_identity():
+    for name in ("backup.sh", "backup.ps1", "restore.sh", "restore.ps1"):
+        text = (RELEASE / name).read_text(encoding="utf-8-sig")
+        assert "TASKHUB_CONFIG_KEY_FINGERPRINT" in text
+        assert "taskhub-backup-v1:" in text
+    for name in ("restore.sh", "restore.ps1"):
+        text = (RELEASE / name).read_text(encoding="utf-8-sig")
+        assert "taskhub_backup_identity" in text
+        assert "pg_restore -a -t taskhub_backup_identity" in text
+        assert text.index("pg_restore -a -t taskhub_backup_identity") < text.index(
+            "docker compose --project-directory"
+        )
+        assert "pg_restore -a -t taskhub_backup_identity" in text
+        assert text.index("pg_restore -a -t taskhub_backup_identity") < text.index(" down")
+        assert "pg_restore -a -t taskhub_backup_identity" in text
 
 
 def test_release_images_pin_codex_and_node_has_common_role_tools():

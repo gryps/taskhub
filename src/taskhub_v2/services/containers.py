@@ -5,12 +5,15 @@ from pathlib import Path
 from threading import RLock
 from typing import BinaryIO
 from urllib.parse import quote, urlencode
+from urllib.request import Request, urlopen
 
 from pydantic import BaseModel, Field
 
 from taskhub_v2.domain.models import NodeDefinition
 from taskhub_v2.security.node_credentials import NodeCredentialError
+from taskhub_v2.services.container_diagnostics import container_resources, docker_log_text
 from taskhub_v2.services.docker_engine import DockerSocketClient, DockerUnavailableError
+from taskhub_v2.services.node_inventory import NodeInventoryMixin
 
 ROLE_WORKLOADS = {
     "execution": {"build", "coding"},
@@ -29,7 +32,7 @@ class DockerConflictError(RuntimeError):
     pass
 
 
-class ContainerManager:
+class ContainerManager(NodeInventoryMixin):
     label = "io.taskhub.managed"
 
     def __init__(
@@ -43,6 +46,7 @@ class ContainerManager:
         nodes_file: str,
         credentials=None,
         client=None,
+        operation_log=None,
     ):
         self.enabled = enabled
         self.network = network
@@ -51,6 +55,7 @@ class ContainerManager:
         self.credentials = credentials
         self.nodes_file = Path(nodes_file)
         self.client = client or DockerSocketClient(socket_path)
+        self.operation_log = operation_log
         self.lock = RLock()
 
     def _require_available(self):
@@ -104,6 +109,41 @@ class ContainerManager:
                 item["credential"] = self.credentials.metadata(item["node_id"])
         return views
 
+    def diagnostics(self, node_id: str, tail: int = 200) -> dict:
+        self._require_available()
+        container = self._find(node_id)
+        container_id = container["Id"]
+        status, raw = self.client.request_bytes(
+            "GET",
+            f"/containers/{quote(container_id)}/logs?"
+            f"stdout=1&stderr=1&timestamps=1&tail={max(1, min(tail, 500))}",
+        )
+        if status != 200:
+            raise DockerUnavailableError("无法读取容器日志")
+        stat_status, stats = self.client.request(
+            "GET", f"/containers/{quote(container_id)}/stats?stream=false"
+        )
+        if stat_status != 200:
+            stats = {}
+        result = {
+            "container_logs": docker_log_text(raw),
+            "container": self._view(container),
+            "resources": container_resources(stats),
+        }
+        try:
+            token = self.credentials.resolve(node_id) if self.credentials else self.node_token
+            name = result["container"]["name"]
+            request = Request(
+                f"http://{name}:8020/api/diagnostics",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            with urlopen(request, timeout=5) as response:  # noqa: S310 - internal Docker DNS
+                agent = json.loads(response.read())
+            result.update(agent)
+        except Exception as exc:
+            result["agent_error"] = str(exc)[:500]
+        return result
+
     def create(self, request: ContainerCreate, *, _token: str | None = None) -> dict:
         self._require_available()
         name = f"taskhub-node-{request.node_id}"
@@ -125,6 +165,7 @@ class ContainerManager:
             "Env": [
                 f"TASKHUB_NODE_ID={request.node_id}",
                 f"TASKHUB_NODE_ROLE={request.role}",
+                f"TASKHUB_NODE_SLOTS={request.slots}",
                 "TASKHUB_NODE_TOKEN=__TASKHUB_NODE_CREDENTIAL__",
                 "TASKHUB_NODE_WORK_ROOT=/var/lib/taskhub-node/jobs",
             ],
@@ -205,6 +246,11 @@ class ContainerManager:
                 if self.credentials:
                     self.credentials.revoke(request.node_id)
                 raise
+        if self.operation_log:
+            self.operation_log.record(
+                "local_docker_create", "passed", node_id=request.node_id,
+                role=request.role,
+            )
         return {
             "id": container_id,
             "name": name,
@@ -239,6 +285,10 @@ class ContainerManager:
                 self._unregister(node_id)
             if self.credentials:
                 self.credentials.revoke(node_id)
+        if self.operation_log:
+            self.operation_log.record(
+                "local_docker_action", "passed", node_id=node_id, action=action
+            )
         return {"node_id": node_id, "action": action, "ok": True}
 
     def rotate_credential(self, node_id: str) -> dict:
@@ -292,46 +342,6 @@ class ContainerManager:
             "status": item.get("Status", ""),
             "image": item.get("Image", ""),
         }
-
-    def _registered_nodes(self) -> list[NodeDefinition]:
-        if not self.nodes_file.is_file():
-            return []
-        payload = json.loads(self.nodes_file.read_text(encoding="utf-8"))
-        return [NodeDefinition.model_validate(item) for item in payload.get("nodes", [])]
-
-    def _write_nodes(self, nodes: list[NodeDefinition]):
-        self.nodes_file.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.nodes_file.with_suffix(".tmp")
-        payload = {
-            "nodes": [
-                {**node.model_dump(mode="json"), "workloads": sorted(node.workloads)}
-                for node in nodes
-            ]
-        }
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
-        temporary.replace(self.nodes_file)
-
-    def _register(self, node: NodeDefinition):
-        nodes = [item for item in self._registered_nodes() if item.id != node.id]
-        nodes.append(node)
-        self._write_nodes(nodes)
-
-    def _unregister(self, node_id: str):
-        self._write_nodes([node for node in self._registered_nodes() if node.id != node_id])
-
-    def register_node(self, node: NodeDefinition) -> None:
-        with self.lock:
-            self._register(node)
-
-    def unregister_node(self, node_id: str) -> None:
-        with self.lock:
-            self._unregister(node_id)
-
-    def node_exists(self, node_id: str) -> bool:
-        with self.lock:
-            return any(node.id == node_id for node in self._registered_nodes())
 
     def image_metadata(self, image: str) -> dict:
         self._require_available()

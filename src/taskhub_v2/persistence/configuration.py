@@ -25,6 +25,14 @@ class MemoryConfigurationStore:
     def __init__(self):
         self.records: dict[str, ConfigurationRecord] = {}
         self.audit: list[dict[str, Any]] = []
+        self.backup_identity = ""
+
+    async def ensure_backup_identity(self, fingerprint: str) -> None:
+        if not fingerprint:
+            return
+        if self.backup_identity and self.backup_identity != fingerprint:
+            raise RuntimeError("配置加密主密钥与数据库备份身份不匹配")
+        self.backup_identity = fingerprint
 
     async def get(self, scope: str) -> ConfigurationRecord | None:
         return self.records.get(scope)
@@ -107,6 +115,14 @@ class PostgresConfigurationStore:
             )
             await connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS taskhub_backup_identity (
+                  identity_id INTEGER PRIMARY KEY CHECK (identity_id = 1),
+                  key_fingerprint TEXT NOT NULL,
+                  created_at TIMESTAMPTZ NOT NULL)
+                """
+            )
+            await connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS taskhub_config_audit (
                   event_id TEXT PRIMARY KEY,
                   operator TEXT NOT NULL,
@@ -121,6 +137,23 @@ class PostgresConfigurationStore:
                 """CREATE INDEX IF NOT EXISTS taskhub_config_audit_scope_created
                    ON taskhub_config_audit (scope, created_at DESC)"""
             )
+
+    async def ensure_backup_identity(self, fingerprint: str) -> None:
+        if not fingerprint:
+            raise RuntimeError("Seed 备份恢复要求配置加密主密钥")
+        async with self.pool.connection() as connection:
+            cursor = await connection.execute(
+                "SELECT key_fingerprint FROM taskhub_backup_identity WHERE identity_id=1"
+            )
+            row = await cursor.fetchone()
+            if row and row["key_fingerprint"] != fingerprint:
+                raise RuntimeError("配置加密主密钥与数据库备份身份不匹配")
+            if not row:
+                await connection.execute(
+                    """INSERT INTO taskhub_backup_identity
+                       (identity_id, key_fingerprint, created_at) VALUES (1, %s, %s)""",
+                    (fingerprint, datetime.now(UTC)),
+                )
 
     async def get(self, scope: str) -> ConfigurationRecord | None:
         async with self.pool.connection() as connection:

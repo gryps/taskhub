@@ -66,12 +66,24 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         expect(page.locator("#resource-page .public-image-downloads")).to_be_visible()
         expect(page.locator(".runtime-role-card")).to_have_count(4)
         expect(page.locator("#system-summary")).to_contain_text("角色环境")
+        expect(page.locator("#nodes-disclosure summary").first).to_contain_text("工作节点")
+        page.locator("#nodes-disclosure summary").first.click()
+        diagnostics = page.locator("#node-diagnostics").locator("xpath=..")
+        diagnostics.locator("summary").click()
+        expect(page.locator("#load-node-diagnostics")).to_be_visible()
+        expect(page.locator("#export-diagnostics")).to_be_visible()
+        page.locator("#platform-disclosure summary").first.click()
+        expect(page.locator(".backup-contract")).to_be_attached()
         assert len(page.locator(".runtime-role-grid").evaluate(
             "element => getComputedStyle(element).gridTemplateColumns"
         ).split()) == 2
 
         for width, height in ((680, 900), (390, 844)):
             page.set_viewport_size({"width": width, "height": height})
+            page.wait_for_timeout(100)
+            assert page.evaluate("window.innerWidth") == width
+            assert page.evaluate("window.matchMedia('(max-width: 680px)').matches")
+            page.locator("#system-disclosure").evaluate("element => { element.open = true; }")
             assert len(page.locator(".runtime-role-grid").evaluate(
                 "element => getComputedStyle(element).gridTemplateColumns"
             ).split()) == 1

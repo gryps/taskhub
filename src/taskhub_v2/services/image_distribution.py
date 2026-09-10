@@ -156,6 +156,7 @@ env_file=$(mktemp)
 trap 'rm -f "$env_file"' EXIT
 chmod 600 "$env_file"
 printf '%s\n' 'TASKHUB_NODE_ID={request.node_id}' 'TASKHUB_NODE_ROLE={request.role}' \
+  'TASKHUB_NODE_SLOTS={request.slots}' \
   'TASKHUB_NODE_WORK_ROOT=/var/lib/taskhub-node/jobs' {token_line} > "$env_file"
 container=$(docker_run {command})
 docker_run start "$container" >/dev/null
@@ -175,6 +176,19 @@ fi
 container=$({docker} container inspect {name} --format '{{{{.Id}}}}')
 state=$({docker} container inspect {name} --format '{{{{.State.Status}}}}')
 printf 'EXISTS=1\nSTATE=%s\nCONTAINER=%s\n' "$state" "$container"
+"""
+
+
+def diagnostics_script(node_id: str, docker_access: str, tail: int = 200) -> str:
+    docker = docker_prefix(docker_access)
+    name = shlex.quote(f"taskhub-node-{node_id}")
+    return f"""set -eu
+docker_run() {{ {docker} "$@"; }}
+stats=$(docker_run stats --no-stream \
+  --format '{{{{.CPUPerc}}}}|{{{{.MemUsage}}}}' {name} 2>/dev/null || true)
+printf 'TASKHUB_CONTAINER_STATS=%s\n' "$stats"
+printf '%s\n' 'TASKHUB_CONTAINER_LOGS_BEGIN'
+docker_run logs --timestamps --tail {max(1, min(tail, 500))} {name} 2>&1 || true
 """
 
 

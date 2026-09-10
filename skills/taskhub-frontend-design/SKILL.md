@@ -42,6 +42,9 @@ Read the matching tests under `tests/` before changing a DOM contract. Do not in
 - Keep section refresh actions beside their captions as compact labeled secondary buttons; do not float isolated icon-only refresh controls in long disclosures.
 - Keep public Seed/Node image downloads available before login and in system configuration from one frontend data source. Show explicit versions, architecture and both GHCR/Aliyun ACR references without adding another primary configuration disclosure.
 - In the work-node inventory, show per-node credential version/status and reconciliation time without exposing credential material. Require confirmation before credential rotation or revocation, explain the resulting target-node restart/stop, and preserve the node data volume.
+- Keep host drain, maintenance, disable/re-enable and batch rebuild controls in the physical-host inventory. Remove non-active hosts from new scheduling immediately, confirm destructive transitions, and state that cross-host rebuilds retain but do not copy the source volume.
+- Put per-node Agent/container/SSH-Docker logs, last error, resources and slot occupancy in one secondary diagnostics disclosure. Diagnostic ZIP exports must redact credentials, secret fields and addresses and must never contain backups or environment files.
+- Keep Seed backup/recovery guidance under platform settings. Formal scripts own PostgreSQL/data-volume/config/image recovery and must validate the encryption-key/database identity before and after restore; never offer sensitive business backups as browser downloads.
 - Increment the query-string version for every changed static asset referenced by `index.html`.
 - Update `docs/frontend-design.md` when a design decision changes and update `docs/agent/memory-notes.md` after a release.
 

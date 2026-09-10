@@ -28,6 +28,21 @@ async def wait_healthy(address: str, request: RemoteNodeCreate, node_token: str)
     raise RuntimeError(f"容器已启动，但健康检查未通过：{last_error}")
 
 
+async def agent_diagnostics(
+    address: str, request: RemoteNodeCreate, node_token: str
+) -> dict[str, Any]:
+    url = f"http://{address}:{request.host_port}/api/diagnostics"
+    async with httpx.AsyncClient(timeout=6, trust_env=False) as client:
+        response = await client.get(
+            url, headers={"Authorization": f"Bearer {node_token}"}
+        )
+        response.raise_for_status()
+        payload = response.json()
+    if payload.get("node_id") != request.node_id:
+        raise RuntimeError("Node Agent 返回了不匹配的节点 ID")
+    return payload
+
+
 def node_definition(address: str, request: RemoteNodeCreate) -> NodeDefinition:
     return NodeDefinition(
         id=request.node_id,

@@ -835,6 +835,41 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .acceptance-submit { grid-template-columns: 1fr; }
 }
 
+.host-maintenance-actions,
+.diagnostic-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.host-maintenance-actions button { min-height: 32px; padding: 5px 9px; }
+.host-maintenance-actions .danger-action { color: var(--danger); }
+.compact-operation-form { margin-top: 12px; }
+.diagnostic-toolbar {
+  padding: 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-subtle);
+}
+.diagnostic-toolbar label { min-width: 220px; }
+.diagnostic-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px; margin-top: 12px;
+}
+.diagnostic-card {
+  min-width: 0; padding: 12px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--surface);
+}
+.diagnostic-card h4 { margin: 0 0 8px; font-size: 14px; }
+.diagnostic-card pre {
+  max-height: 280px; margin: 0; overflow: auto; white-space: pre-wrap;
+  overflow-wrap: anywhere; font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.diagnostic-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.diagnostic-metrics span { padding: 8px; border-radius: 8px; background: var(--surface-subtle); }
+.backup-contract { padding: 12px 16px; }
+.backup-contract p { margin: 0 0 10px; }
+.backup-contract ul { margin: 0 0 10px; padding-left: 20px; }
+
+@media (max-width: 680px) {
+  .runtime-role-grid { grid-template-columns: 1fr; }
+  .diagnostic-grid { grid-template-columns: 1fr; }
+  .diagnostic-toolbar > * { width: 100%; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }

@@ -127,9 +127,13 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert 'styles.css?v=25' in html
+        assert 'styles.css?v=27' in html
         assert 'app.js?v=8' in html
-        assert 'resource-center.js?v=17' in html
+        assert 'resource-center.js?v=20' in html
+        assert 'id="host-rebuild-form"' in html
+        assert 'id="diagnostic-node"' in html
+        assert 'id="export-diagnostics"' in html
+        assert "Seed 备份与恢复" in html
         assert 'onboarding.js?v=2' in html
         assert 'id="collapse-current-resource"' in html
         assert 'class="resource-subdisclosure"' in html

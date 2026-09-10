@@ -6,6 +6,17 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $EnvFile = Join-Path $Root ".env"
 $ComposeFile = Join-Path $Root "compose.yaml"
 if (-not (Test-Path $BackupDirectory)) { throw "备份目录不存在: $BackupDirectory" }
+function Get-FileEnvValue([string]$Path, [string]$Name) {
+    $Line = Get-Content $Path | Where-Object { $_ -match "^$([regex]::Escape($Name))=" } | Select-Object -Last 1
+    if ($Line) { return ($Line -split '=', 2)[1] }
+    return ""
+}
+function Get-KeyFingerprint([string]$Key) {
+    if (-not $Key) { throw "备份中的配置加密主密钥为空。" }
+    $Bytes = [Text.Encoding]::UTF8.GetBytes("taskhub-backup-v1:$Key")
+    $Hash = [Security.Cryptography.SHA256]::Create().ComputeHash($Bytes)
+    return ([BitConverter]::ToString($Hash)).Replace("-", "").ToLowerInvariant()
+}
 foreach ($Line in Get-Content (Join-Path $BackupDirectory "SHA256SUMS")) {
     if (-not $Line.Trim()) { continue }
     $Parts = $Line -split '\s+', 2
@@ -14,10 +25,27 @@ foreach ($Line in Get-Content (Join-Path $BackupDirectory "SHA256SUMS")) {
         throw "备份校验失败: $Target"
     }
 }
+$ExpectedFingerprint = Get-FileEnvValue (Join-Path $BackupDirectory "backup.env") "TASKHUB_CONFIG_KEY_FINGERPRINT"
+$BackupKey = Get-FileEnvValue (Join-Path $BackupDirectory ".env") "TASKHUB_CONFIG_ENCRYPTION_KEY"
+if ((Get-KeyFingerprint $BackupKey) -ne $ExpectedFingerprint) {
+    throw "备份中的配置加密主密钥与备份身份不匹配。"
+}
+$BackupPostgresImage = Get-FileEnvValue (Join-Path $BackupDirectory "backup.env") "TASKHUB_POSTGRES_IMAGE"
+docker load -i (Join-Path $BackupDirectory "images.tar")
+if ($LASTEXITCODE -ne 0) { throw "备份镜像导入失败。" }
+$IdentityList = docker run --rm -v "${BackupDirectory}:/backup:ro" $BackupPostgresImage `
+    pg_restore -l /backup/postgres.dump
+if ($LASTEXITCODE -ne 0 -or $IdentityList -notmatch 'taskhub_backup_identity') {
+    throw "PostgreSQL 备份缺少加密密钥身份表。"
+}
+$IdentityData = docker run --rm -v "${BackupDirectory}:/backup:ro" $BackupPostgresImage `
+    pg_restore -a -t taskhub_backup_identity -f - /backup/postgres.dump
+if ($LASTEXITCODE -ne 0 -or $IdentityData -notmatch [regex]::Escape($ExpectedFingerprint)) {
+    throw "PostgreSQL 备份身份与配置加密主密钥不匹配。"
+}
 
 docker compose --project-directory $Root --env-file (Join-Path $BackupDirectory ".env") `
     -f (Join-Path $BackupDirectory "compose.yaml") down
-docker load -i (Join-Path $BackupDirectory "images.tar")
 Copy-Item (Join-Path $BackupDirectory ".env") $EnvFile -Force
 Copy-Item (Join-Path $BackupDirectory "compose.yaml") $ComposeFile -Force
 $PostgresLine = Get-Content $EnvFile | Where-Object { $_ -match '^TASKHUB_POSTGRES_IMAGE=' } | Select-Object -Last 1
@@ -56,6 +84,12 @@ docker cp (Join-Path $BackupDirectory "postgres.dump") "${PostgresContainer}:/tm
 docker compose --project-directory $Root --env-file $EnvFile -f $ComposeFile `
     exec -T postgres pg_restore -U taskhub -d taskhub --clean --if-exists /tmp/taskhub.dump
 if ($LASTEXITCODE -ne 0) { throw "PostgreSQL 恢复失败。" }
+$DatabaseFingerprint = docker compose --project-directory $Root --env-file $EnvFile -f $ComposeFile `
+    exec -T postgres psql -U taskhub -d taskhub -Atc `
+    "SELECT key_fingerprint FROM taskhub_backup_identity WHERE identity_id=1"
+if ($LASTEXITCODE -ne 0 -or $DatabaseFingerprint.Trim() -ne $ExpectedFingerprint) {
+    throw "恢复后的数据库与配置加密主密钥不匹配，控制器未启动。"
+}
 docker compose --project-directory $Root --env-file $EnvFile -f $ComposeFile `
     exec -T postgres rm -f /tmp/taskhub.dump
 docker compose --project-directory $Root --env-file $EnvFile -f $ComposeFile up -d --no-build --pull never

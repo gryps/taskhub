@@ -37,5 +37,11 @@ commit image tar files.
 | Upgrade | `./upgrade.sh VERSION [BUNDLE]` | `.\upgrade.ps1 -Version VERSION [-OfflineBundle BUNDLE]` |
 | Restore | `./restore.sh BACKUP` | `.\restore.ps1 -BackupDirectory BACKUP` |
 
+Backups contain the PostgreSQL database, TaskHub data volume, deployment
+configuration (including the encryption master key), and rollback images. Keep
+the backup directory on encrypted, access-controlled media. Restore verifies
+file checksums and compares the master-key fingerprint with the database
+identity before clearing any TaskHub data volume; it refuses mismatched sets.
+
 Read `docs/deployment/ubuntu.md` and
 `docs/deployment/windows-docker-desktop.md` before operating a release.

@@ -50,6 +50,7 @@ services:
       TASKHUB_PROJECTS_FILE: /var/lib/taskhub/config/projects.json
       TASKHUB_NODES_FILE: /var/lib/taskhub/config/nodes.json
       TASKHUB_NODE_STATE_FILE: /var/lib/taskhub/state/node-state.json
+      TASKHUB_OPERATIONS_LOG_FILE: /var/lib/taskhub/state/operations.jsonl
       TASKHUB_NODE_CREDENTIALS_FILE: /var/lib/taskhub/config/node-credentials.json
       TASKHUB_NODE_TOKEN: ${TASKHUB_NODE_TOKEN:?TASKHUB_NODE_TOKEN is required}
       TASKHUB_CONTAINER_PROVISIONING_ENABLED: "true"

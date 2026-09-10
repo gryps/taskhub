@@ -61,6 +61,7 @@ class Settings(BaseModel):
     node_heartbeat_seconds: int = 15
     node_offline_seconds: int = 60
     log_retention_days: int = 30
+    operations_log_file: str = "/home/gryps/.local/state/taskhub-v2/operations.jsonl"
     artifact_retention_days: int = 30
     openai_base_url: str = "https://api.openai.com/v1"
     openai_proxy_url: str = "http://192.168.31.200:7893"
@@ -181,6 +182,10 @@ def get_settings() -> Settings:
         node_heartbeat_seconds=int(os.getenv("TASKHUB_NODE_HEARTBEAT_SECONDS", "15")),
         node_offline_seconds=int(os.getenv("TASKHUB_NODE_OFFLINE_SECONDS", "60")),
         log_retention_days=int(os.getenv("TASKHUB_LOG_RETENTION_DAYS", "30")),
+        operations_log_file=os.getenv(
+            "TASKHUB_OPERATIONS_LOG_FILE",
+            "/home/gryps/.local/state/taskhub-v2/operations.jsonl",
+        ),
         artifact_retention_days=int(os.getenv("TASKHUB_ARTIFACT_RETENTION_DAYS", "30")),
         openai_base_url=os.getenv("TASKHUB_OPENAI_BASE_URL", "https://api.openai.com/v1"),
         openai_proxy_url=os.getenv("TASKHUB_OPENAI_PROXY_URL", "http://192.168.31.200:7893"),

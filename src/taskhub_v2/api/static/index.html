@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=25">
+  <link rel="stylesheet" href="/static/styles.css?v=27">
 </head>
 <body>
   <header class="app-header">
@@ -338,6 +338,18 @@
       </details>
       <div id="physical-hosts" class="resource-table"></div>
       <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>批量迁移与重建</strong><span>源主机卷保留，目标主机按期望状态重建</span></summary>
+      <form id="host-rebuild-form" class="project-form resource-form compact-operation-form">
+        <div class="form-grid configuration-grid">
+          <label>源主机<select id="host-rebuild-source" required></select></label>
+          <label>目标主机<select id="host-rebuild-target" required></select></label>
+          <label class="wide">节点 ID（可选）<input id="host-rebuild-nodes" maxlength="1000" placeholder="留空表示源主机全部节点，多个 ID 用逗号分隔"></label>
+        </div>
+        <p class="form-help">跨主机重建不会复制节点数据卷；源主机卷保留用于回退。无状态执行节点可直接迁移，有状态节点应先导出业务数据。</p>
+        <div class="form-actions"><button type="submit">开始批量重建</button><span id="host-rebuild-message" role="status"></span></div>
+      </form>
+      </details>
+      <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>最近主机操作</strong><span>不记录私钥原文</span></summary>
       <div id="host-config-audit" class="resource-table"></div>
       </details>
@@ -379,6 +391,16 @@
       <div id="node-load" class="resource-table"></div>
       </details>
       <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>日志与诊断</strong><span>节点日志、最后错误、资源和槽位占用</span></summary>
+      <div class="diagnostic-toolbar">
+        <label>工作节点<select id="diagnostic-node"><option value="">请选择节点</option></select></label>
+        <button id="load-node-diagnostics" type="button" class="secondary">读取诊断</button>
+        <a id="export-diagnostics" class="button-link secondary" href="/api/diagnostics/export" download>导出脱敏诊断包</a>
+        <span id="diagnostic-message" role="status"></span>
+      </div>
+      <div id="node-diagnostics" class="diagnostic-grid"><p class="muted">选择节点后读取最近日志和资源状态。</p></div>
+      </details>
+      <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>能力与前置条件</strong><span id="acceptance-prerequisites-summary" class="muted">正在检查</span></summary>
       <div id="acceptance-prerequisites" class="resource-table"></div>
       </details>
@@ -390,6 +412,14 @@
         <button id="refresh-platform" class="secondary resource-refresh" title="刷新平台设置">↻ 刷新</button>
       </div>
       <div id="platform-settings" class="resource-table"></div>
+      <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>Seed 备份与恢复</strong><span>整库、主密钥、配置、凭据、节点与项目数据</span></summary>
+      <div class="backup-contract">
+        <p>正式备份使用发布目录中的 <code>backup.sh</code> 或 <code>backup.ps1</code>；恢复使用同目录的 <code>restore.sh</code> 或 <code>restore.ps1</code>。</p>
+        <ul><li>PostgreSQL 全量转储与 TaskHub 数据卷</li><li>管理员密码哈希、模型账号、节点凭据和项目数据</li><li>部署配置及配置加密主密钥</li><li>恢复前后校验 SHA-256，并验证数据库身份与加密主密钥匹配</li></ul>
+        <p class="form-help">业务备份包含敏感材料，不通过浏览器下载；请存放在受控、加密的备份介质中。</p>
+      </div>
+      </details>
       <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>可管理平台参数</strong><span id="platform-config-state">正在读取</span></summary>
       <form id="platform-settings-form" class="project-form resource-form configuration-form">
@@ -431,7 +461,7 @@
   </main>
   <script src="/static/app.js?v=8"></script>
   <script src="/static/task-center.js?v=13"></script>
-  <script src="/static/resource-center.js?v=17"></script>
+  <script src="/static/resource-center.js?v=20"></script>
   <script src="/static/onboarding.js?v=2"></script>
 </body>
 </html>

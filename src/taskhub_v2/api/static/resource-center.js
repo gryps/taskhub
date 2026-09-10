@@ -416,7 +416,31 @@ function hostFacts(facts) {
 }
 
 function hostStatusClass(status) {
-  return status === "available" ? "ok" : status === "degraded" ? "bad" : "warn";
+  return status === "available" ? "ok" : ["degraded", "blocked"].includes(status) ? "bad" : "warn";
+}
+
+function hostMaintenanceActions(item) {
+  const id = escapeHtml(item.host_id);
+  const state = item.operational_state || "active";
+  if (state !== "active") return `<div class="host-maintenance-actions">
+    <button type="button" class="secondary host-state-action" data-host-id="${id}" data-state="active">重新启用</button>
+    <button type="button" class="secondary host-action" data-host-id="${id}">重新检测</button></div>`;
+  return `<div class="host-maintenance-actions">
+    <button type="button" class="secondary host-action" data-host-id="${id}">重新检测</button>
+    <button type="button" class="secondary host-state-action" data-host-id="${id}" data-state="draining">排空</button>
+    <button type="button" class="secondary host-state-action" data-host-id="${id}" data-state="maintenance">维护</button>
+    <button type="button" class="secondary danger-action host-state-action" data-host-id="${id}" data-state="disabled">停用</button>
+  </div>`;
+}
+
+function refreshHostMaintenanceSelectors() {
+  for (const id of ["host-rebuild-source", "host-rebuild-target"]) {
+    const select = byId(id);
+    const previous = select.value;
+    select.innerHTML = physicalHostInventory.map((item) =>
+      `<option value="${escapeHtml(item.host_id)}">${escapeHtml(item.display_name)} · ${escapeHtml(item.status_label)}</option>`).join("");
+    if ([...select.options].some((item) => item.value === previous)) select.value = previous;
+  }
 }
 
 async function loadPhysicalHosts() {
@@ -428,6 +452,7 @@ async function loadPhysicalHosts() {
     ]);
     physicalHostInventory = inventory.hosts;
     refreshContainerTargets();
+    refreshHostMaintenanceSelectors();
     const stateClass = status.available ? "ok" : status.enabled ? "bad" : "warn";
     const stateLabel = status.available ? "可用" : status.enabled ? "异常" : "未启用";
     const available = inventory.hosts.filter((item) => item.status === "available").length;
@@ -438,8 +463,8 @@ async function loadPhysicalHosts() {
         <strong>${escapeHtml(item.display_name)}<small>${escapeHtml(item.host_id)} · ${escapeHtml(item.address)}:${item.port}</small></strong>
         <span class="${hostStatusClass(item.status)}">${escapeHtml(item.status_label)}<small>${escapeHtml(item.status_reason)}</small></span>
         <span>Docker ${escapeHtml(item.facts?.docker_version || "—")}<small>${escapeHtml(item.facts?.os || "尚未检测")}</small></span>
-        <span>${escapeHtml(hostFacts(item.facts))}<small>角色：${(item.allowed_roles || []).map((role) => escapeHtml(containerRoleNames[role] || role)).join(" · ")}</small><small>SSH ${escapeHtml(item.username)} · ${escapeHtml(item.fingerprint)}</small>
-          <button type="button" class="secondary host-action" data-host-id="${escapeHtml(item.host_id)}">重新检测</button></span>
+        <span>${escapeHtml(hostFacts(item.facts))}<small>角色：${(item.allowed_roles || []).map((role) => escapeHtml(containerRoleNames[role] || role)).join(" · ")}</small><small>${(item.alerts || []).map(escapeHtml).join("；") || "资源阈值正常"} · SSH 指纹 ${escapeHtml(item.fingerprint)}</small>
+          ${hostMaintenanceActions(item)}</span>
       </div>`).join("");
     byId("physical-hosts").innerHTML = `<div class="resource-row resource-header">
       <span>物理主机</span><span>状态</span><span>Docker</span><span>说明</span>
@@ -513,6 +538,36 @@ async function checkPhysicalHost(hostId) {
     byId("host-message").textContent = error.message;
   }
   await loadPhysicalHosts();
+}
+
+async function changeHostState(hostId, state) {
+  const labels = {active: "重新启用", draining: "排空", maintenance: "进入维护", disabled: "停用"};
+  if (state !== "active" && !window.confirm(`${labels[state]}主机 ${hostId}？该主机将立即停止接收新任务。`)) return;
+  byId("host-message").textContent = `正在${labels[state]} ${hostId}`;
+  try {
+    const result = await request(`/api/hosts/${encodeURIComponent(hostId)}/state`, {
+      method: "POST", body: JSON.stringify({state}),
+    });
+    byId("host-message").textContent = `${result.display_name}：${result.status_reason} · 影响 ${result.affected_nodes} 个节点`;
+  } catch (error) { byId("host-message").textContent = error.message; }
+  await Promise.all([loadPhysicalHosts(), loadContainers(), loadNodes()]);
+}
+
+async function rebuildHostNodes(event) {
+  event.preventDefault();
+  const source = byId("host-rebuild-source").value;
+  const target = byId("host-rebuild-target").value;
+  const nodeIds = byId("host-rebuild-nodes").value.split(",").map((item) => item.trim()).filter(Boolean);
+  if (!source || !target || !window.confirm(`确认将 ${source} 的${nodeIds.length || "全部"}节点在 ${target} 重建？源数据卷会保留。`)) return;
+  byId("host-rebuild-message").textContent = "正在逐节点停止、迁移期望状态并重建";
+  try {
+    const result = await request(`/api/hosts/${encodeURIComponent(source)}/rebuild-nodes`, {
+      method: "POST", body: JSON.stringify({target_host_id: target, node_ids: nodeIds}),
+    });
+    const passed = result.results.filter((item) => item.ok).length;
+    byId("host-rebuild-message").textContent = `完成 ${passed}/${result.results.length} 个节点`;
+    await Promise.all([loadPhysicalHosts(), loadContainers(), loadNodes()]);
+  } catch (error) { byId("host-rebuild-message").textContent = error.message; }
 }
 
 function fillPlatformConfiguration(data) {
@@ -681,6 +736,13 @@ async function loadContainers() {
       status: item.status_reason, name: `taskhub-node-${item.node_id}`,
     }));
     const containers = [...local, ...remote];
+    const diagnosticSelect = byId("diagnostic-node");
+    const selectedDiagnostic = diagnosticSelect.value;
+    diagnosticSelect.innerHTML = '<option value="">请选择节点</option>' + containers.map((item) =>
+      `<option value="${escapeHtml(item.node_id)}">${escapeHtml(item.node_id)} · ${escapeHtml(containerRoleNames[item.role] || item.role)}</option>`).join("");
+    if ([...diagnosticSelect.options].some((item) => item.value === selectedDiagnostic)) {
+      diagnosticSelect.value = selectedDiagnostic;
+    }
     byId("container-form").classList.toggle("hidden", !status.available && !physicalHostInventory.some((item) => item.status === "available"));
     const running = containers.filter((item) => item.state === "running").length;
     byId("container-summary").textContent =
@@ -713,6 +775,44 @@ async function loadContainers() {
   } catch (error) {
     byId("container-summary").textContent = error.message;
   }
+}
+
+function diagnosticEventLines(events) {
+  return (events || []).map((item) =>
+    `${item.created_at || "—"}  ${item.event || item.operation || "事件"}  ${item.result || ""}`
+  ).join("\n") || "尚无记录";
+}
+
+function diagnosticPercent(value) {
+  return value === null || value === undefined ? "—" : `${value}%`;
+}
+
+async function loadNodeDiagnostics() {
+  const nodeId = byId("diagnostic-node").value;
+  if (!nodeId) {
+    byId("diagnostic-message").textContent = "请先选择工作节点";
+    return;
+  }
+  const button = byId("load-node-diagnostics");
+  button.disabled = true;
+  byId("diagnostic-message").textContent = `正在读取 ${nodeId}`;
+  try {
+    const data = await request(`/api/diagnostics/nodes/${encodeURIComponent(nodeId)}`);
+    const resources = data.resources || {};
+    byId("node-diagnostics").innerHTML = `
+      <section class="diagnostic-card"><h4>资源与槽位</h4><div class="diagnostic-metrics">
+        <span>CPU<strong>${diagnosticPercent(resources.cpu_percent)}</strong></span>
+        <span>内存<strong>${diagnosticPercent(resources.memory_used_percent)}</strong></span>
+        <span>磁盘<strong>${diagnosticPercent(resources.disk_used_percent)}</strong></span>
+        <span>槽位<strong>${Number(data.active_jobs || 0)}/${Number(data.slots || 1)}</strong></span>
+      </div><p class="${data.last_error ? "bad" : "ok"}">${escapeHtml(data.last_error || "节点未报告错误")}</p></section>
+      <section class="diagnostic-card"><h4>Agent 日志</h4><pre>${escapeHtml(diagnosticEventLines(data.agent_logs))}</pre></section>
+      <section class="diagnostic-card"><h4>容器最近日志</h4><pre>${escapeHtml(data.container_logs || "尚无容器日志")}</pre></section>
+      <section class="diagnostic-card"><h4>SSH / Docker 操作</h4><pre>${escapeHtml(diagnosticEventLines(data.operations))}</pre></section>`;
+    byId("diagnostic-message").textContent = `${nodeId} 诊断已更新`;
+  } catch (error) {
+    byId("diagnostic-message").textContent = error.message;
+  } finally { button.disabled = false; }
 }
 
 let distributionRefreshTimer = null;
@@ -1035,7 +1135,8 @@ async function loadResources() {
 
 function refreshWhenExpanded(id, load) {
   byId(id).addEventListener("toggle", (event) => {
-    if (!event.currentTarget.open) {
+    const disclosure = event.currentTarget;
+    if (!disclosure.open) {
       if (!openResourceDisclosure()) storeOpenResource("");
       updateResourceCollapseShortcut();
       return;
@@ -1047,7 +1148,7 @@ function refreshWhenExpanded(id, load) {
     if (!byId("resource-page").classList.contains("hidden")) {
       load();
       requestAnimationFrame(() => {
-        scrollResourceHeadingIntoView(event.currentTarget);
+        scrollResourceHeadingIntoView(disclosure);
         updateResourceCollapseShortcut();
       });
     }
@@ -1117,6 +1218,8 @@ byId("model-card-editor").addEventListener("change", (event) => {
 });
 byId("platform-settings-form").addEventListener("submit", savePlatformSettings);
 byId("host-form").addEventListener("submit", savePhysicalHost);
+byId("host-rebuild-form").addEventListener("submit", rebuildHostNodes);
+byId("load-node-diagnostics").addEventListener("click", loadNodeDiagnostics);
 byId("probe-host").addEventListener("click", probePhysicalHost);
 byId("host-fingerprint-confirmed").addEventListener("change", (event) => {
   byId("save-host").disabled = !event.currentTarget.checked || !pendingHostFingerprint;
@@ -1125,8 +1228,12 @@ for (const id of ["host-address", "host-port"]) {
   byId(id).addEventListener("input", resetHostFingerprint);
 }
 byId("physical-hosts").addEventListener("click", (event) => {
-  const button = event.target.closest(".host-action");
-  if (button) checkPhysicalHost(button.dataset.hostId);
+  const stateButton = event.target.closest(".host-state-action");
+  if (stateButton) changeHostState(stateButton.dataset.hostId, stateButton.dataset.state);
+  else {
+    const button = event.target.closest(".host-action");
+    if (button) checkPhysicalHost(button.dataset.hostId);
+  }
 });
 byId("container-form").addEventListener("submit", createContainer);
 byId("container-target").addEventListener("change", updateRemoteNodeFields);

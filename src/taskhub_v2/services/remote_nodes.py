@@ -18,11 +18,12 @@ from taskhub_v2.services.containers import (
     DockerUnavailableError,
 )
 from taskhub_v2.services.hosts import PhysicalHostService
+from taskhub_v2.services.remote_node_admin import RemoteNodeAdminMixin
 from taskhub_v2.services.remote_node_errors import RemoteNodeError
 from taskhub_v2.services.remote_node_lifecycle import RemoteNodeLifecycleMixin
 
 
-class RemoteNodeService(RemoteNodeLifecycleMixin):
+class RemoteNodeService(RemoteNodeAdminMixin, RemoteNodeLifecycleMixin):
     def __init__(
         self,
         store,
@@ -369,3 +370,9 @@ class RemoteNodeService(RemoteNodeLifecycleMixin):
             parameter_summary={"node_id": node_id, "host_id": host_id},
             result=result,
         )
+        operation_log = getattr(self.hosts, "operation_log", None)
+        if operation_log:
+            operation_log.record(
+                "remote_docker_action", result, action=action,
+                node_id=node_id, host_id=host_id,
+            )

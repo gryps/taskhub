@@ -11,6 +11,7 @@ from taskhub_v2.api.auth_routes import router as auth_router
 from taskhub_v2.api.configuration_routes import router as configuration_router
 from taskhub_v2.api.container_routes import router as container_router
 from taskhub_v2.api.deployment_routes import router as deployment_router
+from taskhub_v2.api.diagnostic_routes import router as diagnostic_router
 from taskhub_v2.api.host_routes import router as host_router
 from taskhub_v2.api.node_routes import router as node_router
 from taskhub_v2.api.onboarding_routes import router as onboarding_router
@@ -30,6 +31,7 @@ from taskhub_v2.projects import ProjectProvisioner, ProjectRegistry
 from taskhub_v2.providers import build_provider
 from taskhub_v2.providers.health import ProviderHealthStore
 from taskhub_v2.security.auth import CSRF_COOKIE, SESSION_COOKIE, AuthService
+from taskhub_v2.security.backup_identity import backup_key_fingerprint
 from taskhub_v2.security.encryption import SecretCipher
 from taskhub_v2.security.node_credentials import NodeCredentialVault
 from taskhub_v2.services import RunService
@@ -37,8 +39,10 @@ from taskhub_v2.services.configuration import ManagedConfigurationService
 from taskhub_v2.services.containers import ContainerManager
 from taskhub_v2.services.device_auth import CodexDeviceAuthService
 from taskhub_v2.services.hosts import PhysicalHostService
+from taskhub_v2.services.operational_log import OperationalLog
 from taskhub_v2.services.providers import ProviderCatalog
 from taskhub_v2.services.remote_nodes import RemoteNodeService
+from taskhub_v2.services.system_diagnostics import SystemDiagnosticsService
 from taskhub_v2.workers import (
     build_acceptance,
     build_coder,
@@ -73,6 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         probe_interval_seconds=settings.provider_probe_interval_seconds,
         switch_lock_seconds=settings.provider_switch_lock_seconds,
     )
+    operation_log = OperationalLog(settings.operations_log_file, settings.log_retention_days)
     default_container_manager = ContainerManager(
         enabled=settings.container_provisioning_enabled,
         socket_path=settings.docker_socket,
@@ -80,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         image=settings.node_container_image,
         node_token=settings.node_token,
         nodes_file=settings.nodes_file,
+        operation_log=operation_log,
     )
 
     @asynccontextmanager
@@ -91,6 +97,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             checkpoint_store(settings) as checkpointer,
             task_index_store(settings) as task_index,
         ):
+            await managed_store.ensure_backup_identity(
+                backup_key_fingerprint(settings.config_encryption_key)
+            )
             cipher = (
                 SecretCipher(settings.config_encryption_key)
                 if settings.config_encryption_key
@@ -125,6 +134,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 managed_store,
                 cipher,
                 effective_settings.node_callback_url,
+                operation_log=operation_log,
+                monitor_interval_seconds=effective_settings.node_heartbeat_seconds,
             )
             if app.state.container_manager is default_container_manager:
                 app.state.container_manager = ContainerManager(
@@ -135,6 +146,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     node_token=effective_settings.node_token,
                     nodes_file=effective_settings.nodes_file,
                     credentials=node_credentials,
+                    operation_log=operation_log,
                 )
             app.state.remote_nodes = RemoteNodeService(
                 remote_store,
@@ -187,12 +199,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.provider_catalog = ProviderCatalog(effective_settings, provider_health)
             app.state.node_scheduler = test_scheduler
             app.state.node_credentials = node_credentials
+            app.state.system_diagnostics = SystemDiagnosticsService(
+                effective_settings,
+                app.state.physical_hosts,
+                app.state.remote_nodes,
+                app.state.container_manager,
+                test_scheduler,
+                operation_log,
+            )
+            app.state.physical_hosts.start_monitoring()
             app.state.remote_nodes.start_reconciliation()
             await managed_configuration.mark_applied()
             try:
                 yield
             finally:
                 await app.state.remote_nodes.close()
+                await app.state.physical_hosts.close()
                 recovery = getattr(app.state, "recovery_task", None)
                 if recovery and not recovery.done():
                     recovery.cancel()
@@ -218,6 +240,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(node_router)
     app.include_router(onboarding_router)
     app.include_router(deployment_router)
+    app.include_router(diagnostic_router)
     app.include_router(system_router)
 
     @app.middleware("http")

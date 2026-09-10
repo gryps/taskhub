@@ -71,6 +71,7 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
     with TestClient(create_node_app()) as client:
         assert client.get("/api/health").status_code == 401
         health = client.get("/api/health", headers=headers)
+        diagnostics = client.get("/api/diagnostics", headers=headers)
         uploaded = client.put(
             f"/api/jobs/job-1/workspace?sha256={digest}", content=payload, headers=headers
         )
@@ -96,6 +97,8 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
             headers=headers,
         )
     assert response.status_code == 200
+    assert diagnostics.status_code == 200
+    assert diagnostics.json()["agent_logs"][0]["event"] == "agent_started"
     assert response.json()["node_id"] == "node-test"
     assert {"cpu_percent", "memory_used_percent", "disk_used_percent"} <= set(
         health.json()["load"]

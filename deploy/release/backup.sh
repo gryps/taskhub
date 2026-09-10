@@ -24,6 +24,9 @@ seed_image=$(sed -n 's/^TASKHUB_SEED_IMAGE=//p' "$env_file" | tail -n 1)
 node_image=$(sed -n 's/^TASKHUB_NODE_IMAGE=//p' "$env_file" | tail -n 1)
 data_volume=$(sed -n 's/^TASKHUB_DATA_VOLUME=//p' "$env_file" | tail -n 1)
 postgres_volume=$(sed -n 's/^TASKHUB_POSTGRES_VOLUME=//p' "$env_file" | tail -n 1)
+encryption_key=$(sed -n 's/^TASKHUB_CONFIG_ENCRYPTION_KEY=//p' "$env_file" | tail -n 1)
+[ -n "$encryption_key" ] || { printf '配置加密主密钥为空，拒绝生成不可验证备份。\n' >&2; exit 1; }
+key_fingerprint=$(printf 'taskhub-backup-v1:%s' "$encryption_key" | sha256sum | awk '{print $1}')
 case "$data_volume:$postgres_volume" in
   taskhub-data:taskhub-postgres-data|taskhub-seed_taskhub-data:taskhub-seed_postgres-data) ;;
   *) printf '数据卷名称不在 TaskHub 安全范围内。\n' >&2; exit 1 ;;
@@ -36,6 +39,7 @@ docker save -o "$backup/images.tar" "$seed_image" "$node_image" "$postgres_image
   printf 'TASKHUB_SEED_IMAGE=%s\n' "$seed_image"
   printf 'TASKHUB_NODE_IMAGE=%s\n' "$node_image"
   printf 'TASKHUB_POSTGRES_IMAGE=%s\n' "$postgres_image"
+  printf 'TASKHUB_CONFIG_KEY_FINGERPRINT=%s\n' "$key_fingerprint"
 } >"$backup/backup.env"
 (cd "$backup" && sha256sum .env backup.env postgres.dump taskhub-data.tar.gz images.tar compose.yaml >SHA256SUMS)
 

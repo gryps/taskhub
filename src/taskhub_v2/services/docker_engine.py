@@ -25,6 +25,13 @@ class DockerSocketClient:
         self.socket_path = socket_path
 
     def request(self, method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
+        status, raw = self.request_bytes(method, path, payload)
+        data = json.loads(raw) if raw else {}
+        return status, data
+
+    def request_bytes(
+        self, method: str, path: str, payload: dict | None = None
+    ) -> tuple[int, bytes]:
         connection = UnixSocketConnection(self.socket_path)
         body = json.dumps(payload).encode() if payload is not None else None
         headers = {"Content-Type": "application/json"} if body is not None else {}
@@ -36,8 +43,7 @@ class DockerSocketClient:
             raise DockerUnavailableError(f"Docker Engine 不可用：{exc}") from exc
         finally:
             connection.close()
-        data = json.loads(raw) if raw else {}
-        return response.status, data
+        return response.status, raw
 
     def download(self, path: str, destination: BinaryIO) -> None:
         connection = UnixSocketConnection(self.socket_path)

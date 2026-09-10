@@ -19,6 +19,13 @@ function Get-EnvValue([string]$Name) {
     return ""
 }
 
+function Get-KeyFingerprint([string]$Key) {
+    if (-not $Key) { throw "配置加密主密钥为空，拒绝生成不可验证备份。" }
+    $Bytes = [Text.Encoding]::UTF8.GetBytes("taskhub-backup-v1:$Key")
+    $Hash = [Security.Cryptography.SHA256]::Create().ComputeHash($Bytes)
+    return ([BitConverter]::ToString($Hash)).Replace("-", "").ToLowerInvariant()
+}
+
 docker compose --project-directory $Root --env-file $EnvFile -f $ComposeFile stop controller
 if ($LASTEXITCODE -ne 0) { throw "控制器停止失败。" }
 try {
@@ -36,6 +43,7 @@ try {
     $NodeImage = Get-EnvValue "TASKHUB_NODE_IMAGE"
     $DataVolume = Get-EnvValue "TASKHUB_DATA_VOLUME"
     $PostgresVolume = Get-EnvValue "TASKHUB_POSTGRES_VOLUME"
+    $KeyFingerprint = Get-KeyFingerprint (Get-EnvValue "TASKHUB_CONFIG_ENCRYPTION_KEY")
     if ("$DataVolume`:$PostgresVolume" -notin @(
         "taskhub-data:taskhub-postgres-data",
         "taskhub-seed_taskhub-data:taskhub-seed_postgres-data"
@@ -51,6 +59,7 @@ try {
         "TASKHUB_SEED_IMAGE=$SeedImage"
         "TASKHUB_NODE_IMAGE=$NodeImage"
         "TASKHUB_POSTGRES_IMAGE=$PostgresImage"
+        "TASKHUB_CONFIG_KEY_FINGERPRINT=$KeyFingerprint"
     ) | Set-Content (Join-Path $BackupDirectory "backup.env") -Encoding ascii
     $Checksums = foreach ($Name in @(".env", "backup.env", "postgres.dump", "taskhub-data.tar.gz", "images.tar", "compose.yaml")) {
         $Hash = (Get-FileHash -Algorithm SHA256 (Join-Path $BackupDirectory $Name)).Hash.ToLowerInvariant()

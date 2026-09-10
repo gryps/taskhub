@@ -10,6 +10,7 @@ ADDRESS_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$
 USERNAME_PATTERN = r"^[a-z_][a-z0-9_-]{0,31}$"
 FINGERPRINT_PATTERN = r"^SHA256:[A-Za-z0-9+/]{20,60}$"
 HostRole = Literal["execution", "test", "preproduction"]
+HostOperationalState = Literal["active", "draining", "maintenance", "disabled"]
 
 
 class HostConnection(BaseModel):
@@ -56,3 +57,12 @@ class PhysicalHostCreate(HostConnection):
             if value not in cleaned:
                 cleaned.append(value)
         return cleaned
+
+
+class HostStateChange(BaseModel):
+    state: HostOperationalState
+
+
+class HostNodeRebuild(BaseModel):
+    target_host_id: str = Field(pattern=HOST_ID_PATTERN)
+    node_ids: list[str] = Field(default_factory=list, max_length=100)

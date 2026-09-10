@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import hmac
 import json
 import os
 import re
@@ -28,7 +27,7 @@ from taskhub_v2.node_agent.runtime import (
     repair_managed_virtualenv,
     run_commands,
 )
-from taskhub_v2.node_agent.system_load import RollingLoadSampler
+from taskhub_v2.node_agent.state import NodeRuntime
 from taskhub_v2.node_agent.test_database import TestDatabaseManager
 from taskhub_v2.services.diagnostics import coding_prerequisites_ok, node_diagnostics
 
@@ -72,34 +71,6 @@ class CodingRequest(BaseModel):
     archive_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
-class NodeRuntime:
-    def __init__(self, node_id: str, role: str, token: str, root: str, max_upload_bytes: int):
-        self.node_id = node_id
-        self.role = role if role in NODE_ROLE_WORKLOADS else "test"
-        self.token = token
-        self.root = Path(root).resolve()
-        self.max_upload_bytes = max_upload_bytes
-        self.locks: dict[str, asyncio.Lock] = {}
-        self.load_sampler = RollingLoadSampler()
-
-    def authorize(self, authorization: str) -> None:
-        supplied = authorization.removeprefix("Bearer ")
-        if not self.token or not hmac.compare_digest(supplied, self.token):
-            raise HTTPException(status_code=401, detail="invalid node token")
-
-    def job_dir(self, job_id: str) -> Path:
-        if not JOB_PATTERN.fullmatch(job_id):
-            raise HTTPException(status_code=422, detail="invalid job ID")
-        target = (self.root / job_id).resolve()
-        if not target.is_relative_to(self.root):
-            raise HTTPException(status_code=422, detail="invalid job path")
-        return target
-
-    @staticmethod
-    def result_file(target: Path) -> Path:
-        return target / ".taskhub-execution-result.json"
-
-
 def create_node_app() -> FastAPI:
     runtime = NodeRuntime(
         node_id=os.getenv("TASKHUB_NODE_ID", "node-local"),
@@ -107,6 +78,8 @@ def create_node_app() -> FastAPI:
         token=os.getenv("TASKHUB_NODE_TOKEN", ""),
         root=os.getenv("TASKHUB_NODE_WORK_ROOT", "/var/lib/taskhub-node/jobs"),
         max_upload_bytes=int(os.getenv("TASKHUB_NODE_MAX_UPLOAD_BYTES", "104857600")),
+        workloads=NODE_ROLE_WORKLOADS,
+        job_pattern=JOB_PATTERN,
     )
     test_databases = TestDatabaseManager.from_environment()
 
@@ -114,6 +87,7 @@ def create_node_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         runtime.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         await runtime.load_sampler.start(runtime.root)
+        runtime.record("agent_started")
         try:
             yield
         finally:
@@ -142,6 +116,18 @@ def create_node_app() -> FastAPI:
             "versions": await asyncio.to_thread(browser_versions),
             "system": await asyncio.to_thread(node_diagnostics),
             "provider_health": provider_health(),
+        }
+
+    @app.get("/api/diagnostics")
+    async def diagnostics(authorization: str = Header(default="")) -> dict:
+        runtime.authorize(authorization)
+        return {
+            "node_id": runtime.node_id,
+            "role": runtime.role,
+            "agent_logs": list(reversed(runtime.events)),
+            "resources": runtime.load_sampler.peak(),
+            "active_jobs": sum(1 for lock in runtime.locks.values() if lock.locked()),
+            "slots": int(os.getenv("TASKHUB_NODE_SLOTS", "1")),
         }
 
     @app.put("/api/jobs/{job_id}/workspace")
@@ -184,6 +170,7 @@ def create_node_app() -> FastAPI:
             (target / ".taskhub-workspace.json").write_text(
                 json.dumps({"sha256": sha256}), encoding="utf-8"
             )
+            runtime.record("workspace_uploaded", job_id=job_id)
         return {"job_id": job_id, "archive_sha256": sha256, "size": size}
 
     @app.post("/api/jobs/{job_id}/execute")
@@ -279,6 +266,10 @@ def create_node_app() -> FastAPI:
                 encoding="utf-8",
             )
             temporary.replace(result_file)
+            runtime.record(
+                "commands_finished", job_id=job_id,
+                result="failed" if any(item["exit_code"] for item in tests) else "passed",
+            )
             return result
 
     @app.get("/api/jobs/{job_id}/artifacts/{artifact_path:path}")
@@ -316,8 +307,10 @@ def create_node_app() -> FastAPI:
                     target, payload.requirement, payload.plan, payload.feedback
                 )
             except Exception as exc:
+                runtime.record("coding_finished", job_id=job_id, result="failed")
                 reason = getattr(exc, "reason", exc.__class__.__name__)
                 raise HTTPException(status_code=502, detail=str(reason)[:200]) from exc
+            runtime.record("coding_finished", job_id=job_id)
         return Response(content=bundle, media_type="application/gzip")
 
     return app
