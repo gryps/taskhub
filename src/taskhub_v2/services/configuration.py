@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -39,18 +40,31 @@ class ManagedConfigurationService:
             record = await self.store.get(scope)
             if not record:
                 continue
-            updates.update({key: value for key, value in record.payload.items() if key in fields})
+            scoped = {key: value for key, value in record.payload.items() if key in fields}
+            updates.update(scoped)
             if record.encrypted_secrets:
                 if not self.cipher:
                     raise ConfigurationError(
                         "managed secrets exist but TASKHUB_CONFIG_ENCRYPTION_KEY is missing"
                     )
-                updates.update(
-                    {
-                        key: self.cipher.decrypt(value)
-                        for key, value in record.encrypted_secrets.items()
-                    }
+                decrypted = {
+                    key: self.cipher.decrypt(value)
+                    for key, value in record.encrypted_secrets.items()
+                }
+                secret_fields = (
+                    MODEL_SECRET_FIELDS if scope == MODEL_SCOPE else PLATFORM_SECRET_FIELDS
                 )
+                updates.update(
+                    {key: value for key, value in decrypted.items() if key in secret_fields}
+                )
+                if scope == MODEL_SCOPE and scoped.get("model_cards"):
+                    updates["model_cards"] = [
+                        {
+                            **card,
+                            "api_key": decrypted.get(f"model_card__{card['model_id']}", ""),
+                        }
+                        for card in scoped["model_cards"]
+                    ]
             if record.applied_version != record.version:
                 applied.append((scope, record.version))
         effective = Settings.model_validate({**self.settings.model_dump(), **updates})
@@ -75,7 +89,14 @@ class ManagedConfigurationService:
         desired, secrets = await self._model_values(record)
         return {
             "desired": desired,
-            "effective": {field: getattr(self.settings, field) for field in MODEL_FIELDS},
+            "effective": {
+                field: (
+                    [{key: value for key, value in card.items() if key != "api_key"}
+                     for card in getattr(self.settings, field)]
+                    if field == "model_cards" else getattr(self.settings, field)
+                )
+                for field in MODEL_FIELDS
+            },
             "secrets": {
                 field: {
                     "configured": bool(secrets[field]),
@@ -85,6 +106,10 @@ class ManagedConfigurationService:
                     ),
                 }
                 for field in MODEL_SECRET_FIELDS
+            },
+            "card_credentials": {
+                card["model_id"]: self._card_credential_state(card, secrets)
+                for card in desired.get("model_cards", [])
             },
             "encryption_configured": self.cipher is not None,
             **_metadata(record),
@@ -106,9 +131,33 @@ class ManagedConfigurationService:
                     )
                 secrets[field] = value
                 replaced_secrets.append(field)
+        cards = changes.pop("model_cards", None)
+        encrypted = dict(record.encrypted_secrets) if record else {}
+        if cards is not None:
+            cleaned_cards = []
+            retained = {f"model_card__{item['model_id']}" for item in cards}
+            encrypted = {
+                key: value
+                for key, value in encrypted.items()
+                if not key.startswith("model_card__") or key in retained
+            }
+            for card in cards:
+                api_key = card.pop("api_key", None)
+                secret_field = f"model_card__{card['model_id']}"
+                if api_key:
+                    if not self.cipher:
+                        raise ConfigurationError(
+                            "configure TASKHUB_CONFIG_ENCRYPTION_KEY before saving API keys"
+                        )
+                    encrypted[secret_field] = self.cipher.encrypt(api_key)
+                    replaced_secrets.append(secret_field)
+                if card["auth_mode"] == "api" and secret_field not in encrypted:
+                    raise ConfigurationError(f"{card['display_name']} requires an API Key")
+                cleaned_cards.append(card)
+            desired["model_cards"] = cleaned_cards
+            desired["provider"] = "routed" if cleaned_cards else "deterministic"
         desired.update({key: value for key, value in changes.items() if value is not None})
         self._validate_provider_activation(desired, secrets)
-        encrypted = dict(record.encrypted_secrets) if record else {}
         if self.cipher:
             encrypted.update(
                 {field: self.cipher.encrypt(secrets[field]) for field in replaced_secrets}
@@ -195,7 +244,13 @@ class ManagedConfigurationService:
     async def test_provider(self, provider_id: str, operator: str = "admin") -> dict[str, Any]:
         record = await self.store.get(MODEL_SCOPE)
         desired, secrets = await self._model_values(record)
-        if provider_id == "deterministic":
+        card = next(
+            (item for item in desired.get("model_cards", []) if item["model_id"] == provider_id),
+            None,
+        )
+        if card:
+            result = await self._test_model_card(card, secrets)
+        elif provider_id == "deterministic":
             result = {"available": True, "detail": "内置确定性模型无需外部连接"}
         else:
             mapping = {
@@ -238,6 +293,43 @@ class ManagedConfigurationService:
             result="passed" if result["available"] else "failed",
         )
         return {"provider_id": provider_id, **result}
+
+    async def _test_model_card(
+        self, card: dict[str, Any], secrets: dict[str, str]
+    ) -> dict[str, Any]:
+        if card["auth_mode"] == "account":
+            auth_file = Path(self.settings.model_account_root) / card["model_id"] / "auth.json"
+            return {
+                "available": auth_file.is_file(),
+                "detail": "ChatGPT 账号令牌已保存" if auth_file.is_file() else "尚未完成账号授权",
+            }
+        key = secrets.get(f"model_card__{card['model_id']}", "")
+        if not key:
+            return {"available": False, "detail": "尚未配置 API Key"}
+        try:
+            options: dict[str, Any] = {"timeout": 12, "trust_env": False}
+            if card.get("proxy_url"):
+                options["proxy"] = card["proxy_url"]
+            async with httpx.AsyncClient(**options) as client:
+                response = await client.get(
+                    f"{card['base_url'].rstrip('/')}/models",
+                    headers={"Authorization": f"Bearer {key}"},
+                )
+            return {
+                "available": response.status_code < 400,
+                "detail": f"服务返回 HTTP {response.status_code}",
+            }
+        except httpx.HTTPError as exc:
+            return {"available": False, "detail": _safe_error(exc)}
+
+    def _card_credential_state(
+        self, card: dict[str, Any], secrets: dict[str, str]
+    ) -> dict[str, Any]:
+        if card["auth_mode"] == "account":
+            auth_file = Path(self.settings.model_account_root) / card["model_id"] / "auth.json"
+            return {"configured": auth_file.is_file(), "kind": "account"}
+        value = secrets.get(f"model_card__{card['model_id']}", "")
+        return {"configured": bool(value), "kind": "api", "mask": mask_secret(value)}
 
     async def audit(self, scope: str | None = None, limit: int = 50) -> dict[str, Any]:
         items = await self.store.list_audit(scope, limit)
@@ -282,6 +374,8 @@ class ManagedConfigurationService:
 
     @staticmethod
     def _validate_provider_activation(desired: dict[str, Any], secrets: dict[str, str]) -> None:
+        if desired.get("model_cards") is not None:
+            return
         if desired["provider"] == "deterministic":
             return
         if not desired["openai_proxy_url"]:

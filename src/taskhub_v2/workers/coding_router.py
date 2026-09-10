@@ -35,8 +35,9 @@ class CodexCodingRouter:
                 result = await provider.modify_workspace(
                     requirement, plan, workdir, feedback=feedback
                 )
-                if self.health:
-                    self.health.record_success(provider.provider_id)
+                if self.health and not self.health.record_success(provider.provider_id):
+                    failures.append(f"{provider.provider_id}:recovery_probe")
+                    continue
                 result.failed_providers = failures
                 return result
             except Exception as exc:

@@ -208,26 +208,62 @@ function renderConfigurationAudit(target, events) {
   </div>${rows || '<div class="resource-row audit-row"><span>尚无配置操作</span><span>—</span><span>—</span><span>—</span></div>'}`;
 }
 
+const modelRoleNames = {planner: "规划", coder: "编码", supervisor: "监督", reviewer: "评审", risk: "风险分析"};
+const modelRoles = Object.keys(modelRoleNames);
+let modelCardCredentials = {};
+
+function newModelCard() {
+  return {model_id: `model-${Date.now().toString(36)}`, display_name: "", service_type: "openai",
+    auth_mode: "api", base_url: "https://api.openai.com/v1", model: "", proxy_url: "",
+    enabled: true, assignments: []};
+}
+
+function modelAssignment(card, role) {
+  return (card.assignments || []).find((item) => item.role === role);
+}
+
+function modelCardHtml(card) {
+  const credential = modelCardCredentials[card.model_id] || {};
+  const accountMode = card.auth_mode === "account";
+  const roleRows = modelRoles.map((role) => {
+    const assignment = modelAssignment(card, role);
+    return `<label class="model-role-option"><input type="checkbox" data-model-role="${role}" ${assignment ? "checked" : ""}>
+      <span>${modelRoleNames[role]}</span><select data-model-priority="${role}" ${assignment ? "" : "disabled"}>
+        ${[0, 1, 2, 3].map((priority) => `<option value="${priority}" ${assignment?.priority === priority ? "selected" : ""}>${priority === 0 ? "主模型" : `备用 ${priority}`}</option>`).join("")}
+      </select></label>`;
+  }).join("");
+  return `<article class="model-config-card ${accountMode ? "account-mode" : ""}" data-model-id="${escapeHtml(card.model_id)}">
+    <header><div><h3>${escapeHtml(card.display_name || "新模型")}</h3><small>${accountMode ? "ChatGPT 账号认证" : "API 认证"}</small></div>
+      <label class="model-enabled"><input type="checkbox" data-field="enabled" ${card.enabled ? "checked" : ""}>启用</label></header>
+    <div class="model-card-fields">
+      <label>模型 ID<input data-field="model_id" maxlength="48" value="${escapeHtml(card.model_id)}"></label>
+      <label>显示名称<input data-field="display_name" maxlength="100" value="${escapeHtml(card.display_name)}" placeholder="例如 GPT 主服务"></label>
+      <label>服务商<select data-field="service_type">
+        ${[["openai", "OpenAI"], ["deepseek", "DeepSeek"], ["minimax", "MiniMax"], ["custom", "兼容服务"]].map(([value, label]) => `<option value="${value}" ${card.service_type === value ? "selected" : ""}>${label}</option>`).join("")}
+      </select></label>
+      <label>认证模式<select data-field="auth_mode"><option value="api" ${accountMode ? "" : "selected"}>API 模式</option>
+        <option value="account" ${accountMode ? "selected" : ""} ${card.service_type === "openai" ? "" : "disabled"}>ChatGPT 账号</option></select></label>
+      <label class="api-model-field">API 地址<input data-field="base_url" type="url" maxlength="500" value="${escapeHtml(card.base_url || "")}"></label>
+      <label>模型<input data-field="model" maxlength="200" value="${escapeHtml(card.model || "")}" placeholder="账号模式留空使用默认模型"></label>
+      <label class="api-model-field">替换 API Key<input data-field="api_key" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空保留现有密钥"><small>${credential.configured ? "已安全配置" : "尚未配置"}</small></label>
+      <label>网络代理（可选）<input data-field="proxy_url" type="url" maxlength="500" value="${escapeHtml(card.proxy_url || "")}" placeholder="http://proxy.example:7893"></label>
+    </div>
+    <fieldset class="model-role-selector"><legend>角色与主备顺序</legend>${roleRows}</fieldset>
+    <div class="model-card-actions">
+      ${accountMode ? `<button type="button" class="secondary model-device-auth">开始账号授权</button>` : ""}
+      <button type="button" class="secondary model-test">测试连接</button>
+      <button type="button" class="secondary model-remove">删除</button>
+      <span class="model-card-status" role="status">${accountMode && credential.configured ? "账号已认证" : ""}</span>
+    </div>
+  </article>`;
+}
+
 function fillModelConfiguration(data) {
-  const values = data.desired;
-  fillValue("model-provider-mode", values.provider);
-  fillValue("model-openai-proxy", values.openai_proxy_url);
-  fillValue("model-openai-base", values.openai_base_url);
-  fillValue("model-openai-name", values.openai_model);
-  fillValue("model-gpt-base", values.gpt_base_url);
-  fillValue("model-gpt-name", values.gpt_model);
-  fillValue("model-gpt-planner", values.gpt_planner_model);
-  fillValue("model-gpt-coder", values.gpt_coder_model);
-  fillValue("model-gpt-supervisor", values.gpt_supervisor_model);
-  fillValue("model-deepseek-base", values.deepseek_base_url);
-  fillValue("model-deepseek-name", values.deepseek_model);
-  fillValue("model-minimax-base", values.minimax_base_url);
-  fillValue("model-minimax-name", values.minimax_model);
-  ["openai", "gpt", "deepseek", "minimax"].forEach((name) => {
-    fillValue(`model-${name}-key`, "");
-    byId(`model-${name}-key-state`).textContent =
-      credentialState(data.secrets[`${name}_api_key`]);
-  });
+  modelCardCredentials = data.card_credentials || {};
+  const cards = data.desired.model_cards || [];
+  byId("model-card-editor").innerHTML = cards.length
+    ? cards.map(modelCardHtml).join("")
+    : '<div class="model-empty-state"><strong>尚未添加模型</strong><span>添加卡片并为五个角色配置主模型与备用顺序。</span></div>';
   byId("model-config-state").textContent = configurationState(data);
   if (!data.encryption_configured) {
     byId("model-config-state").textContent += " · 加密主密钥未配置";
@@ -237,22 +273,22 @@ function fillModelConfiguration(data) {
 async function loadProviders() {
   byId("provider-summary").textContent = "正在读取模型状态与计费信息";
   try {
-    const [data, configuration, audit] = await Promise.all([
-      request("/api/providers"),
+    const [configuration, audit] = await Promise.all([
       request("/api/settings/model-services"),
       request("/api/settings/audit?scope=model_services&limit=8"),
     ]);
-    const ready = data.providers.filter((item) => item.configured).length;
-    byId("provider-summary").textContent = `${ready}/${data.providers.length} 可用 · OpenAI 走代理 · 其他模型直连`;
+    const cards = configuration.desired.model_cards || [];
+    const ready = cards.filter((item) => item.enabled && configuration.card_credentials?.[item.model_id]?.configured).length;
+    byId("provider-summary").textContent = `${ready}/${cards.length} 已认证 · 按角色主备路由`;
     byId("providers").innerHTML = `<div class="resource-row resource-header">
-      <span>模型资源</span><span>状态</span><span>模型 / 路由</span><span>计费信息</span>
-    </div>${data.providers.map((item) => `
+      <span>模型资源</span><span>状态</span><span>认证 / 路由</span><span>承担角色</span>
+    </div>${cards.map((item) => `
       <div class="resource-row">
-        <strong>${escapeHtml(item.id)}</strong>
-        <span class="${item.configured ? "ok" : "bad"}">${escapeHtml(item.status)}</span>
-        <span class="model-cell">${roleModelsView(item)}<small>网络：${escapeHtml(item.route)}</small></span>
-        <div class="usage-cell">${billingView(item.billing)}</div>
-      </div>`).join("")}`;
+        <strong>${escapeHtml(item.display_name)}<small>${escapeHtml(item.model_id)}</small></strong>
+        <span class="${item.enabled ? "ok" : "warn"}">${item.enabled ? "已启用" : "已停用"}</span>
+        <span>${item.auth_mode === "account" ? "ChatGPT 账号" : "API Key"}<small>${escapeHtml(item.model || "账号默认模型")}</small></span>
+        <span>${(item.assignments || []).sort((a, b) => a.priority - b.priority).map((assignment) => `${modelRoleNames[assignment.role]}·${assignment.priority === 0 ? "主" : `备${assignment.priority}`}`).join(" · ") || "未分配"}</span>
+      </div>`).join("") || '<div class="resource-row"><span>尚未添加模型</span></div>'}`;
     fillModelConfiguration(configuration);
     renderConfigurationAudit("model-config-audit", audit.events);
   } catch (error) {
@@ -263,25 +299,7 @@ async function loadProviders() {
 async function saveModelServices(event) {
   event.preventDefault();
   const button = byId("save-model-services");
-  const payload = {
-    provider: byId("model-provider-mode").value,
-    openai_proxy_url: byId("model-openai-proxy").value,
-    openai_base_url: byId("model-openai-base").value,
-    openai_model: byId("model-openai-name").value,
-    gpt_base_url: byId("model-gpt-base").value,
-    gpt_model: byId("model-gpt-name").value,
-    gpt_planner_model: byId("model-gpt-planner").value,
-    gpt_coder_model: byId("model-gpt-coder").value,
-    gpt_supervisor_model: byId("model-gpt-supervisor").value,
-    deepseek_base_url: byId("model-deepseek-base").value,
-    deepseek_model: byId("model-deepseek-name").value,
-    minimax_base_url: byId("model-minimax-base").value,
-    minimax_model: byId("model-minimax-name").value,
-  };
-  ["openai", "gpt", "deepseek", "minimax"].forEach((name) => {
-    const value = byId(`model-${name}-key`).value;
-    if (value) payload[`${name}_api_key`] = value;
-  });
+  const payload = {model_cards: [...document.querySelectorAll(".model-config-card")].map(readModelCard)};
   button.disabled = true;
   byId("model-config-message").textContent = "正在安全保存";
   try {
@@ -301,24 +319,56 @@ async function saveModelServices(event) {
   }
 }
 
-async function testModelService() {
-  const button = byId("test-model-service");
+function readModelCard(card) {
+  const value = (name) => card.querySelector(`[data-field="${name}"]`);
+  const result = {model_id: value("model_id").value.trim(), display_name: value("display_name").value.trim(),
+    service_type: value("service_type").value, auth_mode: value("auth_mode").value,
+    base_url: value("base_url").value.trim(), model: value("model").value.trim(),
+    proxy_url: value("proxy_url").value.trim(), enabled: value("enabled").checked,
+    assignments: modelRoles.filter((role) => card.querySelector(`[data-model-role="${role}"]`).checked)
+      .map((role) => ({role, priority: Number(card.querySelector(`[data-model-priority="${role}"]`).value)}))};
+  const key = value("api_key").value;
+  if (key) result.api_key = key;
+  return result;
+}
+
+async function testModelService(card) {
+  const button = card.querySelector(".model-test");
   button.disabled = true;
-  byId("model-config-message").textContent = "正在测试已保存的服务配置";
+  const status = card.querySelector(".model-card-status");
+  status.textContent = "正在测试已保存配置";
   try {
     const result = await request("/api/settings/model-services/test", {
       method: "POST",
-      body: JSON.stringify({provider_id: byId("model-test-provider").value}),
+      body: JSON.stringify({provider_id: card.dataset.modelId}),
     });
-    byId("model-config-message").textContent = result.available
+    status.textContent = result.available
       ? `连接可用：${result.detail}` : `连接不可用：${result.detail}`;
-    const audit = await request("/api/settings/audit?scope=model_services&limit=8");
-    renderConfigurationAudit("model-config-audit", audit.events);
   } catch (error) {
-    byId("model-config-message").textContent = error.message;
+    status.textContent = error.message;
   } finally {
     button.disabled = false;
   }
+}
+
+async function startDeviceAuth(card) {
+  const status = card.querySelector(".model-card-status");
+  status.textContent = "正在启动 Codex 设备授权";
+  try {
+    let result = await request("/api/settings/model-services/device-auth", {method: "POST",
+      body: JSON.stringify({model_id: card.dataset.modelId})});
+    const poll = async () => {
+      if (result.device_code) {
+        status.innerHTML = `<a href="${escapeHtml(result.login_url)}" target="_blank" rel="noopener">打开登录页</a> · 验证码 <code>${escapeHtml(result.device_code)}</code> · ${escapeHtml(result.detail)}`;
+      } else status.textContent = result.detail;
+      if (["authenticated", "failed"].includes(result.status)) {
+        if (result.status === "authenticated") await loadProviders();
+        return;
+      }
+      setTimeout(async () => { result = await request(`/api/settings/model-services/device-auth/${result.session_id}`); await poll(); }, 2000);
+    };
+    await poll();
+  } catch (error) { status.textContent = error.message; }
 }
 
 async function loadNodes() {
@@ -491,6 +541,10 @@ function fillPlatformConfiguration(data) {
   fillValue("platform-offline", values.node_offline_seconds);
   fillValue("platform-log-retention", values.log_retention_days);
   fillValue("platform-artifact-retention", values.artifact_retention_days);
+  fillValue("platform-failure-threshold", values.provider_failure_threshold);
+  fillValue("platform-recovery-threshold", values.provider_recovery_threshold);
+  fillValue("platform-probe-interval", values.provider_probe_interval_seconds);
+  fillValue("platform-switch-lock", values.provider_switch_lock_seconds);
   byId("platform-config-state").textContent = configurationState(data);
 }
 
@@ -544,6 +598,10 @@ async function savePlatformSettings(event) {
     node_offline_seconds: Number(byId("platform-offline").value),
     log_retention_days: Number(byId("platform-log-retention").value),
     artifact_retention_days: Number(byId("platform-artifact-retention").value),
+    provider_failure_threshold: Number(byId("platform-failure-threshold").value),
+    provider_recovery_threshold: Number(byId("platform-recovery-threshold").value),
+    provider_probe_interval_seconds: Number(byId("platform-probe-interval").value),
+    provider_switch_lock_seconds: Number(byId("platform-switch-lock").value),
   };
   button.disabled = true;
   byId("platform-config-message").textContent = "正在保存平台设置";
@@ -1017,7 +1075,37 @@ byId("check-test-environment").addEventListener("click", checkTestEnvironment);
 byId("edit-test-environment").addEventListener("click", () => setTestEnvironmentEditMode(true));
 byId("cancel-test-environment").addEventListener("click", () => fillTestEnvironmentForm());
 byId("model-services-form").addEventListener("submit", saveModelServices);
-byId("test-model-service").addEventListener("click", testModelService);
+byId("add-model-card").addEventListener("click", () => {
+  const empty = byId("model-card-editor").querySelector(".model-empty-state");
+  if (empty) empty.remove();
+  byId("model-card-editor").insertAdjacentHTML("beforeend", modelCardHtml(newModelCard()));
+});
+byId("model-card-editor").addEventListener("click", (event) => {
+  const card = event.target.closest(".model-config-card");
+  if (!card) return;
+  if (event.target.closest(".model-remove")) card.remove();
+  if (event.target.closest(".model-test")) testModelService(card);
+  if (event.target.closest(".model-device-auth")) startDeviceAuth(card);
+});
+byId("model-card-editor").addEventListener("change", (event) => {
+  const card = event.target.closest(".model-config-card");
+  if (!card) return;
+  if (event.target.matches("[data-model-role]")) {
+    card.querySelector(`[data-model-priority="${event.target.dataset.modelRole}"]`).disabled = !event.target.checked;
+  }
+  if (event.target.matches('[data-field="model_id"]')) card.dataset.modelId = event.target.value.trim();
+  if (event.target.matches('[data-field="service_type"]')) {
+    const account = card.querySelector('[data-field="auth_mode"] option[value="account"]');
+    account.disabled = event.target.value !== "openai";
+    if (account.disabled && account.selected) card.querySelector('[data-field="auth_mode"]').value = "api";
+    const value = readModelCard(card);
+    card.outerHTML = modelCardHtml(value);
+  }
+  if (event.target.matches('[data-field="auth_mode"]')) {
+    const value = readModelCard(card);
+    card.outerHTML = modelCardHtml(value);
+  }
+});
 byId("platform-settings-form").addEventListener("submit", savePlatformSettings);
 byId("host-form").addEventListener("submit", savePhysicalHost);
 byId("probe-host").addEventListener("click", probePhysicalHost);

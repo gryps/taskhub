@@ -2,7 +2,7 @@ import re
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 MODEL_FIELDS = (
     "provider",
@@ -18,6 +18,7 @@ MODEL_FIELDS = (
     "deepseek_model",
     "minimax_base_url",
     "minimax_model",
+    "model_cards",
 )
 MODEL_SECRET_FIELDS = (
     "openai_api_key",
@@ -39,8 +40,73 @@ PLATFORM_FIELDS = (
     "node_offline_seconds",
     "log_retention_days",
     "artifact_retention_days",
+    "provider_failure_threshold",
+    "provider_recovery_threshold",
+    "provider_probe_interval_seconds",
+    "provider_switch_lock_seconds",
 )
 PLATFORM_SECRET_FIELDS = ("node_registry_password",)
+
+
+ModelRole = Literal["planner", "coder", "supervisor", "reviewer", "risk"]
+
+
+class ModelRoleAssignment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: ModelRole
+    priority: int = Field(ge=0, le=9)
+
+
+class ModelCardUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model_id: str = Field(min_length=2, max_length=48, pattern=r"^[a-z0-9][a-z0-9_-]+$")
+    display_name: str = Field(min_length=1, max_length=100)
+    service_type: Literal["openai", "deepseek", "minimax", "custom"]
+    auth_mode: Literal["api", "account"] = "api"
+    base_url: str = Field(default="", max_length=500)
+    model: str = Field(default="", max_length=200)
+    proxy_url: str = Field(default="", max_length=500)
+    enabled: bool = True
+    assignments: list[ModelRoleAssignment] = Field(default_factory=list, max_length=5)
+    api_key: str | None = Field(default=None, max_length=4096)
+
+    @field_validator("base_url", "proxy_url")
+    @classmethod
+    def validate_optional_url(cls, value: str) -> str:
+        return _validated_url(value, allow_empty=True) or ""
+
+    @field_validator("model")
+    @classmethod
+    def validate_card_model(cls, value: str) -> str:
+        value = value.strip()
+        if value and not re.fullmatch(r"[A-Za-z0-9._:/-]+", value):
+            raise ValueError("model name contains unsupported characters")
+        return value
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_card_secret(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if any(ord(character) < 32 for character in value):
+            raise ValueError("API key contains control characters")
+        return value.strip() or None
+
+    @model_validator(mode="after")
+    def validate_mode(self):
+        if self.auth_mode == "account" and self.service_type != "openai":
+            raise ValueError("ChatGPT account mode is available only for OpenAI")
+        if self.auth_mode == "api" and (not self.base_url or not self.model):
+            raise ValueError("API mode requires API address and model")
+        if self.service_type != "openai" and any(
+            item.role == "coder" for item in self.assignments
+        ):
+            raise ValueError("coding role currently requires an OpenAI or ChatGPT account model")
+        if len({item.role for item in self.assignments}) != len(self.assignments):
+            raise ValueError("a model can assign each role only once")
+        return self
 
 
 class ModelServicesUpdate(BaseModel):
@@ -63,6 +129,38 @@ class ModelServicesUpdate(BaseModel):
     gpt_api_key: str | None = Field(default=None, max_length=4096)
     deepseek_api_key: str | None = Field(default=None, max_length=4096)
     minimax_api_key: str | None = Field(default=None, max_length=4096)
+    model_cards: list[ModelCardUpdate] | None = Field(default=None, max_length=50)
+
+    @model_validator(mode="after")
+    def validate_card_routes(self):
+        if self.model_cards is None:
+            return self
+        ids = [item.model_id for item in self.model_cards]
+        if len(ids) != len(set(ids)):
+            raise ValueError("model IDs must be unique")
+        enabled = [item for item in self.model_cards if item.enabled]
+        unsupported_coders = [
+            item.display_name
+            for item in enabled
+            if any(role.role == "coder" for role in item.assignments)
+            and item.service_type != "openai"
+        ]
+        if unsupported_coders:
+            raise ValueError(
+                f"coding role requires an OpenAI/Codex model: {', '.join(unsupported_coders)}"
+            )
+        for role in ("planner", "coder", "supervisor", "reviewer", "risk"):
+            priorities = [
+                assignment.priority
+                for item in enabled
+                for assignment in item.assignments
+                if assignment.role == role
+            ]
+            if enabled and not priorities:
+                raise ValueError(f"{role} requires a primary model")
+            if priorities and (priorities.count(0) != 1 or len(priorities) != len(set(priorities))):
+                raise ValueError(f"{role} requires one primary and unique backup priorities")
+        return self
 
     @field_validator("openai_base_url", "gpt_base_url", "deepseek_base_url", "minimax_base_url")
     @classmethod
@@ -119,6 +217,10 @@ class PlatformSettingsUpdate(BaseModel):
     node_offline_seconds: int | None = Field(default=None, ge=10, le=86400)
     log_retention_days: int | None = Field(default=None, ge=1, le=3650)
     artifact_retention_days: int | None = Field(default=None, ge=1, le=3650)
+    provider_failure_threshold: int | None = Field(default=None, ge=1, le=20)
+    provider_recovery_threshold: int | None = Field(default=None, ge=1, le=20)
+    provider_probe_interval_seconds: int | None = Field(default=None, ge=10, le=3600)
+    provider_switch_lock_seconds: int | None = Field(default=None, ge=30, le=86400)
 
     @field_validator("seed_public_url", "node_callback_url")
     @classmethod
@@ -168,9 +270,7 @@ class PlatformSettingsUpdate(BaseModel):
 
 class ProviderConnectionTest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    provider_id: Literal[
-        "deterministic", "openai_api", "gpt_api", "deepseek_api", "minimax_api"
-    ]
+    provider_id: str = Field(min_length=2, max_length=48, pattern=r"^[a-z0-9][a-z0-9_-]+$")
 
 
 def _validated_url(value: str | None, *, allow_empty: bool) -> str | None:

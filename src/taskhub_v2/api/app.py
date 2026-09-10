@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from importlib.resources import files
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
@@ -33,6 +34,7 @@ from taskhub_v2.security.encryption import SecretCipher
 from taskhub_v2.services import RunService
 from taskhub_v2.services.configuration import ManagedConfigurationService
 from taskhub_v2.services.containers import ContainerManager
+from taskhub_v2.services.device_auth import CodexDeviceAuthService
 from taskhub_v2.services.hosts import PhysicalHostService
 from taskhub_v2.services.providers import ProviderCatalog
 from taskhub_v2.services.remote_nodes import RemoteNodeService
@@ -65,6 +67,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.provider_health_file,
         settings.provider_quota_cooldown_seconds,
         settings.provider_transient_cooldown_seconds,
+        failure_threshold=settings.provider_failure_threshold,
+        recovery_threshold=settings.provider_recovery_threshold,
+        probe_interval_seconds=settings.provider_probe_interval_seconds,
+        switch_lock_seconds=settings.provider_switch_lock_seconds,
     )
     default_container_manager = ContainerManager(
         enabled=settings.container_provisioning_enabled,
@@ -91,8 +97,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             managed_configuration = ManagedConfigurationService(settings, managed_store, cipher)
             effective_settings = await managed_configuration.apply()
+            persistent_codex = Path(effective_settings.model_account_root).parent / "bin/codex"
+            if not Path(effective_settings.codex_cli_bin).is_file() and persistent_codex.is_file():
+                effective_settings = effective_settings.model_copy(
+                    update={"codex_cli_bin": str(persistent_codex)}
+                )
+            provider_health.failure_threshold = effective_settings.provider_failure_threshold
+            provider_health.recovery_threshold = effective_settings.provider_recovery_threshold
+            provider_health.probe_interval_seconds = (
+                effective_settings.provider_probe_interval_seconds
+            )
+            provider_health.switch_lock_seconds = effective_settings.provider_switch_lock_seconds
             app.state.settings = effective_settings
             app.state.managed_configuration = managed_configuration
+            app.state.device_auth = CodexDeviceAuthService(
+                effective_settings.codex_cli_bin,
+                effective_settings.model_account_root,
+                effective_settings.openai_proxy_url,
+            )
             app.state.physical_hosts = PhysicalHostService(
                 host_store,
                 managed_store,

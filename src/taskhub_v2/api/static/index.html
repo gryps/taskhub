@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=22">
+  <link rel="stylesheet" href="/static/styles.css?v=23">
 </head>
 <body>
   <header class="app-header">
@@ -264,7 +264,7 @@
       <summary><span>运行概览</span><span id="system-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span class="resource-caption">Seed 控制面、持久化和关键运行条件</span>
-        <button id="refresh-system" class="icon-button" title="刷新运行概览" aria-label="刷新运行概览">↻</button>
+        <button id="refresh-system" class="secondary resource-refresh" title="刷新运行概览">↻ 刷新</button>
       </div>
       <div id="system-readiness-banner" class="system-readiness-banner" role="status">正在判断任务运行条件</div>
       <div id="system-checks" class="resource-table"></div>
@@ -273,58 +273,19 @@
       <summary><span>模型服务</span><span id="provider-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span class="resource-caption">Provider、角色模型、路由、密钥状态与用量</span>
-        <button id="refresh-providers" class="icon-button" title="刷新模型状态" aria-label="刷新模型状态">↻</button>
+        <button id="refresh-providers" class="secondary resource-refresh" title="刷新模型状态">↻ 刷新</button>
       </div>
       <div id="providers" class="resource-table"></div>
       <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>模型管理配置</strong><span id="model-config-state">正在读取</span></summary>
       <form id="model-services-form" class="project-form resource-form configuration-form">
-        <p class="form-note">API Key 留空表示保留现有值。新密钥只发送到控制端并加密保存，页面不会回显原文。</p>
-        <div class="form-grid configuration-grid">
-          <label>运行模式<select id="model-provider-mode">
-            <option value="deterministic">内置确定性模型</option>
-            <option value="openai">单一 OpenAI API</option>
-            <option value="routed">多模型路由</option>
-          </select></label>
-          <label>OpenAI 网络代理<input id="model-openai-proxy" type="url" maxlength="500" placeholder="http://proxy.example:7893"></label>
-          <fieldset><legend>单一 OpenAI API</legend>
-            <label>API 地址<input id="model-openai-base" type="url" maxlength="500"></label>
-            <label>模型<input id="model-openai-name" maxlength="200"></label>
-            <label>替换 API Key<input id="model-openai-key" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空则不修改"></label>
-            <small id="model-openai-key-state" class="credential-state"></small>
-          </fieldset>
-          <fieldset><legend>GPT API 与角色模型</legend>
-            <label>API 地址<input id="model-gpt-base" type="url" maxlength="500"></label>
-            <label>默认模型<input id="model-gpt-name" maxlength="200"></label>
-            <label>规划模型<input id="model-gpt-planner" maxlength="200"></label>
-            <label>编码模型<input id="model-gpt-coder" maxlength="200"></label>
-            <label>监督模型<input id="model-gpt-supervisor" maxlength="200"></label>
-            <label>替换 API Key<input id="model-gpt-key" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空则不修改"></label>
-            <small id="model-gpt-key-state" class="credential-state"></small>
-          </fieldset>
-          <fieldset><legend>DeepSeek 审查</legend>
-            <label>API 地址<input id="model-deepseek-base" type="url" maxlength="500"></label>
-            <label>模型<input id="model-deepseek-name" maxlength="200"></label>
-            <label>替换 API Key<input id="model-deepseek-key" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空则不修改"></label>
-            <small id="model-deepseek-key-state" class="credential-state"></small>
-          </fieldset>
-          <fieldset><legend>MiniMax 风险分析</legend>
-            <label>API 地址<input id="model-minimax-base" type="url" maxlength="500"></label>
-            <label>模型<input id="model-minimax-name" maxlength="200"></label>
-            <label>替换 API Key<input id="model-minimax-key" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空则不修改"></label>
-            <small id="model-minimax-key-state" class="credential-state"></small>
-          </fieldset>
+        <div class="model-config-toolbar">
+          <p class="form-note">每个角色设置一个主模型和有序备用模型。密钥只替换不回显；账号令牌保存于 Seed 持久化目录。</p>
+          <button id="add-model-card" type="button" class="secondary">＋ 添加模型</button>
         </div>
+        <div id="model-card-editor" class="model-card-grid"></div>
         <div class="form-actions configuration-actions">
           <button id="save-model-services" type="submit">保存模型配置</button>
-          <select id="model-test-provider" aria-label="选择要测试的模型服务">
-            <option value="deterministic">内置确定性模型</option>
-            <option value="openai_api">单一 OpenAI API</option>
-            <option value="gpt_api">GPT API</option>
-            <option value="deepseek_api">DeepSeek API</option>
-            <option value="minimax_api">MiniMax API</option>
-          </select>
-          <button id="test-model-service" type="button" class="secondary">测试连接</button>
           <span id="model-config-message" role="status"></span>
         </div>
       </form>
@@ -338,7 +299,7 @@
       <summary><span>物理主机</span><span id="host-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span class="resource-caption">承载工作节点的 Docker 主机</span>
-        <button id="refresh-hosts" class="icon-button" title="刷新物理主机" aria-label="刷新物理主机">↻</button>
+        <button id="refresh-hosts" class="secondary resource-refresh" title="刷新物理主机">↻ 刷新</button>
       </div>
       <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>登记远程 SSH 主机</strong><span>先检测并确认指纹，再加密保存凭据</span></summary>
@@ -384,7 +345,7 @@
       <summary><span>工作节点</span><span id="node-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span class="resource-caption">统一查看节点注册、容器生命周期、负载和能力</span>
-        <button id="refresh-nodes" class="icon-button" title="刷新工作节点" aria-label="刷新工作节点">↻</button>
+        <button id="refresh-nodes" class="secondary resource-refresh" title="刷新工作节点">↻ 刷新</button>
       </div>
       <div class="resource-subsection-head"><strong>调度与 Agent 状态</strong><span>容器运行不等于节点可调度</span></div>
       <div id="nodes" class="resource-table"></div>
@@ -425,22 +386,21 @@
       <summary><span>平台设置</span><span id="platform-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span class="resource-caption">镜像、内部网络与配置生效边界</span>
-        <button id="refresh-platform" class="icon-button" title="刷新平台设置" aria-label="刷新平台设置">↻</button>
+        <button id="refresh-platform" class="secondary resource-refresh" title="刷新平台设置">↻ 刷新</button>
       </div>
       <div id="platform-settings" class="resource-table"></div>
       <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>可管理平台参数</strong><span id="platform-config-state">正在读取</span></summary>
       <form id="platform-settings-form" class="project-form resource-form configuration-form">
         <p class="form-note">数据库连接、会话密钥、配置加密主密钥和节点令牌属于启动根配置，不能从 Web 读取或修改。</p>
-        <div class="form-grid configuration-grid">
+        <div class="form-grid configuration-grid platform-configuration-grid">
           <label>Seed 对外地址<input id="platform-seed-url" type="url" maxlength="500" placeholder="http://taskhub.example:8200"></label>
           <label>Node Agent 回连地址<input id="platform-callback-url" type="url" maxlength="500" placeholder="http://taskhub.example:8200"></label>
           <label class="wide">默认工作节点镜像<input id="platform-node-image" required maxlength="500" placeholder="registry.example/taskhub-node:1.0.0"></label>
           <label>私有镜像仓库前缀<input id="platform-registry" maxlength="500" placeholder="registry.example/team"></label>
           <label>国内镜像代理前缀<input id="platform-image-proxy" maxlength="500" placeholder="mirror.example/docker.io"></label>
           <label>私有仓库用户名<input id="platform-registry-username" maxlength="200" autocomplete="username" placeholder="留空表示匿名拉取"></label>
-          <label>私有仓库密码<input id="platform-registry-password" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空保留现有密码"></label>
-          <span id="platform-registry-password-state" class="credential-state">未配置</span>
+          <label>私有仓库密码<input id="platform-registry-password" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空保留现有密码"><small id="platform-registry-password-state" class="credential-state">未配置</small></label>
           <label>默认并发任务数<input id="platform-default-slots" type="number" min="1" max="64" required></label>
           <label>默认 CPU 限额<input id="platform-cpu-limit" maxlength="32" placeholder="2.0"></label>
           <label>默认内存限额<input id="platform-memory-limit" maxlength="32" placeholder="4g"></label>
@@ -448,6 +408,10 @@
           <label>离线阈值（秒）<input id="platform-offline" type="number" min="10" max="86400" required></label>
           <label>日志保留（天）<input id="platform-log-retention" type="number" min="1" max="3650" required></label>
           <label>制品保留（天）<input id="platform-artifact-retention" type="number" min="1" max="3650" required></label>
+          <label>故障连续次数<input id="platform-failure-threshold" type="number" min="1" max="20" required></label>
+          <label>恢复连续次数<input id="platform-recovery-threshold" type="number" min="1" max="20" required></label>
+          <label>健康探测间隔（秒）<input id="platform-probe-interval" type="number" min="10" max="3600" required></label>
+          <label>切换保护期（秒）<input id="platform-switch-lock" type="number" min="30" max="86400" required></label>
         </div>
         <div class="form-actions">
           <button id="save-platform-settings" type="submit">保存平台设置</button>
@@ -466,7 +430,7 @@
   </main>
   <script src="/static/app.js?v=7"></script>
   <script src="/static/task-center.js?v=13"></script>
-  <script src="/static/resource-center.js?v=14"></script>
+  <script src="/static/resource-center.js?v=15"></script>
   <script src="/static/onboarding.js?v=2"></script>
 </body>
 </html>

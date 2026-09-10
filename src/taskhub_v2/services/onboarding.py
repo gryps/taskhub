@@ -37,6 +37,29 @@ def seed_storage(settings) -> dict[str, Any]:
 
 
 def model_ready(settings) -> tuple[bool, str]:
+    if settings.model_cards:
+        enabled = [card for card in settings.model_cards if card.get("enabled")]
+        configured = all(
+            (
+                Path(settings.model_account_root, card["model_id"], "auth.json").is_file()
+                if card["auth_mode"] == "account"
+                else bool(card.get("api_key") and card.get("model"))
+            )
+            for card in enabled
+        )
+        roles = {
+            assignment["role"]
+            for card in enabled
+            for assignment in card.get("assignments", [])
+            if assignment["priority"] == 0
+        }
+        ready = configured and roles == {"planner", "coder", "supervisor", "reviewer", "risk"}
+        return (
+            ready,
+            "模型卡片与五类角色主路由已生效"
+            if ready
+            else "模型认证或角色主路由尚未全部就绪",
+        )
     if settings.provider == "deterministic":
         return True, "内置确定性模型已启用，可用于流程验证"
     if settings.provider == "openai":

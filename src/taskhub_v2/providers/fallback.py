@@ -66,8 +66,9 @@ class FallbackModelProvider:
                 continue
             try:
                 result = await operation(self.providers[provider_id])
-                if self.health:
-                    self.health.record_success(provider_id)
+                if self.health and not self.health.record_success(provider_id):
+                    failures.append(f"{provider_id}:recovery_probe")
+                    continue
                 result.failed_providers = failures
                 return result
             except Exception as exc:

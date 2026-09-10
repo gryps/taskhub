@@ -35,6 +35,10 @@ class Settings(BaseModel):
     provider_health_file: str = "/home/gryps/.local/state/taskhub-v2/provider-health.json"
     provider_quota_cooldown_seconds: int = 3600
     provider_transient_cooldown_seconds: int = 60
+    provider_failure_threshold: int = 3
+    provider_recovery_threshold: int = 3
+    provider_probe_interval_seconds: int = 30
+    provider_switch_lock_seconds: int = 300
     worker_mode: Literal["local", "git"] = "local"
     test_runner: Literal["local", "scheduled"] = "local"
     nodes_file: str = "/home/gryps/.config/taskhub-v2/nodes.json"
@@ -77,6 +81,8 @@ class Settings(BaseModel):
     minimax_api_key: str = Field(default="", repr=False)
     minimax_base_url: str = "https://api.minimax.cn/v1"
     minimax_model: str = "MiniMax-M3"
+    model_cards: list[dict] = Field(default_factory=list, repr=False)
+    model_account_root: str = "/var/lib/taskhub/config/model-accounts"
 
 
 @lru_cache
@@ -135,6 +141,12 @@ def get_settings() -> Settings:
         provider_transient_cooldown_seconds=int(
             os.getenv("TASKHUB_PROVIDER_TRANSIENT_COOLDOWN_SECONDS", "60")
         ),
+        provider_failure_threshold=int(os.getenv("TASKHUB_PROVIDER_FAILURE_THRESHOLD", "3")),
+        provider_recovery_threshold=int(os.getenv("TASKHUB_PROVIDER_RECOVERY_THRESHOLD", "3")),
+        provider_probe_interval_seconds=int(
+            os.getenv("TASKHUB_PROVIDER_PROBE_INTERVAL_SECONDS", "30")
+        ),
+        provider_switch_lock_seconds=int(os.getenv("TASKHUB_PROVIDER_SWITCH_LOCK_SECONDS", "300")),
         worker_mode=os.getenv("TASKHUB_WORKER_MODE", "local"),
         test_runner=os.getenv("TASKHUB_TEST_RUNNER", "local"),
         nodes_file=os.getenv("TASKHUB_NODES_FILE", "/home/gryps/.config/taskhub-v2/nodes.json"),
@@ -185,4 +197,7 @@ def get_settings() -> Settings:
         minimax_api_key=os.getenv("TASKHUB_MINIMAX_API_KEY", ""),
         minimax_base_url=os.getenv("TASKHUB_MINIMAX_BASE_URL", "https://api.minimax.cn/v1"),
         minimax_model=os.getenv("TASKHUB_MINIMAX_MODEL", "MiniMax-M3"),
+        model_account_root=os.getenv(
+            "TASKHUB_MODEL_ACCOUNT_ROOT", "/var/lib/taskhub/config/model-accounts"
+        ),
     )

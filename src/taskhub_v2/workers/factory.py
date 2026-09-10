@@ -1,4 +1,5 @@
 from taskhub_v2.artifacts import ArtifactStore
+from taskhub_v2.browser import PreviewManager
 from taskhub_v2.config import Settings
 from taskhub_v2.execution import LocalTestScheduler, NodeScheduler
 from taskhub_v2.execution.registry import NodeRegistry
@@ -13,7 +14,6 @@ from taskhub_v2.workers.coding_router import CodexCodingRouter
 from taskhub_v2.workers.git_coder import GitCodingWorker
 from taskhub_v2.workers.local import LocalWorker
 from taskhub_v2.workers.publisher import GitPublisher, LocalPublisher
-from taskhub_v2.browser import PreviewManager
 
 
 def build_worker(
@@ -41,8 +41,28 @@ def build_coder(settings: Settings, health: ProviderHealthStore | None = None):
         "workdir": settings.provider_workdir,
         "timeout": 1200,
     }
-    return CodexCodingRouter(
-        [
+    if settings.model_cards:
+        assigned = sorted(
+            (
+                item["priority"], card
+            )
+            for card in settings.model_cards
+            if card.get("enabled") and card["service_type"] == "openai"
+            for item in card.get("assignments", [])
+            if item["role"] == "coder"
+        )
+        providers = [
+            CodexAccountProvider(
+                card["model_id"],
+                codex_home=f"{settings.model_account_root}/{card['model_id']}",
+                model=card.get("model") or "account_default",
+                api_key=card.get("api_key", ""),
+                **common,
+            )
+            for _, card in assigned
+        ]
+    else:
+        providers = [
             CodexAccountProvider(
                 "chatgpt_plus_account", codex_home=settings.codex_plus_home, **common
             ),
@@ -56,9 +76,8 @@ def build_coder(settings: Settings, health: ProviderHealthStore | None = None):
                 api_key=settings.gpt_api_key,
                 **common,
             ),
-        ],
-        health=health,
-    )
+        ]
+    return CodexCodingRouter(providers, health=health)
 
 
 def build_publisher(settings: Settings, test_scheduler=None) -> PublisherGateway:
