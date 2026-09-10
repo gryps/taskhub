@@ -78,3 +78,15 @@ Updated: 2026-09-10
 - This is stage 3A only. Remote node creation, desired-state lifecycle and the unified `taskhub-node` image remain stage 3B; the UI does not claim those capabilities are complete.
 - Runtime checks: controller and PostgreSQL healthy, LAN health returned `{"status":"ok","orchestrator":"langgraph"}`, OpenSSH client was present, unauthenticated `/api/hosts` returned HTTP 401, and static assets were `styles.css?v=17` and `resource-center.js?v=9`.
 - Rollback image: `taskhub-v2-seed:backup-ssh-hosts-20260910T184909`. The prior source backup remains `C:\taskhub-seed\backups\release-3d937f4-pre-20260910T180524`; rapid source-bind rollback must restore that source or disable the bind before starting the backup image.
+
+## Seed Remote Node Orchestration (Rapid Deployment)
+
+- On 2026-09-10, feature commit `e233d14` was rapidly deployed to `192.168.31.31:8200` and pushed to both `.3 git` and GitHub.
+- Physical-host purpose is now a fixed multi-select capability set: execution, test and preproduction. Remote-node creation enforces the selected host's allowed roles.
+- **系统配置 → 工作节点** can select an admitted remote host, create a role node with Agent port and CPU/memory defaults, and remotely start, stop, restart or remove it over strict-host-key SSH. Local and remote containers share one inventory view.
+- Remote node inventory is durable in PostgreSQL table `taskhub_remote_node`; node, host, role, image digest, desired/actual state and resource settings survive Seed restarts. A node is added to `nodes.json` only after its authenticated Agent health check succeeds.
+- Unified worker image `taskhub-node:0.1.0-alpha` was built on `.31` with image ID `sha256:b1e11130fd6ab0742f45cbfe9385c359ccfb23a037dec2a6d343093525cd31cc`. The rapid runtime build used the existing Seed image plus the Aliyun Debian mirror to avoid a second full Python dependency build; the committed release Dockerfile is `deploy/node/Dockerfile`.
+- Static assets are `styles.css?v=18` and `resource-center.js?v=10`. PostgreSQL and controller are healthy, `/api/remote-nodes` is authentication-protected, and the new table exists.
+- At the operator's explicit request, pytest, browser inspection, real SSH node creation and functional acceptance were skipped. Only JavaScript/Python syntax, Ruff, diff, import, health, static-version, image and table checks were performed.
+- Known Alpha limits: remote Agent ports are LAN-published; all nodes still share the deployment node token; automatic periodic reconciliation and image upgrade/rollback are not implemented; the unified image includes Git and Node.js/npm but not Codex CLI or browsers.
+- Rollback source: `C:\taskhub-seed\backups\stage3b-pre-20260910T200350`. Rollback image: `taskhub-v2-seed:backup-stage3b-20260910T200350`. Preserve the host-local `.env` and named volumes during rollback.
