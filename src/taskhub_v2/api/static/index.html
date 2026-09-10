@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=23">
+  <link rel="stylesheet" href="/static/styles.css?v=24">
 </head>
 <body>
   <header class="app-header">
@@ -272,15 +272,15 @@
     <details id="providers-disclosure" class="providers-section resource-disclosure">
       <summary><span>模型服务</span><span id="provider-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
-        <span class="resource-caption">Provider、角色模型、路由、密钥状态与用量</span>
+        <span class="resource-caption">模型卡片同时呈现状态并管理认证、角色与主备路由</span>
         <button id="refresh-providers" class="secondary resource-refresh" title="刷新模型状态">↻ 刷新</button>
       </div>
-      <div id="providers" class="resource-table"></div>
-      <details class="resource-subdisclosure">
-      <summary class="resource-subsection-head"><strong>模型管理配置</strong><span id="model-config-state">正在读取</span></summary>
       <form id="model-services-form" class="project-form resource-form configuration-form">
         <div class="model-config-toolbar">
-          <p class="form-note">每个角色设置一个主模型和有序备用模型。密钥只替换不回显；账号令牌保存于 Seed 持久化目录。</p>
+          <div class="model-config-meta">
+            <p class="form-note">每个角色设置一个主模型和有序备用模型。密钥只替换不回显；账号令牌保存于 Seed 持久化目录。</p>
+            <span id="model-config-state">正在读取</span>
+          </div>
           <button id="add-model-card" type="button" class="secondary">＋ 添加模型</button>
         </div>
         <div id="model-card-editor" class="model-card-grid"></div>
@@ -289,7 +289,6 @@
           <span id="model-config-message" role="status"></span>
         </div>
       </form>
-      </details>
       <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>最近配置操作</strong><span>不记录密钥原文</span></summary>
       <div id="model-config-audit" class="resource-table"></div>
@@ -430,7 +429,7 @@
   </main>
   <script src="/static/app.js?v=7"></script>
   <script src="/static/task-center.js?v=13"></script>
-  <script src="/static/resource-center.js?v=15"></script>
+  <script src="/static/resource-center.js?v=16"></script>
   <script src="/static/onboarding.js?v=2"></script>
 </body>
 </html>

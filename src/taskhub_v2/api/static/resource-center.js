@@ -280,15 +280,6 @@ async function loadProviders() {
     const cards = configuration.desired.model_cards || [];
     const ready = cards.filter((item) => item.enabled && configuration.card_credentials?.[item.model_id]?.configured).length;
     byId("provider-summary").textContent = `${ready}/${cards.length} 已认证 · 按角色主备路由`;
-    byId("providers").innerHTML = `<div class="resource-row resource-header">
-      <span>模型资源</span><span>状态</span><span>认证 / 路由</span><span>承担角色</span>
-    </div>${cards.map((item) => `
-      <div class="resource-row">
-        <strong>${escapeHtml(item.display_name)}<small>${escapeHtml(item.model_id)}</small></strong>
-        <span class="${item.enabled ? "ok" : "warn"}">${item.enabled ? "已启用" : "已停用"}</span>
-        <span>${item.auth_mode === "account" ? "ChatGPT 账号" : "API Key"}<small>${escapeHtml(item.model || "账号默认模型")}</small></span>
-        <span>${(item.assignments || []).sort((a, b) => a.priority - b.priority).map((assignment) => `${modelRoleNames[assignment.role]}·${assignment.priority === 0 ? "主" : `备${assignment.priority}`}`).join(" · ") || "未分配"}</span>
-      </div>`).join("") || '<div class="resource-row"><span>尚未添加模型</span></div>'}`;
     fillModelConfiguration(configuration);
     renderConfigurationAudit("model-config-audit", audit.events);
   } catch (error) {

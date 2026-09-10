@@ -579,6 +579,8 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .model-config-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .model-config-toolbar .form-note { margin: 0; }
 .model-config-toolbar button { flex: 0 0 auto; }
+.model-config-meta { display: grid; gap: 4px; }
+#model-config-state { color: var(--text-secondary); font-size: 11px; }
 .model-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .model-config-card { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .model-config-card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--surface-subtle); }
