@@ -1,6 +1,6 @@
 # TaskHub V2 Memory Notes
 
-Updated: 2026-09-10
+Updated: 2026-09-11
 
 ## Current Frontend Baseline
 
@@ -99,3 +99,14 @@ Updated: 2026-09-10
 - The version-controlled and installed `taskhub-frontend-design` skill both retain this interaction contract. Deployed static assets are `styles.css?v=20` and `resource-center.js?v=12`.
 - At the operator's request, pytest, browser visual inspection, real SSH image distribution and Docker image rebuild were skipped. JavaScript syntax checks and `git diff --check` passed before deployment; the controller returned healthy after restart and the LAN page served the new asset versions and collapse control.
 - Rollback source: `C:\taskhub-seed\backups\config-disclosure-pre-20260910T234457`. The host-local `.env`, administrator password, PostgreSQL data and named volumes were preserved.
+
+## Seed First-Run Onboarding (Rapid Deployment)
+
+- On 2026-09-11, feature commit `0e7436f` was pushed to both `.3 git` and GitHub and rapidly deployed to `192.168.31.31:8200` through the existing source bind. Neither `taskhub-v2-seed:0.1.0-alpha` nor `taskhub-node:0.1.0-alpha` was rebuilt.
+- Incomplete authenticated Seed deployments now open a first-run status page. Its seven server-computed conditions cover administrator setup, Docker/CPU/memory/persistent disk, effective Seed/callback URLs, a local or remote image source, effective model configuration, one admitted physical host and one healthy schedulable node.
+- Docker Engine `/info` supplies Docker VM CPU, memory, OS and architecture; TaskHub's persistent filesystem supplies free-disk capacity. The wizard reuses existing system-configuration forms and shows `系统已具备运行任务条件` only after all required conditions pass.
+- The wizard can stream a `docker save` tar archive of up to 20 GB into the Seed Docker Engine, verifies the expected image reference and returns the archive SHA-256, image ID/digest, OS and architecture. Temporary uploads are removed after success or failure.
+- Pending model/platform settings expose an authenticated Web restart action for Seed container deployments. It exits the controller after accepting the request; Compose `unless-stopped` restores it and the page waits for health recovery.
+- Static assets are `styles.css?v=21`, `app.js?v=7`, `task-center.js?v=13`, `resource-center.js?v=13` and `onboarding.js?v=1`.
+- At the operator's explicit request, pytest, browser inspection, offline-image functional upload, Web-triggered restart and real SSH/node acceptance were skipped. JavaScript syntax, Python compilation, changed-file Ruff, `git diff --check`, runtime import, container health and served asset references were checked.
+- Rollback source: `C:\taskhub-seed\backups\onboarding-pre-20260911T002101`. Preserve the host-local `.env`, administrator password, PostgreSQL data and named volumes during rollback.
