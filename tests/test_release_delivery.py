@@ -65,8 +65,17 @@ def test_release_images_pin_codex_and_node_has_common_role_tools():
     assert "ARG CODEX_VERSION=" in seed
     assert "CODEX_RELEASE=\"${CODEX_VERSION}\"" in seed
     assert "TASKHUB_CODEX_CLI_BIN=/usr/local/bin/codex" in seed
+    assert "ARG DEBIAN_MIRROR=" in seed
+    assert "ARG DEBIAN_SECURITY_MIRROR=" in seed
     assert "git nodejs npm" in node
+    assert "ARG DEBIAN_MIRROR=" in node
+    assert "ARG DEBIAN_SECURITY_MIRROR=" in node
     assert "python -m pip install '.[dev,browser]'" in node
+
+    for name in ("build-images.sh", "build-images.ps1"):
+        build_script = (RELEASE / name).read_text(encoding="utf-8-sig")
+        assert "DEBIAN_MIRROR" in build_script
+        assert "DEBIAN_SECURITY_MIRROR" in build_script
 
 
 def test_offline_build_includes_all_runtime_images_and_checksums():

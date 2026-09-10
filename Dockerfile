@@ -3,6 +3,8 @@ FROM python:3.12-slim-bookworm AS runtime
 ARG TASKHUB_VERSION=0.1.0-alpha
 ARG TASKHUB_COMMIT=unknown
 ARG CODEX_VERSION=0.153.4
+ARG DEBIAN_MIRROR=http://deb.debian.org/debian
+ARG DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
 
 LABEL org.opencontainers.image.title="TaskHub V2 Seed Controller" \
       org.opencontainers.image.version="${TASKHUB_VERSION}" \
@@ -24,8 +26,12 @@ RUN groupadd --gid 10001 taskhub \
     && useradd --uid 10001 --gid taskhub --create-home --shell /usr/sbin/nologin taskhub
 
 WORKDIR /opt/taskhub
-RUN apt-get update -o Acquire::Retries=5 \
-    && apt-get install -y --no-install-recommends ca-certificates curl openssh-client \
+RUN sed -i \
+      -e "s|http://deb.debian.org/debian-security|${DEBIAN_SECURITY_MIRROR}|g" \
+      -e "s|http://deb.debian.org/debian|${DEBIAN_MIRROR}|g" \
+      /etc/apt/sources.list.d/debian.sources \
+    && apt-get update -o Acquire::Retries=8 \
+    && apt-get install -y -o Acquire::Retries=8 --no-install-recommends ca-certificates curl openssh-client \
     && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /opt/codex-home \
     && curl -fsSL --retry 5 https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh \

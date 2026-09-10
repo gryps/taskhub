@@ -7,6 +7,9 @@ $Version = if ($env:TASKHUB_VERSION) { $env:TASKHUB_VERSION } else { "0.1.0-alph
 $CodexVersion = if ($env:CODEX_VERSION) { $env:CODEX_VERSION } else { "0.153.4" }
 $Platform = if ($env:TASKHUB_PLATFORM) { $env:TASKHUB_PLATFORM } else { "linux/amd64" }
 $Registry = if ($env:TASKHUB_REGISTRY) { $env:TASKHUB_REGISTRY.TrimEnd('/') + "/" } else { "" }
+$MirrorArgs = @()
+if ($env:DEBIAN_MIRROR) { $MirrorArgs += @("--build-arg", "DEBIAN_MIRROR=$($env:DEBIAN_MIRROR)") }
+if ($env:DEBIAN_SECURITY_MIRROR) { $MirrorArgs += @("--build-arg", "DEBIAN_SECURITY_MIRROR=$($env:DEBIAN_SECURITY_MIRROR)") }
 $Commit = (git -C $RepoRoot rev-parse HEAD 2>$null)
 if (-not $Commit) { $Commit = "unknown" }
 $SeedImage = "${Registry}taskhub-seed:$Version"
@@ -25,6 +28,7 @@ foreach ($Build in @(
         --build-arg "TASKHUB_VERSION=$Version" `
         --build-arg "TASKHUB_COMMIT=$Commit" `
         --build-arg "CODEX_VERSION=$CodexVersion" `
+        @MirrorArgs `
         --tag $Build.Image --file (Join-Path $RepoRoot $Build.File) $RepoRoot
     if ($LASTEXITCODE -ne 0) { throw "镜像构建失败: $($Build.Image)" }
 }

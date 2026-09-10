@@ -8,8 +8,15 @@ platform=${TASKHUB_PLATFORM:-linux/amd64}
 registry=${TASKHUB_REGISTRY:-}
 commit=$(git -C "$root" rev-parse HEAD 2>/dev/null || printf 'unknown')
 prefix=""
+mirror_args=""
 if [ -n "$registry" ]; then
   prefix="${registry%/}/"
+fi
+if [ -n "${DEBIAN_MIRROR:-}" ]; then
+  mirror_args="$mirror_args --build-arg DEBIAN_MIRROR=${DEBIAN_MIRROR}"
+fi
+if [ -n "${DEBIAN_SECURITY_MIRROR:-}" ]; then
+  mirror_args="$mirror_args --build-arg DEBIAN_SECURITY_MIRROR=${DEBIAN_SECURITY_MIRROR}"
 fi
 seed_image="${prefix}taskhub-seed:${version}"
 node_image="${prefix}taskhub-node:${version}"
@@ -25,6 +32,7 @@ for specification in "Dockerfile|$seed_image" "deploy/node/Dockerfile|$node_imag
     --build-arg "TASKHUB_VERSION=$version" \
     --build-arg "TASKHUB_COMMIT=$commit" \
     --build-arg "CODEX_VERSION=$codex_version" \
+    $mirror_args \
     --tag "$image" \
     --file "$root/$dockerfile" "$root"
 done

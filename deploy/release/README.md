@@ -21,6 +21,9 @@ Hangzhou endpoint is faster from the deployment network.
 
 Build local images with `build-images.sh` or `build-images.ps1`. Set
 `TASKHUB_REGISTRY` and `TASKHUB_PUSH=true` to publish the two TaskHub images.
+The Dockerfiles use the official Debian repositories by default; constrained
+networks may pass `DEBIAN_MIRROR` and `DEBIAN_SECURITY_MIRROR` build arguments
+for a trusted signed-package mirror.
 Create a self-contained, architecture-specific directory with `build-offline.sh`
 or `build-offline.ps1`. Generated archives belong under ignored `dist/`; do not
 commit image tar files.
