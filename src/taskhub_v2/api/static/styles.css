@@ -401,6 +401,7 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .container-form-grid { grid-template-columns: minmax(180px, 1.4fr) minmax(160px, 1fr) minmax(130px, .7fr); }
 .configuration-form { padding: 18px 16px; }
 .configuration-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.host-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .configuration-grid fieldset {
   min-width: 0;
   margin: 0;
@@ -419,6 +420,19 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .configuration-actions { flex-wrap: wrap; }
 .configuration-actions select { width: auto; min-width: 180px; }
 #model-config-message, #platform-config-message { color: var(--text-secondary); font-size: 12px; }
+.host-fingerprint {
+  margin-top: 14px;
+  padding: 13px 14px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid #efd49e;
+  border-radius: 9px;
+  background: var(--warning-soft);
+  font-size: 12px;
+}
+.host-fingerprint code { overflow-wrap: anywhere; color: var(--text); }
+.host-fingerprint label { color: var(--text-secondary); }
+#host-message { color: var(--text-secondary); font-size: 12px; }
 .audit-row { grid-template-columns: 1fr .8fr 1.6fr .7fr; }
 .form-help { margin: 12px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
 .resource-table { overflow-x: auto; border-top: 1px solid var(--border); background: var(--surface); }
@@ -435,6 +449,7 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .container-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .container-actions button { min-height: 32px; padding: 5px 10px; font-size: 11px; }
 .container-actions .remove-container { color: var(--danger); border-color: #dda99e; }
+.host-action { min-height: 30px; margin-top: 8px; padding: 4px 9px; font-size: 11px; }
 .prerequisite-action { display: flex; gap: 8px; align-items: start; }
 .prerequisite-action code { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
 .prerequisite-action .icon-button { flex: 0 0 36px; }
@@ -482,6 +497,7 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .form-grid { grid-template-columns: 1fr; }
   .container-form-grid { grid-template-columns: 1fr; }
   .configuration-grid { grid-template-columns: 1fr; }
+  .host-form-grid { grid-template-columns: 1fr; }
   .configuration-grid fieldset { grid-template-columns: 1fr; }
   .configuration-grid fieldset label,
   .configuration-grid .credential-state { grid-column: auto; }

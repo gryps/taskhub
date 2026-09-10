@@ -24,8 +24,10 @@ browser, Git, and publication capabilities require the planned unified
 Both services use named Docker volumes. Deleting a container does not delete its
 data; deleting the Compose volumes does.
 
-The seed controller intentionally does not contain Git, SSH, Codex, Node.js, or
-browser tooling. Web-created alpha nodes prove lifecycle, registration, scheduling
+The seed controller intentionally does not contain Git, Codex, Node.js, or
+browser tooling. The controller image now includes the OpenSSH client used only
+for strict-fingerprint remote host admission; it contains no SSH private key or
+preconfigured host trust. Web-created alpha nodes prove lifecycle, registration, scheduling
 and health reporting; those additional capabilities belong in the unified
 `taskhub-node` release image rather than the Seed controller.
 
@@ -75,6 +77,11 @@ for this initial setup. Later logins accept the administrator password instead.
 Never commit or copy the `.env` file into an image.
 
 The encryption key protects Web-managed provider API keys stored in PostgreSQL.
+It also protects SSH private keys entered through **系统配置 → 物理主机**. Before
+admitting a host, configure a LAN-reachable Node Agent callback URL in platform
+settings, detect the host fingerprint, verify it through a trusted channel, and
+explicitly confirm it. TaskHub then checks SSH authentication, Linux hardware,
+Docker permission and remote callback connectivity before saving the host.
 It remains a deployment root secret: the Web UI can report whether encryption is
 available but cannot read or replace this key. Back up the `.env` file securely;
 losing this key makes previously stored provider credentials unrecoverable.

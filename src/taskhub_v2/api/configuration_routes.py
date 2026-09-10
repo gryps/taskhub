@@ -59,7 +59,7 @@ async def update_platform_settings(
 @router.get("/audit")
 async def configuration_audit(
     configuration: ConfigurationDep,
-    scope: Literal["model_services", "platform"] | None = None,
+    scope: Literal["model_services", "platform", "physical_hosts"] | None = None,
     limit: int = Query(default=25, ge=1, le=100),
 ) -> dict:
     return await configuration.audit(scope, limit)

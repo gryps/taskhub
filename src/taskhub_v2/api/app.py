@@ -10,6 +10,7 @@ from taskhub_v2.api.auth_routes import router as auth_router
 from taskhub_v2.api.configuration_routes import router as configuration_router
 from taskhub_v2.api.container_routes import router as container_router
 from taskhub_v2.api.deployment_routes import router as deployment_router
+from taskhub_v2.api.host_routes import router as host_router
 from taskhub_v2.api.node_routes import router as node_router
 from taskhub_v2.api.project_routes import router as project_router
 from taskhub_v2.api.provider_routes import router as provider_router
@@ -19,6 +20,7 @@ from taskhub_v2.config import Settings, get_settings
 from taskhub_v2.deployment import DeploymentManager
 from taskhub_v2.persistence.checkpoints import checkpoint_store
 from taskhub_v2.persistence.configuration import configuration_store
+from taskhub_v2.persistence.hosts import physical_host_store
 from taskhub_v2.persistence.task_index import task_index_store
 from taskhub_v2.projects import ProjectProvisioner, ProjectRegistry
 from taskhub_v2.providers import build_provider
@@ -28,6 +30,7 @@ from taskhub_v2.security.encryption import SecretCipher
 from taskhub_v2.services import RunService
 from taskhub_v2.services.configuration import ManagedConfigurationService
 from taskhub_v2.services.containers import ContainerManager
+from taskhub_v2.services.hosts import PhysicalHostService
 from taskhub_v2.services.providers import ProviderCatalog
 from taskhub_v2.workers import (
     build_acceptance,
@@ -72,6 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         async with (
             configuration_store(settings) as managed_store,
+            physical_host_store(settings) as host_store,
             checkpoint_store(settings) as checkpointer,
             task_index_store(settings) as task_index,
         ):
@@ -84,6 +88,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             effective_settings = await managed_configuration.apply()
             app.state.settings = effective_settings
             app.state.managed_configuration = managed_configuration
+            app.state.physical_hosts = PhysicalHostService(
+                host_store,
+                managed_store,
+                cipher,
+                effective_settings.node_callback_url,
+            )
             if app.state.container_manager is default_container_manager:
                 app.state.container_manager = ContainerManager(
                     enabled=effective_settings.container_provisioning_enabled,
@@ -145,6 +155,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(configuration_router)
     app.include_router(container_router)
+    app.include_router(host_router)
     app.include_router(project_router)
     app.include_router(node_router)
     app.include_router(deployment_router)

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=16">
+  <link rel="stylesheet" href="/static/styles.css?v=17">
 </head>
 <body>
   <header class="app-header">
@@ -300,7 +300,37 @@
         <span class="resource-caption">承载工作节点的 Docker 主机</span>
         <button id="refresh-hosts" class="icon-button" title="刷新物理主机" aria-label="刷新物理主机">↻</button>
       </div>
+      <div class="resource-subsection-head"><strong>登记远程 SSH 主机</strong><span>先检测并确认指纹，再加密保存凭据</span></div>
+      <form id="host-form" class="project-form resource-form configuration-form">
+        <p class="form-note">使用专用 SSH 私钥。私钥只用于本次请求，保存时由 Seed 加密；API 和页面不会回显。当前支持 Linux Docker 主机。</p>
+        <div class="form-grid host-form-grid">
+          <label>主机 ID<input id="host-id" required minlength="2" maxlength="32" pattern="[a-z0-9][a-z0-9_-]{1,31}" placeholder="worker-host-01"></label>
+          <label>显示名称<input id="host-name" required maxlength="100" placeholder="测试服务器"></label>
+          <label>IP 或主机名<input id="host-address" required maxlength="253" placeholder="192.168.31.60"></label>
+          <label>SSH 端口<input id="host-port" type="number" min="1" max="65535" value="22" required></label>
+          <label>SSH 用户<input id="host-user" required maxlength="32" pattern="[a-z_][a-z0-9_-]{0,31}" placeholder="taskhub"></label>
+          <label>Docker 权限<select id="host-docker-access">
+            <option value="direct">用户直接执行 Docker</option>
+            <option value="sudo">免密 sudo 执行 Docker</option>
+          </select></label>
+          <label>用途<input id="host-purpose" maxlength="200" placeholder="执行 / 测试 / 预生产"></label>
+          <label>标签<input id="host-labels" maxlength="300" placeholder="linux,ssd,internal"></label>
+          <label class="wide">SSH 私钥<textarea id="host-private-key" required maxlength="32768" rows="5" autocomplete="off" spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></label>
+          <label class="wide">备注<textarea id="host-notes" maxlength="1000" rows="2"></textarea></label>
+        </div>
+        <div id="host-fingerprint-panel" class="host-fingerprint hidden">
+          <span>检测到的 SSH 主机指纹</span><code id="host-fingerprint">—</code>
+          <label><input id="host-fingerprint-confirmed" type="checkbox"> 我已通过可信渠道核对并确认该指纹</label>
+        </div>
+        <div class="form-actions configuration-actions">
+          <button id="probe-host" type="button" class="secondary">检测主机指纹</button>
+          <button id="save-host" type="submit" disabled>确认并登记主机</button>
+          <span id="host-message" role="status"></span>
+        </div>
+      </form>
       <div id="physical-hosts" class="resource-table"></div>
+      <div class="resource-subsection-head"><strong>最近主机操作</strong><span>不记录私钥原文</span></div>
+      <div id="host-config-audit" class="resource-table"></div>
     </details>
     <details id="nodes-disclosure" class="providers-section resource-disclosure">
       <summary><span>工作节点</span><span id="node-summary" class="muted">正在检查</span></summary>
@@ -370,6 +400,6 @@
   </main>
   <script src="/static/app.js?v=6"></script>
   <script src="/static/task-center.js?v=12"></script>
-  <script src="/static/resource-center.js?v=8"></script>
+  <script src="/static/resource-center.js?v=9"></script>
 </body>
 </html>

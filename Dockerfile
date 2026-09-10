@@ -19,6 +19,9 @@ RUN groupadd --gid 10001 taskhub \
     && useradd --uid 10001 --gid taskhub --create-home --shell /usr/sbin/nologin taskhub
 
 WORKDIR /opt/taskhub
+RUN apt-get update -o Acquire::Retries=5 \
+    && apt-get install -y --no-install-recommends openssh-client \
+    && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml README.md ./
 COPY src ./src
 RUN python -m pip install .

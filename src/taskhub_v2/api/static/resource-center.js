@@ -98,12 +98,14 @@ function credentialState(metadata) {
 }
 
 function renderConfigurationAudit(target, events) {
-  const actionNames = {update: "保存配置", connection_test: "连接测试", apply: "启动生效"};
+  const actionNames = {update: "保存配置", connection_test: "连接测试", apply: "启动生效",
+    admit: "登记主机", check: "重新检测"};
   const resultNames = {pending_restart: "等待重启", passed: "通过", failed: "失败", applied: "已生效"};
   const rows = events.map((item) => {
     const summary = item.parameter_summary || {};
     const fields = (summary.changed_fields || []).join(" · ") ||
-      (summary.provider_id ? `服务：${summary.provider_id}` : `版本：${summary.version || "—"}`);
+      (summary.provider_id ? `服务：${summary.provider_id}` :
+        summary.host_id ? `主机：${summary.host_id}` : `版本：${summary.version || "—"}`);
     const secrets = (summary.replaced_secrets || []).length
       ? `<small>已替换密钥：${summary.replaced_secrets.map(escapeHtml).join(" · ")}</small>` : "";
     const resultClass = item.result === "failed" ? "bad" :
@@ -253,25 +255,127 @@ async function loadNodes() {
   }
 }
 
+let pendingHostFingerprint = "";
+
+function hostConnectionPayload() {
+  return {
+    address: byId("host-address").value.trim(),
+    port: Number(byId("host-port").value),
+    username: byId("host-user").value.trim(),
+    private_key: byId("host-private-key").value,
+    docker_access: byId("host-docker-access").value,
+  };
+}
+
+function resetHostFingerprint() {
+  pendingHostFingerprint = "";
+  byId("host-fingerprint-panel").classList.add("hidden");
+  byId("host-fingerprint-confirmed").checked = false;
+  byId("save-host").disabled = true;
+}
+
+function hostFacts(facts) {
+  if (!facts || !Object.keys(facts).length) return "尚未检测";
+  return `${facts.cpu_count || "—"} CPU · ${formatBytes(facts.memory_bytes)} 内存 · ` +
+    `${formatBytes(facts.disk_available_bytes)} 可用磁盘`;
+}
+
+function hostStatusClass(status) {
+  return status === "available" ? "ok" : status === "degraded" ? "bad" : "warn";
+}
+
 async function loadPhysicalHosts() {
-  byId("host-summary").textContent = "正在检查 Seed 本机 Docker";
+  byId("host-summary").textContent = "正在读取物理主机库存";
   try {
-    const status = await request("/api/containers/status");
+    const [status, inventory, audit] = await Promise.all([
+      request("/api/containers/status"), request("/api/hosts"),
+      request("/api/settings/audit?scope=physical_hosts&limit=8"),
+    ]);
     const stateClass = status.available ? "ok" : status.enabled ? "bad" : "warn";
     const stateLabel = status.available ? "可用" : status.enabled ? "异常" : "未启用";
+    const available = inventory.hosts.filter((item) => item.status === "available").length;
     byId("host-summary").textContent =
-      `Seed 本机 ${stateLabel} · 远程 SSH 主机待实现`;
+      `Seed 本机 ${stateLabel} · 远程主机 ${available}/${inventory.hosts.length} 可用`;
+    const remoteRows = inventory.hosts.map((item) => `
+      <div class="resource-row host-row">
+        <strong>${escapeHtml(item.display_name)}<small>${escapeHtml(item.host_id)} · ${escapeHtml(item.address)}:${item.port}</small></strong>
+        <span class="${hostStatusClass(item.status)}">${escapeHtml(item.status_label)}<small>${escapeHtml(item.status_reason)}</small></span>
+        <span>Docker ${escapeHtml(item.facts?.docker_version || "—")}<small>${escapeHtml(item.facts?.os || "尚未检测")}</small></span>
+        <span>${escapeHtml(hostFacts(item.facts))}<small>SSH ${escapeHtml(item.username)} · ${escapeHtml(item.fingerprint)}</small>
+          <button type="button" class="secondary host-action" data-host-id="${escapeHtml(item.host_id)}">重新检测</button></span>
+      </div>`).join("");
     byId("physical-hosts").innerHTML = `<div class="resource-row resource-header">
       <span>物理主机</span><span>状态</span><span>Docker</span><span>说明</span>
     </div><div class="resource-row">
       <strong>Seed 本机<small>local-docker</small></strong>
       <span class="${stateClass}">${stateLabel}</span>
       <span>${escapeHtml(status.detail || "未检测")}</span>
-      <span>当前仅支持在 Seed 所在主机创建节点容器。远程主机登记、SSH 指纹确认和准入检测将在下一阶段提供。</span>
-    </div>`;
+      <span>控制节点本机 Docker；无需 SSH 准入。</span>
+    </div>${remoteRows}`;
+    renderConfigurationAudit("host-config-audit", audit.events);
   } catch (error) {
     byId("host-summary").textContent = error.message;
   }
+}
+
+async function probePhysicalHost() {
+  if (!byId("host-form").reportValidity()) return;
+  const button = byId("probe-host");
+  button.disabled = true;
+  resetHostFingerprint();
+  byId("host-message").textContent = "正在读取 SSH 主机指纹";
+  try {
+    const result = await request("/api/hosts/probe", {
+      method: "POST", body: JSON.stringify(hostConnectionPayload()),
+    });
+    pendingHostFingerprint = result.fingerprint;
+    byId("host-fingerprint").textContent = result.fingerprint;
+    byId("host-fingerprint-panel").classList.remove("hidden");
+    byId("host-message").textContent = result.detail;
+  } catch (error) {
+    byId("host-message").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function savePhysicalHost(event) {
+  event.preventDefault();
+  if (!pendingHostFingerprint || !byId("host-fingerprint-confirmed").checked) return;
+  const button = byId("save-host");
+  button.disabled = true;
+  byId("host-message").textContent = "正在执行 SSH、Docker、硬件和回连准入检测";
+  try {
+    const result = await request("/api/hosts", {
+      method: "POST",
+      body: JSON.stringify({
+        ...hostConnectionPayload(), expected_fingerprint: pendingHostFingerprint,
+        host_id: byId("host-id").value.trim(),
+        display_name: byId("host-name").value.trim(),
+        purpose: byId("host-purpose").value.trim(),
+        labels: byId("host-labels").value.split(",").map((item) => item.trim()).filter(Boolean),
+        notes: byId("host-notes").value.trim(),
+      }),
+    });
+    byId("host-message").textContent = `${result.display_name} 已通过准入并登记`;
+    byId("host-private-key").value = "";
+    resetHostFingerprint();
+    await loadPhysicalHosts();
+  } catch (error) {
+    byId("host-message").textContent = error.message;
+    button.disabled = false;
+  }
+}
+
+async function checkPhysicalHost(hostId) {
+  byId("host-message").textContent = `正在重新检测 ${hostId}`;
+  try {
+    const result = await request(`/api/hosts/${encodeURIComponent(hostId)}/check`, {method: "POST"});
+    byId("host-message").textContent = `${result.display_name}：${result.status_reason}`;
+  } catch (error) {
+    byId("host-message").textContent = error.message;
+  }
+  await loadPhysicalHosts();
 }
 
 function fillPlatformConfiguration(data) {
@@ -671,6 +775,18 @@ byId("cancel-test-environment").addEventListener("click", () => fillTestEnvironm
 byId("model-services-form").addEventListener("submit", saveModelServices);
 byId("test-model-service").addEventListener("click", testModelService);
 byId("platform-settings-form").addEventListener("submit", savePlatformSettings);
+byId("host-form").addEventListener("submit", savePhysicalHost);
+byId("probe-host").addEventListener("click", probePhysicalHost);
+byId("host-fingerprint-confirmed").addEventListener("change", (event) => {
+  byId("save-host").disabled = !event.currentTarget.checked || !pendingHostFingerprint;
+});
+for (const id of ["host-address", "host-port"]) {
+  byId(id).addEventListener("input", resetHostFingerprint);
+}
+byId("physical-hosts").addEventListener("click", (event) => {
+  const button = event.target.closest(".host-action");
+  if (button) checkPhysicalHost(button.dataset.hostId);
+});
 byId("container-form").addEventListener("submit", createContainer);
 byId("managed-containers").addEventListener("click", (event) => {
   const button = event.target.closest(".container-action");
