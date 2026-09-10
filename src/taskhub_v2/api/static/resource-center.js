@@ -42,16 +42,97 @@ function checkStatusLabel(status) {
   return {pass: "通过", warn: "注意", fail: "失败"}[status] || status;
 }
 
-function renderCheckRows(title, checks) {
-  return `<div class="resource-row check-group"><strong>${escapeHtml(title)}</strong>
-    <span>${checks.filter((item) => item.status === "pass").length}/${checks.length} 通过</span>
-    <span></span><span></span></div>${checks.map((item) => `
-      <div class="resource-row check-row">
-        <strong>${escapeHtml(item.name)}<small>${escapeHtml(item.category)}</small></strong>
-        <span class="${checkStatusClass(item.status)}">${escapeHtml(checkStatusLabel(item.status))}</span>
-        <span>${escapeHtml(item.detail)}<small>${escapeHtml(item.expected || "")}</small></span>
-        <span>${escapeHtml(item.recommendation || item.actual || "—")}</span>
-      </div>`).join("")}`;
+const runtimeRoleRequirements = {
+  execution: {
+    title: "执行节点",
+    description: "代码实施与构建",
+    capabilities: [
+      ["git", "Git"], ["python3", "Python 3"], ["coding", "编码执行器"],
+      ["workspace_write_sandbox", "工作区写入沙箱"],
+    ],
+  },
+  test: {
+    title: "测试节点",
+    description: "自动化测试与验收命令",
+    capabilities: [["git", "Git"], ["python3", "Python 3"], ["pytest", "pytest"]],
+  },
+  preproduction: {
+    title: "预生产节点",
+    description: "构建、测试与预发布验证",
+    capabilities: [["git", "Git"], ["python3", "Python 3"], ["pytest", "pytest"]],
+  },
+};
+
+function nodeRole(node) {
+  if (runtimeRoleRequirements[node.role]) return node.role;
+  const workloads = new Set(node.workloads || []);
+  if (workloads.has("coding")) return "execution";
+  if (workloads.has("build") && workloads.has("test")) return "preproduction";
+  return "test";
+}
+
+function controllerEnvironmentReady(onboarding) {
+  const engine = onboarding.seed?.docker?.engine || {};
+  const storage = onboarding.seed?.storage || {};
+  return Boolean(onboarding.seed?.docker?.available && engine.cpu_count &&
+    engine.memory_total_bytes && storage.free_bytes);
+}
+
+function eligibleRoleNodes(role, nodes) {
+  const definition = runtimeRoleRequirements[role];
+  return (nodes || []).filter((node) => nodeRole(node) === role && node.status === "ok" &&
+    definition.capabilities.every(([capability]) => node.capabilities?.[capability]));
+}
+
+function environmentItem(label, passed, detail, unavailable = false) {
+  const state = unavailable ? "待部署" : passed ? "通过" : "缺失";
+  const stateClass = unavailable ? "muted" : passed ? "ok" : "bad";
+  return `<li><span>${escapeHtml(label)}</span><strong class="${stateClass}">${state}</strong>
+    <small>${escapeHtml(detail)}</small></li>`;
+}
+
+function renderRuntimeRoles(data, onboarding) {
+  const engine = onboarding.seed?.docker?.engine || {};
+  const storage = onboarding.seed?.storage || {};
+  const dockerAvailable = Boolean(onboarding.seed?.docker?.available);
+  const controllerItems = [
+    environmentItem("Docker Engine", dockerAvailable, engine.version || "无法连接 Docker Engine"),
+    environmentItem("CPU", Boolean(engine.cpu_count),
+      engine.cpu_count ? `${engine.cpu_count} 核可用` : "未读取到 CPU 配额"),
+    environmentItem("内存", Boolean(engine.memory_total_bytes),
+      engine.memory_total_bytes ? formatBytes(engine.memory_total_bytes) : "未读取到内存配额"),
+    environmentItem("持久化磁盘", Boolean(storage.free_bytes),
+      storage.free_bytes ? `${formatBytes(storage.free_bytes)} 可用` : "未读取到磁盘空间"),
+  ].join("");
+  const controllerReady = controllerEnvironmentReady(onboarding);
+  const cards = [`<article class="runtime-role-card ${controllerReady ? "ready" : "blocked"}">
+    <header><div><h3>Seed 控制节点</h3><p>控制面与容器编排</p></div>
+      <span class="role-state ${controllerReady ? "ok" : "bad"}">${controllerReady ? "环境就绪" : "环境异常"}</span></header>
+    <ul>${controllerItems}</ul></article>`];
+
+  Object.entries(runtimeRoleRequirements).forEach(([role, definition]) => {
+    const roleNodes = (data.nodes || []).filter((node) => nodeRole(node) === role);
+    const onlineNodes = roleNodes.filter((node) => node.status === "ok");
+    const eligible = eligibleRoleNodes(role, data.nodes);
+    const unavailable = roleNodes.length === 0;
+    const items = definition.capabilities.map(([capability, label]) => {
+      const passed = onlineNodes.some((node) => node.capabilities?.[capability]);
+      const supporting = onlineNodes.filter((node) => node.capabilities?.[capability]).length;
+      const detail = unavailable ? "尚未创建该角色节点" :
+        `${supporting}/${roleNodes.length} 个节点提供此能力`;
+      return environmentItem(label, passed, detail, unavailable);
+    }).join("");
+    const state = unavailable ? "尚未部署" : eligible.length ? "环境就绪" :
+      onlineNodes.length ? "能力缺失" : "节点离线";
+    const stateClass = unavailable ? "muted" : eligible.length ? "ok" : "bad";
+    cards.push(`<article class="runtime-role-card ${eligible.length ? "ready" : "blocked"}">
+      <header><div><h3>${definition.title}</h3><p>${definition.description}</p></div>
+        <span class="role-state ${stateClass}">${state}</span></header>
+      <div class="role-node-count">${onlineNodes.length}/${roleNodes.length} 在线 · ${eligible.length} 个满足全部必备项</div>
+      <ul>${items}</ul></article>`);
+  });
+  return `<div class="runtime-role-grid">${cards.join("")}</div>
+    <p class="runtime-role-note">这里只检测各角色的通用必备环境；Node.js、浏览器、数据库等项目特有能力按任务契约在“工作节点”中继续核验。</p>`;
 }
 
 function prerequisiteAction(action) {
@@ -69,18 +150,17 @@ async function loadSystemConfig() {
     const [data, onboarding] = await Promise.all([
       request("/api/system/config"), request("/api/onboarding/status"),
     ]);
-    const controllerStatus = checkStatusLabel(data.status);
-    const failed = data.controller.checks
-      .filter((item) => item.status === "fail").length;
     const online = (data.nodes || []).filter((node) => node.status === "ok").length;
+    const readyRoles = Number(controllerEnvironmentReady(onboarding)) +
+      Object.keys(runtimeRoleRequirements).filter(
+        (role) => eligibleRoleNodes(role, data.nodes).length,
+      ).length;
     byId("system-summary").textContent =
-      `控制面 ${controllerStatus} · 工作节点 ${online}/${(data.nodes || []).length} 在线 · ${failed} 个失败项`;
+      `角色环境 ${readyRoles}/4 就绪 · 工作节点 ${online}/${(data.nodes || []).length} 在线`;
     const banner = byId("system-readiness-banner");
     banner.className = `system-readiness-banner ${onboarding.ready ? "ready" : "pending"}`;
     banner.innerHTML = `<strong>${escapeHtml(onboarding.message)}</strong><span>${onboarding.completed}/${onboarding.total} 项初始化条件已完成</span>`;
-    byId("system-checks").innerHTML = `<div class="resource-row resource-header">
-      <span>检测项</span><span>结果</span><span>当前状态</span><span>建议 / 路径</span>
-    </div>${renderCheckRows(`${data.controller.host} · ${data.controller.role}`, data.controller.checks)}`;
+    byId("system-checks").innerHTML = renderRuntimeRoles(data, onboarding);
   } catch (error) {
     byId("system-summary").textContent = error.message;
   }

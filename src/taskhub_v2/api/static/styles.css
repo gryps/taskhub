@@ -450,8 +450,16 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .system-readiness-banner.ready { border-color: color-mix(in srgb, var(--success) 40%, var(--border)); background: var(--success-soft); }
 .onboarding-result.pending,
 .system-readiness-banner.pending { border-color: color-mix(in srgb, var(--warning) 40%, var(--border)); background: var(--warning-soft); }
-.onboarding-result h2 { margin: 4px 0 0; font-size: 20px; }
-.onboarding-result > strong { font-size: 24px; color: var(--accent); }
+.onboarding-result h2 { margin: 4px 0 0; font-size: 17px; line-height: 1.35; }
+.onboarding-result > strong {
+  min-width: 52px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 14px;
+  text-align: center;
+}
 .onboarding-facts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -466,6 +474,9 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   border-radius: 12px;
   background: var(--surface);
 }
+.onboarding-facts span { font-size: 12px; }
+.onboarding-facts strong { font-size: 14px; }
+.onboarding-facts small { font-size: 11px; }
 .onboarding-facts span,
 .onboarding-facts small,
 .onboarding-step p,
@@ -494,10 +505,15 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 }
 .onboarding-step.complete .onboarding-step-number { color: var(--success); background: var(--success-soft); }
 .onboarding-step p { margin: 4px 0 0; }
+.onboarding-step h3 { margin: 0; font-size: 14px; line-height: 1.4; }
+.onboarding-step p { font-size: 12px; line-height: 1.5; }
+.onboarding-step-state { font-size: 12px; font-weight: 700; }
 .offline-image-form { margin-top: 16px; padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .onboarding-restart { margin-top: 16px; }
 .onboarding-restart > div,
 .system-readiness-banner { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.system-readiness-banner strong { font-size: 14px; line-height: 1.45; }
+.system-readiness-banner span { font-size: 12px; line-height: 1.45; }
 
 @media (max-width: 900px) {
   .onboarding-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -592,6 +608,58 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .balance-metric strong { white-space: nowrap; }
 .check-group { background: var(--surface-subtle); font-weight: 750; }
 .check-row strong small { font-weight: 500; }
+.runtime-role-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+.runtime-role-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.runtime-role-card.ready { border-color: color-mix(in srgb, var(--success) 28%, var(--border)); }
+.runtime-role-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 14px;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+}
+.runtime-role-card h3 { margin: 0; font-size: 14px; line-height: 1.4; }
+.runtime-role-card header p { margin: 3px 0 0; color: var(--text-secondary); font-size: 11px; }
+.role-state { flex: 0 0 auto; font-size: 12px; font-weight: 750; }
+.role-node-count {
+  padding: 9px 14px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+.runtime-role-card ul { margin: 0; padding: 0; list-style: none; }
+.runtime-role-card li {
+  display: grid;
+  grid-template-columns: minmax(105px, .8fr) auto minmax(130px, 1.2fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.runtime-role-card li:last-child { border-bottom: 0; }
+.runtime-role-card li strong { font-size: 11px; }
+.runtime-role-card li small { color: var(--text-tertiary); text-align: right; }
+.runtime-role-note {
+  margin: 0;
+  padding: 0 16px 15px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
 .timeline { list-style: none; margin: 0; }
 .timeline li { display: grid; grid-template-columns: 110px 150px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: inherit; line-height: inherit; }
 .timeline li:last-child { border-bottom: 0; }
@@ -607,6 +675,7 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .composer { grid-template-columns: 1fr; }
   .composer > * { grid-column: 1; }
   .flow { grid-template-columns: repeat(3, 1fr); }
+  .runtime-role-grid { grid-template-columns: 1fr; }
   .step:not(:nth-child(6n))::after { content: none; }
 }
 
@@ -628,6 +697,8 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .container-form-grid { grid-template-columns: 1fr; }
   .configuration-grid { grid-template-columns: 1fr; }
   .host-form-grid { grid-template-columns: 1fr; }
+  .runtime-role-card li { grid-template-columns: minmax(95px, 1fr) auto; }
+  .runtime-role-card li small { grid-column: 1 / -1; text-align: left; }
   .configuration-grid fieldset { grid-template-columns: 1fr; }
   .configuration-grid fieldset label,
   .configuration-grid .credential-state { grid-column: auto; }

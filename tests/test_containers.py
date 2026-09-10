@@ -16,6 +16,14 @@ class FakeDockerClient:
         self.calls.append((method, path, payload))
         if path == "/version":
             return 200, {"Version": "28.0-test"}
+        if path == "/info":
+            return 200, {
+                "OperatingSystem": "TaskHub Test Linux",
+                "Architecture": "x86_64",
+                "NCPU": 4,
+                "MemTotal": 8 * 1024**3,
+                "DockerRootDir": "/var/lib/docker",
+            }
         if method == "POST" and path.startswith("/containers/create?"):
             self.containers = [
                 {

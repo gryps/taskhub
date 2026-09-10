@@ -28,7 +28,7 @@ function renderOnboarding(data) {
   byId("onboarding-steps").innerHTML = data.steps.map((step, index) => `
     <article class="onboarding-step ${step.complete ? "complete" : "pending"}">
       <span class="onboarding-step-number">${step.complete ? "✓" : index + 1}</span>
-      <div><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.detail)}</p></div>
+      <div><h3>${escapeHtml(step.title)}</h3><p>${escapeHtml(step.detail)}</p></div>
       ${step.complete ? '<span class="onboarding-step-state ok">已完成</span>' :
         `<button type="button" class="secondary onboarding-step-action" data-target="${escapeHtml(step.target)}">去完成</button>`}
     </article>`).join("");

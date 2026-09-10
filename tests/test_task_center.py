@@ -118,7 +118,7 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="confirm-admin-password"' in html
         assert 'id="nav-workflow"' in html and "开发流程" in html
         assert 'id="nav-resources"' in html and "系统配置" in html
-        assert html.count('class="providers-section resource-disclosure">') == 5
+        assert html.count('class="providers-section resource-disclosure') == 5
         assert 'id="hosts-disclosure"' in html
         assert 'id="platform-disclosure"' in html
         assert 'id="container-form"' in html
@@ -127,8 +127,9 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert 'styles.css?v=20' in html
-        assert 'resource-center.js?v=12' in html
+        assert 'styles.css?v=22' in html
+        assert 'resource-center.js?v=14' in html
+        assert 'onboarding.js?v=2' in html
         assert 'id="collapse-current-resource"' in html
         assert 'class="resource-subdisclosure"' in html
         assert 'id="platform-registry-username"' in html
@@ -143,6 +144,12 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert '<summary><span>工作节点</span>' in html
         assert '<summary><span>平台设置</span>' in html
         assert "项目设置 · 预生产与验收环境" in html
+        resource_script = client.get("/static/resource-center.js").text
+        assert 'title: "执行节点"' in resource_script
+        assert 'title: "测试节点"' in resource_script
+        assert 'title: "预生产节点"' in resource_script
+        assert '"workspace_write_sandbox", "工作区写入沙箱"' in resource_script
+        assert "runtime-role-grid" in resource_script
         assert html.index('id="test-environment-disclosure"') < html.index('id="resource-page"')
         assert 'id="load-disclosure"' not in html
         assert 'id="containers-disclosure"' not in html

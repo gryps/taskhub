@@ -389,16 +389,10 @@ class ContainerManager:
                 "/images/load?quiet=0", source, archive.stat().st_size
             )
         metadata = self.image_metadata(image)
-        return {
-            **metadata,
-            "image": image,
-            "size_bytes": archive.stat().st_size,
-            "detail": next(
-                (
-                    item.get("stream", "").strip()
-                    for item in reversed(messages)
-                    if item.get("stream")
-                ),
-                "镜像已导入 Seed Docker Engine",
-            ),
-        }
+        detail = next(
+            (item.get("stream", "").strip() for item in reversed(messages)
+             if item.get("stream")),
+            "镜像已导入 Seed Docker Engine",
+        )
+        return {**metadata, "image": image, "size_bytes": archive.stat().st_size,
+                "detail": detail}
