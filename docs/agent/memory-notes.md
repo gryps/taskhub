@@ -111,10 +111,11 @@ Updated: 2026-09-11
 - At the operator's explicit request, pytest, browser inspection, offline-image functional upload, Web-triggered restart and real SSH/node acceptance were skipped. JavaScript syntax, Python compilation, changed-file Ruff, `git diff --check`, runtime import, container health and served asset references were checked.
 - Rollback source: `C:\taskhub-seed\backups\onboarding-pre-20260911T002101`. Preserve the host-local `.env`, administrator password, PostgreSQL data and named volumes during rollback.
 
-## Role-Based Running Overview (Locally Verified)
+## Role-Based Running Overview (Deployed)
 
 - On 2026-09-11, the first-run wizard and running-overview typography were aligned to the shared 17px section-title, 14px emphasis and 12px supporting-text hierarchy.
 - The running overview now uses four compact readiness cards for Seed controller, execution, test and preproduction. It distinguishes not deployed, offline, missing capability and ready states, and no longer presents controller-wide diagnostics as a sparse four-column table.
 - Common role requirements are intentionally narrow: Seed checks Docker/CPU/memory/persistent disk; execution checks Git/Python/coding/workspace sandbox; test and preproduction check Git/Python/pytest. Project-specific Node.js, browser and database capabilities remain task-preflight concerns.
 - Local verification used real Chrome at 1440×1000, 680×900 and 390×844. Typography, 2-column/1-column card transitions, sidebar geometry, mobile navigation, JavaScript errors and page-level horizontal overflow all passed. `tests/test_system_config_browser.py` retains this browser regression. The full automated suite was restored after correcting earlier Fake Docker `/info` coverage and the 400-line architecture limit.
-- Static asset targets are `styles.css?v=22`, `resource-center.js?v=14` and `onboarding.js?v=2`. This change has not yet been deployed to `.31`; the prior `b01f91f` Seed deployment remains the live baseline until explicitly released.
+- Feature commit `d5b44e6` was pushed to `.3 git` and GitHub, then deployed through the existing source bind to `192.168.31.31:8200` on 2026-09-11. Static assets are `styles.css?v=22`, `resource-center.js?v=14` and `onboarding.js?v=2`; both controller and PostgreSQL were healthy after restart and the LAN health endpoint returned `{"status":"ok","orchestrator":"langgraph"}`.
+- Rollback source: `C:\taskhub-seed\backups\role-overview-pre-20260911T005500`. The deployment replaced only the four changed static files and `services/containers.py`; `.env`, administrator credentials, PostgreSQL data, named volumes, workspaces, artifacts and node configuration were preserved. No Docker image was rebuilt.
