@@ -31,6 +31,7 @@ PLATFORM_FIELDS = (
     "node_container_image",
     "node_image_registry",
     "node_image_proxy",
+    "node_registry_username",
     "default_node_slots",
     "default_node_cpu_limit",
     "default_node_memory_limit",
@@ -39,6 +40,7 @@ PLATFORM_FIELDS = (
     "log_retention_days",
     "artifact_retention_days",
 )
+PLATFORM_SECRET_FIELDS = ("node_registry_password",)
 
 
 class ModelServicesUpdate(BaseModel):
@@ -108,6 +110,8 @@ class PlatformSettingsUpdate(BaseModel):
     node_container_image: str | None = Field(default=None, max_length=500)
     node_image_registry: str | None = Field(default=None, max_length=500)
     node_image_proxy: str | None = Field(default=None, max_length=500)
+    node_registry_username: str | None = Field(default=None, max_length=200)
+    node_registry_password: str | None = Field(default=None, max_length=4096)
     default_node_slots: int | None = Field(default=None, ge=1, le=64)
     default_node_cpu_limit: str | None = Field(default=None, max_length=32)
     default_node_memory_limit: str | None = Field(default=None, max_length=32)
@@ -134,12 +138,32 @@ class PlatformSettingsUpdate(BaseModel):
     @field_validator(
         "node_image_registry",
         "node_image_proxy",
+        "node_registry_username",
         "default_node_cpu_limit",
         "default_node_memory_limit",
     )
     @classmethod
     def strip_text(cls, value: str | None) -> str | None:
         return value.strip() if value is not None else value
+
+    @field_validator("node_image_registry", "node_image_proxy")
+    @classmethod
+    def validate_registry_prefix(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip().strip("/")
+        if value and not re.fullmatch(r"[A-Za-z0-9._:-]+(?:/[A-Za-z0-9._-]+)*", value):
+            raise ValueError("registry must be a Docker image prefix without URL scheme")
+        return value
+
+    @field_validator("node_registry_password")
+    @classmethod
+    def validate_registry_password(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if any(ord(character) < 32 for character in value):
+            raise ValueError("registry password contains control characters")
+        return value
 
 
 class ProviderConnectionTest(BaseModel):

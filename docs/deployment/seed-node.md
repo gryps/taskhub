@@ -36,8 +36,23 @@ contain Codex CLI or browser runtimes.
 
 Open **系统配置 → 工作节点**, select the Seed host or an admitted remote host,
 enter a unique lower-case node ID, choose an allowed role and slot count, then
-select **创建并启动**. Remote hosts must already contain the configured node image
-or be able to pull it from its registry. A Seed-local image tag is not copied by SSH.
+select **创建并启动**. Remote creation now runs in the background and reports
+registry pull, SSH transfer, verification, container creation and Agent health
+progress in the node table.
+
+Configure an optional private-registry prefix, pull-through mirror prefix and
+private-registry credentials under **系统配置 → 平台设置**. TaskHub first tries
+those remote pull sources and the configured image reference. If none succeeds,
+it exports the image with the Seed Docker Engine API and sends the tar stream over
+strict-host-key SSH to remote `docker load`. This fallback requires the exact image
+tag to exist on the Seed Docker host and enough temporary space inside the Seed
+controller for one image archive. Registry credentials are encrypted at rest and
+the remote Docker login uses an operation-local temporary configuration directory.
+
+Before container creation, TaskHub verifies that the image is Linux, matches the
+remote host CPU architecture, and has a usable digest or image ID. Digest-pinned
+references are rejected when the resolved digest differs. SSH-transferred images
+must have the same image ID on the Seed and remote engines.
 
 | Role | Registered workloads |
 | --- | --- |
@@ -77,6 +92,20 @@ deployment bootstrap token and a new administrator password. Retrieve
 `TASKHUB_ADMIN_TOKEN` from the host-local `deploy/seed/.env` file and use it only
 for this initial setup. Later logins accept the administrator password instead.
 Never commit or copy the `.env` file into an image.
+
+After the first password is set, an incomplete Seed opens the first-run wizard.
+It checks Docker CPU and memory capacity, TaskHub persistent-disk space, managed
+addresses, image availability, model configuration, admitted hosts and healthy
+nodes. Each incomplete step links to its canonical system-configuration form.
+When every required condition passes, the wizard and running overview display
+`系统已具备运行任务条件`.
+
+If the work image cannot be pulled from a registry, the wizard can import a tar
+archive produced by `docker save`. The browser supplies the expected image tag;
+TaskHub streams the archive to the Seed Docker Engine, verifies that tag and
+removes the temporary upload. Model and platform settings that require a restart
+can be applied with the wizard's Seed restart action; Compose `unless-stopped`
+then starts the controller again and the page waits for health recovery.
 
 The encryption key protects Web-managed provider API keys stored in PostgreSQL.
 It also protects SSH private keys entered through **系统配置 → 物理主机**. Before

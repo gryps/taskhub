@@ -12,6 +12,7 @@ from taskhub_v2.api.container_routes import router as container_router
 from taskhub_v2.api.deployment_routes import router as deployment_router
 from taskhub_v2.api.host_routes import router as host_router
 from taskhub_v2.api.node_routes import router as node_router
+from taskhub_v2.api.onboarding_routes import router as onboarding_router
 from taskhub_v2.api.project_routes import router as project_router
 from taskhub_v2.api.provider_routes import router as provider_router
 from taskhub_v2.api.remote_node_routes import router as remote_node_router
@@ -115,6 +116,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.container_manager,
                 image=effective_settings.node_container_image,
                 node_token=effective_settings.node_token,
+                image_registry=effective_settings.node_image_registry,
+                image_proxy=effective_settings.node_image_proxy,
+                registry_username=effective_settings.node_registry_username,
+                registry_password=effective_settings.node_registry_password,
                 default_cpu=effective_settings.default_node_cpu_limit,
                 default_memory=effective_settings.default_node_memory_limit,
             )
@@ -151,6 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 yield
             finally:
+                await app.state.remote_nodes.close()
                 recovery = getattr(app.state, "recovery_task", None)
                 if recovery and not recovery.done():
                     recovery.cancel()
@@ -174,6 +180,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(remote_node_router)
     app.include_router(project_router)
     app.include_router(node_router)
+    app.include_router(onboarding_router)
     app.include_router(deployment_router)
     app.include_router(system_router)
 

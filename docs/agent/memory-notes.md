@@ -90,3 +90,12 @@ Updated: 2026-09-10
 - At the operator's explicit request, pytest, browser inspection, real SSH node creation and functional acceptance were skipped. Only JavaScript/Python syntax, Ruff, diff, import, health, static-version, image and table checks were performed.
 - Known Alpha limits: remote Agent ports are LAN-published; all nodes still share the deployment node token; automatic periodic reconciliation and image upgrade/rollback are not implemented; the unified image includes Git and Node.js/npm but not Codex CLI or browsers.
 - Rollback source: `C:\taskhub-seed\backups\stage3b-pre-20260910T200350`. Rollback image: `taskhub-v2-seed:backup-stage3b-20260910T200350`. Preserve the host-local `.env` and named volumes during rollback.
+
+## Seed Image Distribution and Configuration Disclosure (Rapid Deployment)
+
+- On 2026-09-10, the current rapid-development source was deployed to `192.168.31.31:8200` without rebuilding `taskhub-v2-seed:0.1.0-alpha` or `taskhub-node:0.1.0-alpha`.
+- Remote-node creation now runs as a persistent background progress operation. It can try a private registry, a domestic mirror prefix, the configured image reference, the remote cache, and finally Seed-side Docker export plus strict-host-key SSH `docker load`; it validates Linux OS, CPU architecture and the available image digest/ID before container creation.
+- System configuration now uses a single-open primary accordion. The open heading sticks below the global header, a fixed “收起当前项” shortcut appears for long content, and the last open primary group is remembered. Low-frequency model/host/node/platform forms, load, prerequisites and audit trails use secondary disclosures while status summaries and resource lists stay visible.
+- The version-controlled and installed `taskhub-frontend-design` skill both retain this interaction contract. Deployed static assets are `styles.css?v=20` and `resource-center.js?v=12`.
+- At the operator's request, pytest, browser visual inspection, real SSH image distribution and Docker image rebuild were skipped. JavaScript syntax checks and `git diff --check` passed before deployment; the controller returned healthy after restart and the LAN page served the new asset versions and collapse control.
+- Rollback source: `C:\taskhub-seed\backups\config-disclosure-pre-20260910T234457`. The host-local `.env`, administrator password, PostgreSQL data and named volumes were preserved.

@@ -179,6 +179,7 @@ def test_node_repairs_incomplete_managed_virtualenv_before_execute(
 
 def test_browser_node_installs_npm_dependencies_before_npx(tmp_path, monkeypatch):
     import taskhub_v2.node_agent.app as agent_module
+    import taskhub_v2.node_agent.browser_dependencies as dependency_module
 
     monkeypatch.setenv("TASKHUB_NODE_ID", "node-test")
     monkeypatch.setenv("TASKHUB_NODE_TOKEN", "node-secret")
@@ -188,19 +189,20 @@ def test_browser_node_installs_npm_dependencies_before_npx(tmp_path, monkeypatch
     digest = hashlib.sha256(payload).hexdigest()
     headers = {"Authorization": "Bearer node-secret"}
     installed = []
-    real_run = agent_module.subprocess.run
+    real_run = dependency_module.subprocess.run
 
     def fake_install(command, **kwargs):
         if "cwd" not in kwargs:
             return real_run(command, **kwargs)
         installed.append((command, kwargs["cwd"]))
         (kwargs["cwd"] / "node_modules").mkdir()
-        return agent_module.subprocess.CompletedProcess(command, 0, "installed\n", "")
+        return dependency_module.subprocess.CompletedProcess(command, 0, "installed\n", "")
+
+    monkeypatch.setattr(dependency_module.subprocess, "run", fake_install)
 
     async def fake_run_commands(*args, **kwargs):
         return [{"command": ["npx", "playwright", "test"], "exit_code": 0, "output_tail": "ok"}]
 
-    monkeypatch.setattr(agent_module.subprocess, "run", fake_install)
     monkeypatch.setattr(agent_module, "run_commands", fake_run_commands)
 
     with TestClient(create_node_app()) as client:
@@ -311,6 +313,7 @@ def test_remote_runner_applies_coding_result(tmp_path, monkeypatch):
 
     monkeypatch.setenv("TASKHUB_NODE_ID", "remote-coder")
     monkeypatch.setenv("TASKHUB_NODE_TOKEN", "node-secret")
+    monkeypatch.setenv("TASKHUB_NODE_ROLE", "execution")
     jobs = tmp_path / "jobs"
     jobs.mkdir()
     monkeypatch.setenv("TASKHUB_NODE_WORK_ROOT", str(jobs))

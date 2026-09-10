@@ -34,6 +34,8 @@ Read the matching tests under `tests/` before changing a DOM contract. Do not in
 - Keep touch input text at least 16px without disabling browser zoom.
 - Follow the current task-table truncation, inline expansion, column-width, and no-wrap rules in `docs/frontend-design.md`.
 - Keep execution history inside the shared evidence typography; let the timeline alter layout only.
+- Keep system-configuration primary disclosures single-open, retain their summary text, and keep the open heading reachable with a sticky title plus a visible collapse-current shortcut for long content. Put low-frequency forms, audits, load, and prerequisite details behind secondary disclosures without changing their DOM IDs or business actions.
+- Keep Seed onboarding driven by server-computed readiness. Reuse the canonical system-configuration forms, preserve the session-only defer action, and show the exact “系统已具备运行任务条件” result only when every required readiness step passes.
 - Increment the query-string version for every changed static asset referenced by `index.html`.
 - Update `docs/frontend-design.md` when a design decision changes and update `docs/agent/memory-notes.md` after a release.
 

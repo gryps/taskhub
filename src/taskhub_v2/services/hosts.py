@@ -13,6 +13,10 @@ from typing import Any
 from taskhub_v2.domain.hosts import HostConnection, PhysicalHostCreate
 from taskhub_v2.persistence.hosts import PhysicalHostRecord, new_host_record
 from taskhub_v2.security import SecretCipher
+from taskhub_v2.services.ssh_image_transfer import (
+    SSHImageTransferError,
+    load_docker_image,
+)
 
 
 class HostAdmissionError(RuntimeError):
@@ -136,6 +140,25 @@ class PhysicalHostService:
             script,
             timeout,
         )
+
+    async def load_remote_image(self, host_id: str, image_path: Path, timeout: int = 1800) -> str:
+        record = await self.store.get(host_id)
+        if not record:
+            raise KeyError(host_id)
+        if record.status != "available":
+            raise HostAdmissionError(f"物理主机 {host_id} 当前不可用：{record.status_reason}")
+        if not self.cipher:
+            raise HostAdmissionError("主机凭据加密根密钥不可用")
+        try:
+            return await asyncio.to_thread(
+                load_docker_image,
+                record,
+                self.cipher.decrypt(record.encrypted_private_key),
+                image_path,
+                timeout,
+            )
+        except SSHImageTransferError as exc:
+            raise HostAdmissionError(str(exc)) from exc
 
     def _probe(self, request: HostConnection) -> dict[str, Any]:
         _require_ssh_tools()

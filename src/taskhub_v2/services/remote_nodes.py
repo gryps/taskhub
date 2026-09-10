@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import asyncio
 import re
-import shlex
+import tempfile
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
-import httpx
-
-from taskhub_v2.domain.models import NodeDefinition
 from taskhub_v2.domain.remote_nodes import RemoteNodeCreate
 from taskhub_v2.persistence.remote_nodes import new_remote_node_record
-from taskhub_v2.services.containers import ROLE_WORKLOADS, ContainerManager, DockerConflictError
+from taskhub_v2.services import image_distribution as image_ops
+from taskhub_v2.services import remote_node_helpers as node_helpers
+from taskhub_v2.services.containers import (
+    ContainerManager,
+    DockerConflictError,
+    DockerUnavailableError,
+)
 from taskhub_v2.services.hosts import PhysicalHostService
 
 
@@ -30,6 +34,10 @@ class RemoteNodeService:
         *,
         image: str,
         node_token: str,
+        image_registry: str = "",
+        image_proxy: str = "",
+        registry_username: str = "",
+        registry_password: str = "",
         default_cpu: str = "",
         default_memory: str = "",
     ):
@@ -40,11 +48,18 @@ class RemoteNodeService:
         self.registry = registry
         self.image = image
         self.node_token = node_token
+        self.image_registry = image_registry.strip().strip("/")
+        self.image_proxy = image_proxy.strip().strip("/")
+        self.registry_username = registry_username
+        self.registry_password = registry_password
         self.default_cpu = default_cpu
         self.default_memory = default_memory
+        self._tasks: dict[str, asyncio.Task] = {}
 
     async def list(self) -> dict[str, Any]:
-        return {"nodes": [_view(item) for item in await self.store.list()]}
+        return {
+            "nodes": [node_helpers.remote_node_view(item) for item in await self.store.list()]
+        }
 
     async def create(self, request: RemoteNodeCreate) -> dict[str, Any]:
         if not self.node_token:
@@ -62,49 +77,243 @@ class RemoteNodeService:
 
         cpu = request.cpu_limit or self.default_cpu
         memory = request.memory_limit or self.default_memory
-        script = apply_host_docker_access(
-            _create_script(request, self.image, self.node_token, cpu, memory),
-            host.payload["docker_access"],
+        record = await self.store.save(
+            new_remote_node_record(
+                node_id=request.node_id,
+                host_id=request.host_id,
+                payload={
+                    **request.model_dump(mode="json"),
+                    "image": self.image,
+                    "cpu_limit": cpu,
+                    "memory_limit": memory,
+                    "distribution": {
+                        "phase": "queued",
+                        "percent": 0,
+                        "source": "",
+                        "detail": "等待开始镜像分发",
+                    },
+                },
+                container_id="",
+                image_digest="",
+                desired_state="running",
+                actual_state="distributing",
+                status_reason="等待开始镜像分发",
+            )
+        )
+        task = asyncio.create_task(self._provision(request, host, cpu, memory))
+        self._tasks[request.node_id] = task
+        task.add_done_callback(
+            lambda _task, node_id=request.node_id: self._tasks.pop(node_id, None)
+        )
+        return node_helpers.remote_node_view(record)
+
+    async def _provision(self, request, host, cpu: str, memory: str) -> None:
+        try:
+            await self._progress(request.node_id, "checking", 5, "检查目标主机镜像与架构")
+            await self._progress(
+                request.node_id,
+                "pulling",
+                15,
+                "正在依次尝试私有仓库、镜像代理和镜像原始地址",
+            )
+            pull_output = await self.hosts.run_remote_script(
+                request.host_id,
+                image_ops.apply_host_docker_access(
+                    image_ops.pull_script(
+                        self.image,
+                        self.image_registry,
+                        self.image_proxy,
+                        self.registry_username,
+                        self.registry_password,
+                    ),
+                    host.payload["docker_access"],
+                ),
+                timeout=1800,
+            )
+            image_values = image_ops.values(pull_output)
+            source = image_values.get("SOURCE", "")
+            if image_values.get("FOUND") == "1":
+                await self._progress(
+                    request.node_id,
+                    "verifying",
+                    65,
+                    f"已从{image_ops.source_label(source)}取得镜像，正在核对摘要与架构",
+                    source=source,
+                )
+                digest = image_ops.validate_remote_image(self.image, host.facts, image_values)
+            else:
+                detail = image_values.get("ERROR", "仓库和代理均未提供该镜像")
+                await self._progress(
+                    request.node_id,
+                    "exporting",
+                    35,
+                    f"远程拉取未成功，准备从 Seed 传输：{image_ops.safe_detail(detail)}",
+                    source="ssh-transfer",
+                )
+                digest = await self._transfer_image(request, host)
+                source = "ssh-transfer"
+
+            await self._progress(
+                request.node_id,
+                "creating",
+                80,
+                "镜像校验通过，正在创建并启动容器",
+                source=source,
+                digest=digest,
+            )
+            output = await self.hosts.run_remote_script(
+                request.host_id,
+                image_ops.apply_host_docker_access(
+                    image_ops.create_script(
+                        request, self.image, self.node_token, cpu, memory
+                    ),
+                    host.payload["docker_access"],
+                ),
+                timeout=180,
+            )
+            values = image_ops.values(output)
+            container_id = values.get("CONTAINER", "")
+            if not container_id:
+                raise RemoteNodeError("远程 Docker 未返回容器 ID")
+            await self._save_runtime(
+                request.node_id,
+                container_id=container_id,
+                image_digest=digest,
+                actual_state="starting",
+                phase="health-check",
+                percent=90,
+                detail="容器已启动，正在等待 Node Agent 健康检查",
+                source=source,
+            )
+            await self._wait_healthy(host.payload["address"], request)
+            self.registry.register_node(
+                node_helpers.node_definition(host.payload["address"], request)
+            )
+            await self._save_runtime(
+                request.node_id,
+                container_id=container_id,
+                image_digest=digest,
+                actual_state="running",
+                phase="complete",
+                percent=100,
+                detail="镜像分发完成，Node Agent 健康且已加入调度",
+                source=source,
+            )
+            await self._audit("create", request.node_id, request.host_id, "passed")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            detail = image_ops.safe_detail(str(exc))
+            await self._save_runtime(
+                request.node_id,
+                actual_state="error",
+                phase="failed",
+                percent=100,
+                detail=detail,
+            )
+            await self._audit("create", request.node_id, request.host_id, "failed")
+
+    async def _transfer_image(self, request: RemoteNodeCreate, host) -> str:
+        with tempfile.NamedTemporaryFile(prefix="taskhub-node-", suffix=".tar") as archive:
+            try:
+                local = await asyncio.to_thread(self.registry.export_image, self.image, archive)
+            except DockerUnavailableError as exc:
+                raise RemoteNodeError(
+                    f"远程仓库拉取失败，且 Seed 本机无法导出镜像：{exc}"
+                ) from exc
+            archive.flush()
+            image_ops.validate_architecture(
+                host.facts, local.get("architecture", ""), local.get("os", "")
+            )
+            size = archive.tell()
+            await self._progress(
+                request.node_id,
+                "transferring",
+                50,
+                f"正在通过 SSH 传输镜像（{image_ops.format_bytes(size)}）",
+                source="ssh-transfer",
+            )
+            await self.hosts.load_remote_image(request.host_id, Path(archive.name))
+        await self._progress(
+            request.node_id,
+            "verifying",
+            70,
+            "SSH 传输完成，正在核对远端镜像",
+            source="ssh-transfer",
         )
         output = await self.hosts.run_remote_script(
             request.host_id,
-            script,
-            timeout=300,
+            image_ops.apply_host_docker_access(
+                image_ops.inspect_script(self.image), host.payload["docker_access"]
+            ),
+            timeout=60,
         )
-        values = _values(output)
-        container_id = values.get("CONTAINER", "")
-        if not container_id:
-            raise RemoteNodeError("远程 Docker 未返回容器 ID")
-        record = new_remote_node_record(
-            node_id=request.node_id,
-            host_id=request.host_id,
-            payload={
-                **request.model_dump(mode="json"),
-                "image": self.image,
-                "cpu_limit": cpu,
-                "memory_limit": memory,
+        values = image_ops.values(output)
+        digest = image_ops.validate_remote_image(self.image, host.facts, values)
+        if local.get("id") and values.get("IMAGE_ID") != local["id"]:
+            raise RemoteNodeError("SSH 传输后的镜像摘要与 Seed 本机镜像不一致")
+        return digest
+
+    async def _progress(
+        self,
+        node_id: str,
+        phase: str,
+        percent: int,
+        detail: str,
+        *,
+        source: str = "",
+        digest: str = "",
+    ) -> None:
+        await self._save_runtime(
+            node_id,
+            actual_state="distributing",
+            phase=phase,
+            percent=percent,
+            detail=detail,
+            source=source,
+            digest=digest,
+            image_digest=digest or None,
+        )
+
+    async def _save_runtime(
+        self,
+        node_id: str,
+        *,
+        actual_state: str,
+        phase: str,
+        percent: int,
+        detail: str,
+        source: str = "",
+        digest: str = "",
+        image_digest: str | None = None,
+        container_id: str | None = None,
+    ):
+        record = await self.store.get(node_id)
+        if not record:
+            return None
+        previous = dict(record.payload.get("distribution") or {})
+        payload = {
+            **record.payload,
+            "distribution": {
+                "phase": phase,
+                "percent": percent,
+                "source": source or previous.get("source", ""),
+                "detail": detail,
+                "digest": digest or previous.get("digest", ""),
             },
-            container_id=container_id,
-            image_digest=values.get("IMAGE", ""),
-            desired_state="running",
-            actual_state=values.get("STATE", "running"),
-            status_reason="容器已创建，正在等待 Node Agent 健康检查",
-        )
-        saved = await self.store.save(record)
-        try:
-            await self._wait_healthy(host.payload["address"], request)
-        except RemoteNodeError as exc:
-            saved = await self.store.save(
-                replace(saved, actual_state="starting", status_reason=str(exc))
+        }
+        return await self.store.save(
+            replace(
+                record,
+                payload=payload,
+                container_id=record.container_id if container_id is None else container_id,
+                image_digest=(
+                    record.image_digest if image_digest is None else image_digest
+                ),
+                actual_state=actual_state,
+                status_reason=detail,
             )
-            await self._audit("create", request.node_id, request.host_id, "failed")
-            return _view(saved)
-        self.registry.register_node(_definition(host.payload["address"], request))
-        saved = await self.store.save(
-            replace(saved, actual_state="running", status_reason="Node Agent 健康且已加入调度")
         )
-        await self._audit("create", request.node_id, request.host_id, "passed")
-        return _view(saved)
 
     async def action(self, node_id: str, action: str, *, remove_volume: bool = False) -> dict:
         record = await self.store.get(node_id)
@@ -113,9 +322,20 @@ class RemoteNodeService:
         host = await self.host_store.get(record.host_id)
         if not host:
             raise RemoteNodeError("节点所属物理主机不存在")
+        if not record.container_id:
+            if action != "remove":
+                raise RemoteNodeError("镜像分发尚未完成，当前只能移除该节点记录")
+            task = self._tasks.get(node_id)
+            if task and not task.done():
+                task.cancel()
+            await self.store.delete(node_id)
+            await self._audit("remove", node_id, record.host_id, "passed")
+            return {"node_id": node_id, "action": action, "ok": True}
         output = await self.hosts.run_remote_script(
             record.host_id,
-            _action_script(node_id, host.payload["docker_access"], action, remove_volume),
+            image_ops.action_script(
+                node_id, host.payload["docker_access"], action, remove_volume
+            ),
             timeout=120,
         )
         if action == "remove":
@@ -123,7 +343,7 @@ class RemoteNodeService:
             await self.store.delete(node_id)
             await self._audit("remove", node_id, record.host_id, "passed")
             return {"node_id": node_id, "action": action, "ok": True}
-        values = _values(output)
+        values = image_ops.values(output)
         state = values.get("STATE", "unknown")
         desired = "stopped" if action == "stop" else "running"
         reason = f"远程容器已{ {'start': '启动', 'stop': '停止', 'restart': '重启'}[action] }"
@@ -134,33 +354,29 @@ class RemoteNodeService:
                 {key: record.payload[key] for key in RemoteNodeCreate.model_fields}
             )
             await self._wait_healthy(host.payload["address"], request)
-            self.registry.register_node(_definition(host.payload["address"], request))
+            self.registry.register_node(
+                node_helpers.node_definition(host.payload["address"], request)
+            )
             reason = "Node Agent 健康且已加入调度"
             state = "running"
         saved = await self.store.save(
             replace(record, desired_state=desired, actual_state=state, status_reason=reason)
         )
         await self._audit(action, node_id, record.host_id, "passed")
-        return _view(saved)
+        return node_helpers.remote_node_view(saved)
+
+    async def close(self) -> None:
+        tasks = [task for task in self._tasks.values() if not task.done()]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _wait_healthy(self, address: str, request: RemoteNodeCreate) -> None:
-        url = f"http://{address}:{request.host_port}/api/health"
-        last_error = "Node Agent 尚未响应"
-        async with httpx.AsyncClient(timeout=3, trust_env=False) as client:
-            for _ in range(10):
-                try:
-                    response = await client.get(
-                        url, headers={"Authorization": f"Bearer {self.node_token}"}
-                    )
-                    response.raise_for_status()
-                    payload = response.json()
-                    if payload.get("node_id") == request.node_id:
-                        return
-                    last_error = "Node Agent 返回了不匹配的节点 ID"
-                except (httpx.HTTPError, ValueError) as exc:
-                    last_error = str(exc)[:200]
-                await asyncio.sleep(2)
-        raise RemoteNodeError(f"容器已启动，但健康检查未通过：{last_error}")
+        try:
+            await node_helpers.wait_healthy(address, request, self.node_token)
+        except RuntimeError as exc:
+            raise RemoteNodeError(str(exc)) from exc
 
     async def _audit(self, action: str, node_id: str, host_id: str, result: str) -> None:
         await self.configuration_store.add_audit(
@@ -170,110 +386,3 @@ class RemoteNodeService:
             parameter_summary={"node_id": node_id, "host_id": host_id},
             result=result,
         )
-
-
-def _docker_prefix(access: str) -> str:
-    return "sudo -n docker" if access == "sudo" else "docker"
-
-
-def _create_script(
-    request: RemoteNodeCreate, image: str, token: str, cpu: str, memory: str
-) -> str:
-    name = f"taskhub-node-{request.node_id}"
-    quoted_image = shlex.quote(image)
-    args = [
-        "create",
-        "--name",
-        name,
-        "--label",
-        "io.taskhub.managed=true",
-        "--label",
-        f"io.taskhub.node-id={request.node_id}",
-        "--label",
-        f"io.taskhub.role={request.role}",
-        "--label",
-        f"io.taskhub.host-id={request.host_id}",
-        "--restart",
-        "unless-stopped",
-        "--env-file",
-        '"$env_file"',
-        "-p",
-        f"{request.host_port}:8020",
-        "-v",
-        f"{name}-data:/var/lib/taskhub-node",
-    ]
-    if cpu:
-        args.extend(["--cpus", cpu])
-    if memory:
-        args.extend(["--memory", memory])
-    args.append(image)
-    command = " ".join(item if item == '"$env_file"' else shlex.quote(item) for item in args)
-    token_line = shlex.quote(f"TASKHUB_NODE_TOKEN={token}")
-    script = f"""set -eu
-docker_run() {{ __TASKHUB_DOCKER__ "$@"; }}
-if docker_run container inspect {shlex.quote(name)} >/dev/null 2>&1; then
-  echo '节点容器已存在' >&2
-  exit 17
-fi
-docker_run image inspect {quoted_image} >/dev/null 2>&1 || \
-  docker_run pull {quoted_image}
-env_file=$(mktemp)
-trap 'rm -f "$env_file"' EXIT
-chmod 600 "$env_file"
-printf '%s\n' 'TASKHUB_NODE_ID={request.node_id}' 'TASKHUB_NODE_ROLE={request.role}' \
-  'TASKHUB_NODE_WORK_ROOT=/var/lib/taskhub-node/jobs' {token_line} > "$env_file"
-container=$(docker_run {command})
-docker_run start "$container" >/dev/null
-image_value=$(docker_run image inspect {quoted_image} \
-  --format '{{{{index .RepoDigests 0}}}}' 2>/dev/null || true)
-[ -n "$image_value" ] || image_value=$(docker_run image inspect {quoted_image} \
-  --format '{{{{.Id}}}}')
-state=$(docker_run inspect "$container" --format '{{{{.State.Status}}}}')
-printf 'CONTAINER=%s\nIMAGE=%s\nSTATE=%s\n' "$container" "$image_value" "$state"
-"""
-    return script
-
-
-def _action_script(node_id: str, docker_access: str, action: str, remove_volume: bool) -> str:
-    docker = _docker_prefix(docker_access)
-    name = f"taskhub-node-{node_id}"
-    if action == "remove":
-        volume = f"{name}-data"
-        remove = f"\n{docker} volume rm {shlex.quote(volume)} >/dev/null" if remove_volume else ""
-        return f"set -eu\n{docker} rm -f {shlex.quote(name)} >/dev/null{remove}\n"
-    command = {"start": "start", "stop": "stop", "restart": "restart"}[action]
-    return (
-        f"set -eu\n{docker} {command} {shlex.quote(name)} >/dev/null\n"
-        f"state=$({docker} inspect {shlex.quote(name)} --format '{{{{.State.Status}}}}')\n"
-        "printf 'STATE=%s\\n' \"$state\"\n"
-    )
-
-
-def apply_host_docker_access(script: str, docker_access: str) -> str:
-    return script.replace("__TASKHUB_DOCKER__", _docker_prefix(docker_access))
-
-
-def _values(output: str) -> dict[str, str]:
-    return dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
-
-
-def _definition(address: str, request: RemoteNodeCreate) -> NodeDefinition:
-    return NodeDefinition(
-        id=request.node_id,
-        kind="remote",
-        url=f"http://{address}:{request.host_port}",
-        slots=request.slots,
-        workloads=ROLE_WORKLOADS[request.role],
-    )
-
-
-def _view(record) -> dict[str, Any]:
-    return {
-        **record.payload,
-        "container_id": record.container_id,
-        "image_digest": record.image_digest,
-        "desired_state": record.desired_state,
-        "actual_state": record.actual_state,
-        "status_reason": record.status_reason,
-        "updated_at": record.updated_at.isoformat(),
-    }

@@ -66,13 +66,18 @@ function prerequisiteAction(action) {
 async function loadSystemConfig() {
   byId("system-summary").textContent = "正在读取 Seed 控制面运行条件";
   try {
-    const data = await request("/api/system/config");
+    const [data, onboarding] = await Promise.all([
+      request("/api/system/config"), request("/api/onboarding/status"),
+    ]);
     const controllerStatus = checkStatusLabel(data.status);
     const failed = data.controller.checks
       .filter((item) => item.status === "fail").length;
     const online = (data.nodes || []).filter((node) => node.status === "ok").length;
     byId("system-summary").textContent =
       `控制面 ${controllerStatus} · 工作节点 ${online}/${(data.nodes || []).length} 在线 · ${failed} 个失败项`;
+    const banner = byId("system-readiness-banner");
+    banner.className = `system-readiness-banner ${onboarding.ready ? "ready" : "pending"}`;
+    banner.innerHTML = `<strong>${escapeHtml(onboarding.message)}</strong><span>${onboarding.completed}/${onboarding.total} 项初始化条件已完成</span>`;
     byId("system-checks").innerHTML = `<div class="resource-row resource-header">
       <span>检测项</span><span>结果</span><span>当前状态</span><span>建议 / 路径</span>
     </div>${renderCheckRows(`${data.controller.host} · ${data.controller.role}`, data.controller.checks)}`;
@@ -395,6 +400,10 @@ function fillPlatformConfiguration(data) {
   fillValue("platform-node-image", values.node_container_image);
   fillValue("platform-registry", values.node_image_registry);
   fillValue("platform-image-proxy", values.node_image_proxy);
+  fillValue("platform-registry-username", values.node_registry_username);
+  fillValue("platform-registry-password", "");
+  byId("platform-registry-password-state").textContent =
+    credentialState(data.secrets?.node_registry_password);
   fillValue("platform-default-slots", values.default_node_slots);
   fillValue("platform-cpu-limit", values.default_node_cpu_limit);
   fillValue("platform-memory-limit", values.default_node_memory_limit);
@@ -446,6 +455,8 @@ async function savePlatformSettings(event) {
     node_container_image: byId("platform-node-image").value,
     node_image_registry: byId("platform-registry").value,
     node_image_proxy: byId("platform-image-proxy").value,
+    node_registry_username: byId("platform-registry-username").value,
+    node_registry_password: byId("platform-registry-password").value,
     default_node_slots: Number(byId("platform-default-slots").value),
     default_node_cpu_limit: byId("platform-cpu-limit").value,
     default_node_memory_limit: byId("platform-memory-limit").value,
@@ -480,6 +491,10 @@ const containerRoleNames = {
 function containerActions(item) {
   const nodeId = escapeHtml(item.node_id);
   const location = escapeHtml(item.location || "local");
+  if (location === "remote" && !item.container_id) {
+    return `<div class="container-actions"><button type="button" class="secondary container-action remove-container"
+      data-node-id="${nodeId}" data-location="remote" data-action="remove">移除记录</button></div>`;
+  }
   const primary = item.state === "running"
     ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="${location}" data-action="stop">停止</button>`
     : `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="${location}" data-action="start">启动</button>`;
@@ -537,18 +552,39 @@ async function loadContainers() {
     byId("container-summary").textContent =
       `${running}/${containers.length} 运行 · 本机 ${status.available ? "可用" : "不可用"} · 远程 ${remote.length}`;
     const empty = `<div class="resource-row container-row"><span>尚未创建节点容器</span><span>—</span><span>—</span><span>使用上方表单创建</span></div>`;
-    const rows = containers.map((item) => `
+    const rows = containers.map((item) => {
+      const distribution = item.distribution || {};
+      const progress = item.location === "remote" && distribution.phase && distribution.phase !== "complete"
+        ? `<progress class="distribution-progress" max="100" value="${Number(distribution.percent || 0)}">${Number(distribution.percent || 0)}%</progress>
+          <small>${Number(distribution.percent || 0)}% · ${escapeHtml(distribution.detail || item.status || "")}</small>`
+        : `<small>${escapeHtml(item.status)}</small>`;
+      const stateClass = item.state === "running" ? "ok" : item.state === "error" ? "bad" : "warn";
+      return `
       <div class="resource-row container-row">
         <strong>${escapeHtml(item.node_id)}<small>${escapeHtml(item.name)} · ${escapeHtml(item.host_id)}</small></strong>
         <span>${escapeHtml(containerRoleNames[item.role] || item.role)}</span>
-        <span class="${item.state === "running" ? "ok" : "warn"}">${escapeHtml(item.state)}<small>${escapeHtml(item.status)}</small></span>
+        <span class="${stateClass}">${escapeHtml(item.state)}${progress}</span>
         ${containerActions(item)}
-      </div>`).join("");
+      </div>`;
+    }).join("");
     byId("managed-containers").innerHTML = `<div class="resource-row container-row resource-header">
       <span>节点容器</span><span>角色</span><span>状态</span><span>操作</span>
     </div>${rows || empty}`;
+    scheduleDistributionRefresh(remote.some((item) =>
+      ["distributing", "starting"].includes(item.actual_state)));
   } catch (error) {
     byId("container-summary").textContent = error.message;
+  }
+}
+
+let distributionRefreshTimer = null;
+function scheduleDistributionRefresh(active) {
+  if (distributionRefreshTimer) {
+    clearTimeout(distributionRefreshTimer);
+    distributionRefreshTimer = null;
+  }
+  if (active && byId("nodes-disclosure").open) {
+    distributionRefreshTimer = setTimeout(() => loadContainers(), 2000);
   }
 }
 
@@ -575,7 +611,9 @@ async function createContainer(event) {
       method: "POST",
       body: JSON.stringify(payload),
     });
-    byId("container-message").textContent = `${result.node_id} 已创建并加入调度`;
+    byId("container-message").textContent = remote
+      ? `${result.node_id} 已进入镜像分发队列，可在下方查看进度`
+      : `${result.node_id} 已创建并加入调度`;
     byId("container-node-id").value = "";
     await Promise.all([loadContainers(), loadNodes()]);
   } catch (error) {
@@ -796,22 +834,80 @@ async function checkTestEnvironment() {
   }
 }
 
-async function loadResources() {
-  const sections = [
+const resourceSections = [
     ["system-disclosure", loadSystemConfig],
     ["providers-disclosure", loadProviders],
     ["hosts-disclosure", loadPhysicalHosts],
     ["nodes-disclosure", loadWorkNodes],
     ["platform-disclosure", loadPlatformSettings],
-  ];
-  await Promise.all(sections.filter(([id]) => byId(id).open).map(([, load]) => load()));
+];
+
+function storeOpenResource(id) {
+  try {
+    if (id) localStorage.setItem("taskhub_open_resource", id);
+    else localStorage.removeItem("taskhub_open_resource");
+  } catch (_error) {
+    // The accordion still works when browser storage is unavailable.
+  }
+}
+
+function restoreOpenResource() {
+  let saved = "system-disclosure";
+  try {
+    saved = localStorage.getItem("taskhub_open_resource") || saved;
+  } catch (_error) {
+    // Keep the default running overview open.
+  }
+  if (!resourceSections.some(([id]) => id === saved)) saved = "system-disclosure";
+  resourceSections.forEach(([id]) => { byId(id).open = id === saved; });
+}
+
+function openResourceDisclosure() {
+  return resourceSections.map(([id]) => byId(id)).find((item) => item.open);
+}
+
+function updateResourceCollapseShortcut() {
+  const button = byId("collapse-current-resource");
+  const disclosure = openResourceDisclosure();
+  const pageVisible = !byId("resource-page").classList.contains("hidden");
+  const headingHasReachedHeader = disclosure && disclosure.getBoundingClientRect().top <= 69;
+  button.classList.toggle("hidden", !(pageVisible && headingHasReachedHeader));
+}
+
+function scrollResourceHeadingIntoView(disclosure) {
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  disclosure.scrollIntoView({behavior: reduceMotion ? "auto" : "smooth", block: "start"});
+}
+
+async function loadResources() {
+  await Promise.all(resourceSections
+    .filter(([id]) => byId(id).open)
+    .map(([, load]) => load()));
+  updateResourceCollapseShortcut();
 }
 
 function refreshWhenExpanded(id, load) {
   byId(id).addEventListener("toggle", (event) => {
-    if (event.currentTarget.open) load();
+    if (!event.currentTarget.open) {
+      if (!openResourceDisclosure()) storeOpenResource("");
+      updateResourceCollapseShortcut();
+      return;
+    }
+    resourceSections.forEach(([otherId]) => {
+      if (otherId !== id) byId(otherId).open = false;
+    });
+    storeOpenResource(id);
+    if (!byId("resource-page").classList.contains("hidden")) {
+      load();
+      requestAnimationFrame(() => {
+        scrollResourceHeadingIntoView(event.currentTarget);
+        updateResourceCollapseShortcut();
+      });
+    }
   });
 }
+
+restoreOpenResource();
 
 byId("refresh-system").addEventListener("click", loadSystemConfig);
 byId("refresh-providers").addEventListener("click", loadProviders);
@@ -824,6 +920,16 @@ refreshWhenExpanded("hosts-disclosure", loadPhysicalHosts);
 refreshWhenExpanded("nodes-disclosure", loadWorkNodes);
 refreshWhenExpanded("platform-disclosure", loadPlatformSettings);
 refreshWhenExpanded("test-environment-disclosure", loadTestEnvironmentConfig);
+byId("collapse-current-resource").addEventListener("click", () => {
+  const disclosure = openResourceDisclosure();
+  if (!disclosure) return;
+  disclosure.open = false;
+  storeOpenResource("");
+  scrollResourceHeadingIntoView(disclosure);
+  updateResourceCollapseShortcut();
+});
+window.addEventListener("scroll", updateResourceCollapseShortcut, {passive: true});
+window.addEventListener("resize", updateResourceCollapseShortcut);
 byId("test-environment-project").addEventListener("change", fillTestEnvironmentForm);
 byId("test-environment-form").addEventListener("submit", saveTestEnvironment);
 byId("delete-test-environment").addEventListener("click", deleteTestEnvironment);

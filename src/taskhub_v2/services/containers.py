@@ -5,6 +5,7 @@ import json
 import socket
 from pathlib import Path
 from threading import Lock
+from typing import BinaryIO
 from urllib.parse import quote, urlencode
 
 from pydantic import BaseModel, Field
@@ -61,6 +62,62 @@ class DockerSocketClient:
         data = json.loads(raw) if raw else {}
         return response.status, data
 
+    def download(self, path: str, destination: BinaryIO) -> None:
+        connection = UnixSocketConnection(self.socket_path)
+        try:
+            connection.request("GET", path)
+            response = connection.getresponse()
+            if response.status != 200:
+                raw = response.read()
+                try:
+                    detail = json.loads(raw).get("message", "无法导出镜像")
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    detail = "无法导出镜像"
+                raise DockerUnavailableError(detail)
+            while chunk := response.read(1024 * 1024):
+                destination.write(chunk)
+        except (OSError, http.client.HTTPException) as exc:
+            raise DockerUnavailableError(f"Docker Engine 导出镜像失败：{exc}") from exc
+        finally:
+            connection.close()
+
+    def upload(self, path: str, source: BinaryIO, length: int) -> list[dict]:
+        connection = UnixSocketConnection(self.socket_path)
+        try:
+            connection.request(
+                "POST",
+                path,
+                body=source,
+                headers={
+                    "Content-Type": "application/x-tar",
+                    "Content-Length": str(length),
+                },
+            )
+            response = connection.getresponse()
+            raw = response.read()
+        except (OSError, http.client.HTTPException) as exc:
+            raise DockerUnavailableError(f"Docker Engine 导入镜像失败：{exc}") from exc
+        finally:
+            connection.close()
+        messages = []
+        for line in raw.splitlines():
+            try:
+                messages.append(json.loads(line))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+        error = next(
+            (
+                item.get("error") or (item.get("errorDetail") or {}).get("message")
+                for item in messages
+                if item.get("error") or item.get("errorDetail")
+            ),
+            "",
+        )
+        if response.status != 200 or error:
+            detail = error or f"Docker Engine 导入镜像失败：HTTP {response.status}"
+            raise DockerUnavailableError(detail)
+        return messages
+
 
 class ContainerManager:
     label = "io.taskhub.managed"
@@ -95,19 +152,30 @@ class ContainerManager:
             return {"enabled": False, "available": False, "detail": "当前部署未启用"}
         if not self.node_token:
             return {"enabled": True, "available": False, "detail": "尚未配置节点通信令牌"}
-        status, data = self.client.request("GET", "/version")
+        status, version = self.client.request("GET", "/version")
         if status != 200:
             return {
                 "enabled": True,
                 "available": False,
-                "detail": data.get("message", "Docker Engine 不可用"),
+                "detail": version.get("message", "Docker Engine 不可用"),
             }
+        info_status, info = self.client.request("GET", "/info")
+        if info_status != 200:
+            info = {}
         return {
             "enabled": True,
             "available": True,
-            "detail": f"Docker Engine {data.get('Version', '可用')}",
+            "detail": f"Docker Engine {version.get('Version', '可用')}",
             "image": self.image,
             "network": self.network,
+            "engine": {
+                "version": version.get("Version", ""),
+                "operating_system": info.get("OperatingSystem", ""),
+                "architecture": info.get("Architecture", ""),
+                "cpu_count": info.get("NCPU"),
+                "memory_total_bytes": info.get("MemTotal"),
+                "docker_root": info.get("DockerRootDir", ""),
+            },
         }
 
     def list(self) -> list[dict]:
@@ -292,3 +360,45 @@ class ContainerManager:
     def node_exists(self, node_id: str) -> bool:
         with self.lock:
             return any(node.id == node_id for node in self._registered_nodes())
+
+    def image_metadata(self, image: str) -> dict:
+        self._require_available()
+        status, data = self.client.request("GET", f"/images/{quote(image, safe='')}/json")
+        if status == 404:
+            raise DockerUnavailableError(f"Seed 本机不存在工作节点镜像 {image}")
+        if status != 200:
+            raise DockerUnavailableError(data.get("message", "无法读取本机镜像信息"))
+        digest = next(iter(data.get("RepoDigests") or []), data.get("Id", ""))
+        return {
+            "id": data.get("Id", ""),
+            "digest": digest,
+            "architecture": data.get("Architecture", ""),
+            "os": data.get("Os", ""),
+        }
+
+    def export_image(self, image: str, destination: BinaryIO) -> dict:
+        metadata = self.image_metadata(image)
+        self.client.download(f"/images/{quote(image, safe='')}/get", destination)
+        destination.flush()
+        return metadata
+
+    def import_image(self, archive: Path, image: str) -> dict:
+        self._require_available()
+        with archive.open("rb") as source:
+            messages = self.client.upload(
+                "/images/load?quiet=0", source, archive.stat().st_size
+            )
+        metadata = self.image_metadata(image)
+        return {
+            **metadata,
+            "image": image,
+            "size_bytes": archive.stat().st_size,
+            "detail": next(
+                (
+                    item.get("stream", "").strip()
+                    for item in reversed(messages)
+                    if item.get("stream")
+                ),
+                "镜像已导入 Seed Docker Engine",
+            ),
+        }

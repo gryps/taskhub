@@ -93,8 +93,10 @@ function showTaskDetail(run) {
 function showPage(page) {
   const tasks = page === "tasks";
   const resources = page === "resources";
+  const onboarding = page === "onboarding";
+  byId("onboarding-page").classList.toggle("hidden", !onboarding);
   byId("task-center").classList.toggle("hidden", !tasks);
-  byId("workflow-page").classList.toggle("hidden", tasks || resources);
+  byId("workflow-page").classList.toggle("hidden", tasks || resources || onboarding);
   byId("resource-page").classList.toggle("hidden", !resources);
   byId("workflow-page").classList.toggle("task-detail", page === "detail");
   byId("nav-tasks").classList.toggle("nav-active", tasks || page === "detail");
@@ -103,7 +105,7 @@ function showPage(page) {
   byId("nav-tasks").setAttribute("aria-current", tasks || page === "detail" ? "page" : "false");
   byId("nav-workflow").setAttribute("aria-current", page === "workflow" ? "page" : "false");
   byId("nav-resources").setAttribute("aria-current", resources ? "page" : "false");
-  document.title = `${resources ? "系统配置" : page === "workflow" ? "开发流程" : page === "detail" ? "任务详情" : "任务中心"} · TaskHub`;
+  document.title = `${onboarding ? "首次启动向导" : resources ? "系统配置" : page === "workflow" ? "开发流程" : page === "detail" ? "任务详情" : "任务中心"} · TaskHub`;
   if (tasks) { eventSource?.close(); loadTaskCenter(); }
   if (resources) { eventSource?.close(); window.loadResources?.(); }
 }

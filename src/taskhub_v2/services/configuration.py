@@ -11,6 +11,7 @@ from taskhub_v2.domain.configuration import (
     MODEL_FIELDS,
     MODEL_SECRET_FIELDS,
     PLATFORM_FIELDS,
+    PLATFORM_SECRET_FIELDS,
     ModelServicesUpdate,
     PlatformSettingsUpdate,
 )
@@ -128,12 +129,20 @@ class ManagedConfigurationService:
 
     async def platform_settings(self) -> dict[str, Any]:
         record = await self.store.get(PLATFORM_SCOPE)
-        desired = {field: getattr(self.settings, field) for field in PLATFORM_FIELDS}
-        if record:
-            desired.update(record.payload)
+        desired, secrets = await self._platform_values(record)
         return {
             "desired": desired,
             "effective": {field: getattr(self.settings, field) for field in PLATFORM_FIELDS},
+            "secrets": {
+                field: {
+                    "configured": bool(secrets[field]),
+                    "mask": mask_secret(secrets[field]),
+                    "source": (
+                        "managed" if record and field in record.encrypted_secrets else "deployment"
+                    ),
+                }
+                for field in PLATFORM_SECRET_FIELDS
+            },
             "protected_bootstrap": [
                 "postgres_dsn",
                 "session_secret",
@@ -147,19 +156,38 @@ class ManagedConfigurationService:
         self, payload: PlatformSettingsUpdate, operator: str = "admin"
     ) -> dict[str, Any]:
         record = await self.store.get(PLATFORM_SCOPE)
-        desired = {field: getattr(self.settings, field) for field in PLATFORM_FIELDS}
-        if record:
-            desired.update(record.payload)
+        desired, secrets = await self._platform_values(record)
         changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+        replaced_secrets = []
+        for field in PLATFORM_SECRET_FIELDS:
+            value = changes.pop(field, None)
+            if value:
+                if not self.cipher:
+                    raise ConfigurationError(
+                        "configure TASKHUB_CONFIG_ENCRYPTION_KEY before saving registry credentials"
+                    )
+                secrets[field] = value
+                replaced_secrets.append(field)
         desired.update(changes)
         if desired["node_offline_seconds"] <= desired["node_heartbeat_seconds"]:
             raise ConfigurationError("offline threshold must exceed heartbeat interval")
-        saved = await self.store.save(PLATFORM_SCOPE, desired, {})
+        if desired.get("node_registry_username") and not secrets["node_registry_password"]:
+            raise ConfigurationError("private registry username requires a registry password")
+        encrypted = dict(record.encrypted_secrets) if record else {}
+        if self.cipher:
+            encrypted.update(
+                {field: self.cipher.encrypt(secrets[field]) for field in replaced_secrets}
+            )
+        saved = await self.store.save(PLATFORM_SCOPE, desired, encrypted)
         await self.store.add_audit(
             operator=operator,
             scope=PLATFORM_SCOPE,
             action="update",
-            parameter_summary={"changed_fields": sorted(changes), "version": saved.version},
+            parameter_summary={
+                "changed_fields": sorted(changes),
+                "replaced_secrets": sorted(replaced_secrets),
+                "version": saved.version,
+            },
             result="pending_restart",
         )
         return await self.platform_settings()
@@ -229,6 +257,25 @@ class ManagedConfigurationService:
                     {
                         field: self.cipher.decrypt(value)
                         for field, value in record.encrypted_secrets.items()
+                    }
+                )
+        return desired, secrets
+
+    async def _platform_values(self, record) -> tuple[dict[str, Any], dict[str, str]]:
+        desired = {field: getattr(self.settings, field) for field in PLATFORM_FIELDS}
+        secrets = {field: getattr(self.settings, field) for field in PLATFORM_SECRET_FIELDS}
+        if record:
+            desired.update(record.payload)
+            if record.encrypted_secrets:
+                if not self.cipher:
+                    raise ConfigurationError(
+                        "managed secrets cannot be read without encryption key"
+                    )
+                secrets.update(
+                    {
+                        field: self.cipher.decrypt(value)
+                        for field, value in record.encrypted_secrets.items()
+                        if field in PLATFORM_SECRET_FIELDS
                     }
                 )
         return desired, secrets

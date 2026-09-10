@@ -127,8 +127,12 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert 'styles.css?v=16' in html
-        assert 'resource-center.js?v=8' in html
+        assert 'styles.css?v=20' in html
+        assert 'resource-center.js?v=12' in html
+        assert 'id="collapse-current-resource"' in html
+        assert 'class="resource-subdisclosure"' in html
+        assert 'id="platform-registry-username"' in html
+        assert 'id="platform-registry-password"' in html
         assert all(
             f'id="{name}-disclosure"' in html
             for name in ("system", "providers", "hosts", "nodes", "platform")

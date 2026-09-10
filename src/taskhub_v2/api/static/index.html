@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=18">
+  <link rel="stylesheet" href="/static/styles.css?v=20">
 </head>
 <body>
   <header class="app-header">
@@ -42,6 +42,40 @@
       <span class="menu-label">系统</span>
       <button id="nav-resources"><i aria-hidden="true">◇</i><span>系统配置</span></button>
     </nav>
+    <section id="onboarding-page" class="onboarding-page hidden" aria-labelledby="onboarding-title">
+      <div class="page-head">
+        <div class="page-head-copy">
+          <span class="eyebrow">FIRST RUN</span><h1 id="onboarding-title">Seed 首次启动向导</h1>
+          <p>完成控制节点、模型、主机和第一个工作节点配置。</p>
+        </div>
+        <div class="page-actions">
+          <button id="refresh-onboarding" type="button" class="secondary">↻ 重新检测</button>
+          <button id="onboarding-later" type="button" class="secondary">稍后配置</button>
+        </div>
+      </div>
+      <div id="onboarding-result" class="onboarding-result" role="status">
+        <div><span class="eyebrow">SYSTEM READINESS</span><h2 id="onboarding-message">正在检测初始化状态</h2></div>
+        <strong id="onboarding-progress">0/7</strong>
+      </div>
+      <div id="onboarding-seed-facts" class="onboarding-facts"></div>
+      <div id="onboarding-steps" class="onboarding-steps"></div>
+      <form id="offline-image-form" class="offline-image-form hidden">
+        <div class="section-head"><div><h2>导入离线工作节点镜像</h2><p>选择由 <code>docker save</code> 生成的 tar 包；导入后将核对指定镜像名称。</p></div></div>
+        <div class="form-grid">
+          <label>镜像名称<input id="offline-image-reference" required maxlength="500" placeholder="taskhub-node:0.1.0-alpha"></label>
+          <label>离线镜像包<input id="offline-image-file" type="file" accept=".tar,application/x-tar,application/octet-stream" required></label>
+        </div>
+        <div class="form-actions">
+          <button id="import-offline-image" type="submit">导入 Seed Docker</button>
+          <button id="cancel-offline-image" type="button" class="secondary">取消</button>
+          <span id="offline-image-message" role="status"></span>
+        </div>
+      </form>
+      <div id="onboarding-restart" class="onboarding-restart hidden">
+        <div><strong>配置等待生效</strong><span>模型或平台设置需要重启 Seed 控制器。</span></div>
+        <button id="restart-seed" type="button">重启并继续</button>
+      </div>
+    </section>
     <section id="task-center" class="task-center">
       <div class="page-head"><div class="page-head-copy"><span class="eyebrow">DELIVERY RUNS</span><h1>任务中心</h1><p>集中查看交付进度、人工待办与阻塞事项。</p></div><div class="page-actions"><button id="refresh-tasks" class="secondary">↻ 刷新</button></div></div>
       <div class="task-filters">
@@ -224,13 +258,15 @@
         <span class="eyebrow">CONTROL PLANE</span><h1>系统配置</h1>
         <p>管理模型、物理主机、工作节点和平台运行条件。</p>
       </div>
+      <div class="page-actions"><button id="open-onboarding" type="button" class="secondary">首次启动向导</button></div>
     </div>
-    <details id="system-disclosure" class="providers-section resource-disclosure">
+    <details id="system-disclosure" class="providers-section resource-disclosure" open>
       <summary><span>运行概览</span><span id="system-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span class="resource-caption">Seed 控制面、持久化和关键运行条件</span>
         <button id="refresh-system" class="icon-button" title="刷新运行概览" aria-label="刷新运行概览">↻</button>
       </div>
+      <div id="system-readiness-banner" class="system-readiness-banner" role="status">正在判断任务运行条件</div>
       <div id="system-checks" class="resource-table"></div>
     </details>
     <details id="providers-disclosure" class="providers-section resource-disclosure">
@@ -240,7 +276,8 @@
         <button id="refresh-providers" class="icon-button" title="刷新模型状态" aria-label="刷新模型状态">↻</button>
       </div>
       <div id="providers" class="resource-table"></div>
-      <div class="resource-subsection-head"><strong>模型管理配置</strong><span id="model-config-state">正在读取</span></div>
+      <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>模型管理配置</strong><span id="model-config-state">正在读取</span></summary>
       <form id="model-services-form" class="project-form resource-form configuration-form">
         <p class="form-note">API Key 留空表示保留现有值。新密钥只发送到控制端并加密保存，页面不会回显原文。</p>
         <div class="form-grid configuration-grid">
@@ -291,8 +328,11 @@
           <span id="model-config-message" role="status"></span>
         </div>
       </form>
-      <div class="resource-subsection-head"><strong>最近配置操作</strong><span>不记录密钥原文</span></div>
+      </details>
+      <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>最近配置操作</strong><span>不记录密钥原文</span></summary>
       <div id="model-config-audit" class="resource-table"></div>
+      </details>
     </details>
     <details id="hosts-disclosure" class="providers-section resource-disclosure">
       <summary><span>物理主机</span><span id="host-summary" class="muted">正在检查</span></summary>
@@ -300,7 +340,8 @@
         <span class="resource-caption">承载工作节点的 Docker 主机</span>
         <button id="refresh-hosts" class="icon-button" title="刷新物理主机" aria-label="刷新物理主机">↻</button>
       </div>
-      <div class="resource-subsection-head"><strong>登记远程 SSH 主机</strong><span>先检测并确认指纹，再加密保存凭据</span></div>
+      <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>登记远程 SSH 主机</strong><span>先检测并确认指纹，再加密保存凭据</span></summary>
       <form id="host-form" class="project-form resource-form configuration-form">
         <p class="form-note">使用专用 SSH 私钥。私钥只用于本次请求，保存时由 Seed 加密；API 和页面不会回显。当前支持 Linux Docker 主机。</p>
         <div class="form-grid host-form-grid">
@@ -332,9 +373,12 @@
           <span id="host-message" role="status"></span>
         </div>
       </form>
+      </details>
       <div id="physical-hosts" class="resource-table"></div>
-      <div class="resource-subsection-head"><strong>最近主机操作</strong><span>不记录私钥原文</span></div>
+      <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>最近主机操作</strong><span>不记录私钥原文</span></summary>
       <div id="host-config-audit" class="resource-table"></div>
+      </details>
     </details>
     <details id="nodes-disclosure" class="providers-section resource-disclosure">
       <summary><span>工作节点</span><span id="node-summary" class="muted">正在检查</span></summary>
@@ -344,7 +388,8 @@
       </div>
       <div class="resource-subsection-head"><strong>调度与 Agent 状态</strong><span>容器运行不等于节点可调度</span></div>
       <div id="nodes" class="resource-table"></div>
-      <div class="resource-subsection-head"><strong>创建节点</strong><span id="container-summary" class="muted">正在检查</span></div>
+      <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>创建节点</strong><span id="container-summary" class="muted">正在检查</span></summary>
       <form id="container-form" class="project-form resource-form">
         <div class="form-grid container-form-grid">
           <label>目标主机<select id="container-target" required><option value="local">Seed 本机</option></select></label>
@@ -365,11 +410,16 @@
           <span id="container-message" role="status"></span>
         </div>
       </form>
+      </details>
       <div id="managed-containers" class="resource-table"></div>
-      <div class="resource-subsection-head"><strong>资源负载</strong><span id="load-summary" class="muted">正在检查</span></div>
+      <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>资源负载</strong><span id="load-summary" class="muted">正在检查</span></summary>
       <div id="node-load" class="resource-table"></div>
-      <div class="resource-subsection-head"><strong>能力与前置条件</strong><span id="acceptance-prerequisites-summary" class="muted">正在检查</span></div>
+      </details>
+      <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>能力与前置条件</strong><span id="acceptance-prerequisites-summary" class="muted">正在检查</span></summary>
       <div id="acceptance-prerequisites" class="resource-table"></div>
+      </details>
     </details>
     <details id="platform-disclosure" class="providers-section resource-disclosure">
       <summary><span>平台设置</span><span id="platform-summary" class="muted">正在检查</span></summary>
@@ -378,15 +428,19 @@
         <button id="refresh-platform" class="icon-button" title="刷新平台设置" aria-label="刷新平台设置">↻</button>
       </div>
       <div id="platform-settings" class="resource-table"></div>
-      <div class="resource-subsection-head"><strong>可管理平台参数</strong><span id="platform-config-state">正在读取</span></div>
+      <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>可管理平台参数</strong><span id="platform-config-state">正在读取</span></summary>
       <form id="platform-settings-form" class="project-form resource-form configuration-form">
         <p class="form-note">数据库连接、会话密钥、配置加密主密钥和节点令牌属于启动根配置，不能从 Web 读取或修改。</p>
         <div class="form-grid configuration-grid">
           <label>Seed 对外地址<input id="platform-seed-url" type="url" maxlength="500" placeholder="http://taskhub.example:8200"></label>
           <label>Node Agent 回连地址<input id="platform-callback-url" type="url" maxlength="500" placeholder="http://taskhub.example:8200"></label>
           <label class="wide">默认工作节点镜像<input id="platform-node-image" required maxlength="500" placeholder="registry.example/taskhub-node:1.0.0"></label>
-          <label>镜像仓库<input id="platform-registry" maxlength="500" placeholder="registry.example"></label>
-          <label>镜像代理<input id="platform-image-proxy" maxlength="500" placeholder="mirror.example"></label>
+          <label>私有镜像仓库前缀<input id="platform-registry" maxlength="500" placeholder="registry.example/team"></label>
+          <label>国内镜像代理前缀<input id="platform-image-proxy" maxlength="500" placeholder="mirror.example/docker.io"></label>
+          <label>私有仓库用户名<input id="platform-registry-username" maxlength="200" autocomplete="username" placeholder="留空表示匿名拉取"></label>
+          <label>私有仓库密码<input id="platform-registry-password" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空保留现有密码"></label>
+          <span id="platform-registry-password-state" class="credential-state">未配置</span>
           <label>默认并发任务数<input id="platform-default-slots" type="number" min="1" max="64" required></label>
           <label>默认 CPU 限额<input id="platform-cpu-limit" maxlength="32" placeholder="2.0"></label>
           <label>默认内存限额<input id="platform-memory-limit" maxlength="32" placeholder="4g"></label>
@@ -400,14 +454,19 @@
           <span id="platform-config-message" role="status"></span>
         </div>
       </form>
-      <div class="resource-subsection-head"><strong>最近配置操作</strong><span>单管理员审计轨迹</span></div>
+      </details>
+      <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>最近配置操作</strong><span>单管理员审计轨迹</span></summary>
       <div id="platform-config-audit" class="resource-table"></div>
+      </details>
     </details>
+    <button id="collapse-current-resource" type="button" class="secondary resource-collapse-shortcut hidden" aria-label="收起当前配置栏目">收起当前项 ↑</button>
     </section>
     </div>
   </main>
-  <script src="/static/app.js?v=6"></script>
-  <script src="/static/task-center.js?v=12"></script>
-  <script src="/static/resource-center.js?v=10"></script>
+  <script src="/static/app.js?v=7"></script>
+  <script src="/static/task-center.js?v=13"></script>
+  <script src="/static/resource-center.js?v=13"></script>
+  <script src="/static/onboarding.js?v=1"></script>
 </body>
 </html>

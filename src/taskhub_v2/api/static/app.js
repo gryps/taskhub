@@ -506,7 +506,8 @@ async function bootstrap() {
   byId("logout").classList.toggle("hidden", !state.authenticated);
   if (!state.authenticated) return;
   await loadProjects();
-  window.loadTaskCenter?.();
+  const onboardingOpened = await window.loadOnboarding?.();
+  if (!onboardingOpened) window.loadTaskCenter?.();
 }
 
 byId("start").addEventListener("click", async () => {

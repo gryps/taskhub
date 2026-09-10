@@ -114,6 +114,34 @@ def test_platform_configuration_is_validated_and_protects_bootstrap_fields():
         assert "session-secret" not in response.text
 
 
+def test_platform_registry_password_is_encrypted_and_never_returned():
+    with TestClient(create_app(configured_settings())) as client:
+        headers = login(client)
+        response = client.put(
+            "/api/settings/platform",
+            json={
+                "node_image_registry": "registry.example/team",
+                "node_registry_username": "taskhub-puller",
+                "node_registry_password": "private-registry-secret",
+            },
+            headers=headers,
+        )
+        assert response.status_code == 200
+        assert "private-registry-secret" not in response.text
+        payload = response.json()
+        assert payload["desired"]["node_registry_username"] == "taskhub-puller"
+        assert payload["secrets"]["node_registry_password"] == {
+            "configured": True,
+            "mask": "priv********cret",
+            "source": "managed",
+        }
+        audit = client.get("/api/settings/audit?scope=platform").json()["events"]
+        assert audit[0]["parameter_summary"]["replaced_secrets"] == [
+            "node_registry_password"
+        ]
+        assert "private-registry-secret" not in str(audit)
+
+
 def test_configuration_mutations_require_authentication_and_csrf():
     with TestClient(create_app(configured_settings())) as client:
         payload = {"provider": "deterministic"}

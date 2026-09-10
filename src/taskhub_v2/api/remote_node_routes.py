@@ -22,7 +22,7 @@ async def list_remote_nodes(service: ServiceDep) -> dict:
     return await service.list()
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=202)
 async def create_remote_node(payload: RemoteNodeCreate, service: ServiceDep) -> dict:
     try:
         return await service.create(payload)
