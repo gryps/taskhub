@@ -68,3 +68,13 @@ Updated: 2026-09-10
 - The rapid image contains `cryptography 46.0.7`; the existing Compose volumes, administrator password and PostgreSQL data were retained. Static assets are `styles.css?v=16` and `resource-center.js?v=8`.
 - Verification: changed-file Ruff, all three frontend JavaScript syntax checks, Python compilation and `git diff --check` passed; full suite completed with 175 passed and 7 skipped. Both LAN and container health returned `{"status":"ok","orchestrator":"langgraph"}`, protected configuration API access returned HTTP 401 without a session, and both managed-configuration tables were present.
 - Rollback image: `taskhub-v2-seed:backup-phase2-20260910T174243`. Because rapid development uses a host source bind, image rollback also requires disabling that bind or restoring the earlier source. Deployment-secret backup: `C:\taskhub-seed\backups\phase2-pre-20260910T174243`; it contains `.env` and must remain host-local.
+
+## Seed SSH Host Admission (Rapid Deployment)
+
+- On 2026-09-10, commit `898c017` was rapidly deployed to `192.168.31.31:8200`. The operator explicitly deferred pytest, browser inspection and functional SSH acceptance; only syntax, compilation, lint, secret scanning and runtime health checks were performed.
+- **系统配置 → 物理主机** now provides remote Linux Docker host inventory, SSH fingerprint discovery and confirmation, encrypted private-key storage, admission checks and manual recheck. No physical host or user private key was entered by the maintainer.
+- Admission requires strict host-key checking plus passwordless SSH, Docker permission, Linux hardware discovery and connectivity from the remote host to the configured Node Agent callback URL. A changed fingerprint or failed check changes the host out of the available state.
+- PostgreSQL table `taskhub_physical_host` stores inventory and encrypted credentials. The API and audit return only non-secret metadata; the Seed image contains OpenSSH client tools but no private key or preconfigured host trust.
+- This is stage 3A only. Remote node creation, desired-state lifecycle and the unified `taskhub-node` image remain stage 3B; the UI does not claim those capabilities are complete.
+- Runtime checks: controller and PostgreSQL healthy, LAN health returned `{"status":"ok","orchestrator":"langgraph"}`, OpenSSH client was present, unauthenticated `/api/hosts` returned HTTP 401, and static assets were `styles.css?v=17` and `resource-center.js?v=9`.
+- Rollback image: `taskhub-v2-seed:backup-ssh-hosts-20260910T184909`. The prior source backup remains `C:\taskhub-seed\backups\release-3d937f4-pre-20260910T180524`; rapid source-bind rollback must restore that source or disable the bind before starting the backup image.
