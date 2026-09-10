@@ -15,6 +15,7 @@ class Settings(BaseModel):
     provider_secrets_file: str = "/home/gryps/.config/taskhub-v2/providers.env"
     provider_workdir: str = "/home/gryps/apps/taskhub-v2"
     admin_token: str = Field(default="", repr=False)
+    admin_password_file: str = ""
     session_secret: str = Field(default="", repr=False)
     cookie_secure: bool = False
     projects_file: str = "/home/gryps/.config/taskhub-v2/projects.json"
@@ -38,6 +39,10 @@ class Settings(BaseModel):
     nodes_file: str = "/home/gryps/.config/taskhub-v2/nodes.json"
     node_state_file: str = "/home/gryps/.local/state/taskhub-v2/node-state.json"
     node_token: str = Field(default="", repr=False)
+    container_provisioning_enabled: bool = False
+    docker_socket: str = "/var/run/docker.sock"
+    docker_network: str = "taskhub-seed_default"
+    node_container_image: str = "taskhub-v2-seed:0.1.0-alpha"
     openai_base_url: str = "https://api.openai.com/v1"
     openai_proxy_url: str = "http://192.168.31.200:7893"
     openai_api_key: str = Field(default="", repr=False)
@@ -76,6 +81,7 @@ def get_settings() -> Settings:
         ),
         provider_workdir=os.getenv("TASKHUB_PROVIDER_WORKDIR", "/home/gryps/apps/taskhub-v2"),
         admin_token=os.getenv("TASKHUB_ADMIN_TOKEN", ""),
+        admin_password_file=os.getenv("TASKHUB_ADMIN_PASSWORD_FILE", ""),
         session_secret=os.getenv("TASKHUB_SESSION_SECRET", ""),
         cookie_secure=os.getenv("TASKHUB_COOKIE_SECURE", "false").lower()
         in {"1", "true", "yes", "on"},
@@ -122,6 +128,15 @@ def get_settings() -> Settings:
             "/home/gryps/.local/state/taskhub-v2/node-state.json",
         ),
         node_token=os.getenv("TASKHUB_NODE_TOKEN", ""),
+        container_provisioning_enabled=os.getenv(
+            "TASKHUB_CONTAINER_PROVISIONING_ENABLED", "false"
+        ).lower()
+        in {"1", "true", "yes", "on"},
+        docker_socket=os.getenv("TASKHUB_DOCKER_SOCKET", "/var/run/docker.sock"),
+        docker_network=os.getenv("TASKHUB_DOCKER_NETWORK", "taskhub-seed_default"),
+        node_container_image=os.getenv(
+            "TASKHUB_NODE_CONTAINER_IMAGE", "taskhub-v2-seed:0.1.0-alpha"
+        ),
         openai_base_url=os.getenv("TASKHUB_OPENAI_BASE_URL", "https://api.openai.com/v1"),
         openai_proxy_url=os.getenv("TASKHUB_OPENAI_PROXY_URL", "http://192.168.31.200:7893"),
         openai_api_key=os.getenv("TASKHUB_OPENAI_API_KEY", ""),

@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from taskhub_v2.api.auth_routes import router as auth_router
+from taskhub_v2.api.container_routes import router as container_router
 from taskhub_v2.api.deployment_routes import router as deployment_router
 from taskhub_v2.api.node_routes import router as node_router
 from taskhub_v2.api.project_routes import router as project_router
@@ -22,6 +23,7 @@ from taskhub_v2.providers import build_provider
 from taskhub_v2.providers.health import ProviderHealthStore
 from taskhub_v2.security.auth import CSRF_COOKIE, SESSION_COOKIE, AuthService
 from taskhub_v2.services import RunService
+from taskhub_v2.services.containers import ContainerManager
 from taskhub_v2.services.providers import ProviderCatalog
 from taskhub_v2.workers import (
     build_acceptance,
@@ -36,7 +38,11 @@ from taskhub_v2.workflows import build_main_graph
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
-    auth = AuthService(settings.admin_token, settings.session_secret)
+    auth = AuthService(
+        settings.admin_token,
+        settings.session_secret,
+        settings.admin_password_file,
+    )
     projects = ProjectRegistry(settings.projects_file)
     project_provisioner = ProjectProvisioner(
         projects,
@@ -99,9 +105,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.projects = projects
     app.state.project_provisioner = project_provisioner
     app.state.deployment_manager = DeploymentManager(settings)
+    app.state.container_manager = ContainerManager(
+        enabled=settings.container_provisioning_enabled,
+        socket_path=settings.docker_socket,
+        network=settings.docker_network,
+        image=settings.node_container_image,
+        node_token=settings.node_token,
+        nodes_file=settings.nodes_file,
+    )
     app.include_router(router)
     app.include_router(provider_router)
     app.include_router(auth_router)
+    app.include_router(container_router)
     app.include_router(project_router)
     app.include_router(node_router)
     app.include_router(deployment_router)
@@ -118,6 +133,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "/api/health",
                 "/api/auth/status",
                 "/api/auth/login",
+                "/api/auth/setup",
             }
         )
         if public:

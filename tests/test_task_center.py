@@ -112,9 +112,15 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert detail["created_at"] and detail["updated_at"]
         html = client.get("/").text
         assert html.count("任务中心") >= 1
+        assert 'id="password-setup"' in html
+        assert 'id="bootstrap-token"' in html
+        assert 'id="new-admin-password"' in html
+        assert 'id="confirm-admin-password"' in html
         assert 'id="nav-workflow"' in html and "开发流程" in html
         assert 'id="nav-resources"' in html and "系统配置" in html
-        assert html.count('class="providers-section resource-disclosure">') == 6
+        assert html.count('class="providers-section resource-disclosure">') == 7
+        assert 'id="containers-disclosure"' in html
+        assert 'id="container-form"' in html
         assert all(
             f'id="{name}-disclosure"' in html
             for name in ("system", "providers", "nodes", "load")
@@ -135,6 +141,7 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert html.count('id="archive-task"') == 1
         assert '<details><summary>规划方案' in html
         script = client.get("/static/app.js").text
+        assert 'path = "/api/auth/setup"' in script
         assert "localStorage.setItem(\"taskhub_run_id\"" not in script
         assert 'decision === "revise" ? "revise"' in script
         assert 'decision === "manual" ? "manual"' in script

@@ -129,6 +129,88 @@ async function loadNodes() {
   }
 }
 
+const containerRoleNames = {
+  execution: "执行节点", test: "测试节点", preproduction: "预生产节点",
+};
+
+function containerActions(item) {
+  const nodeId = escapeHtml(item.node_id);
+  const primary = item.state === "running"
+    ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-action="stop">停止</button>`
+    : `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-action="start">启动</button>`;
+  return `<div class="container-actions">${primary}
+    <button type="button" class="secondary container-action remove-container"
+      data-node-id="${nodeId}" data-action="remove">移除</button></div>`;
+}
+
+async function loadContainers() {
+  byId("container-summary").textContent = "正在读取 Docker Engine";
+  try {
+    const status = await request("/api/containers/status");
+    byId("container-form").classList.toggle("hidden", !status.available);
+    if (!status.available) {
+      byId("container-summary").textContent = status.detail || "不可用";
+      byId("managed-containers").innerHTML = "";
+      return;
+    }
+    const data = await request("/api/containers");
+    const running = data.containers.filter((item) => item.state === "running").length;
+    byId("container-summary").textContent =
+      `${running}/${data.containers.length} 运行 · ${status.detail}`;
+    const empty = `<div class="resource-row container-row"><span>尚未创建节点容器</span><span>—</span><span>—</span><span>使用上方表单创建</span></div>`;
+    const rows = data.containers.map((item) => `
+      <div class="resource-row container-row">
+        <strong>${escapeHtml(item.node_id)}<small>${escapeHtml(item.name)}</small></strong>
+        <span>${escapeHtml(containerRoleNames[item.role] || item.role)}</span>
+        <span class="${item.state === "running" ? "ok" : "warn"}">${escapeHtml(item.state)}<small>${escapeHtml(item.status)}</small></span>
+        ${containerActions(item)}
+      </div>`).join("");
+    byId("managed-containers").innerHTML = `<div class="resource-row container-row resource-header">
+      <span>节点容器</span><span>角色</span><span>状态</span><span>操作</span>
+    </div>${rows || empty}`;
+  } catch (error) {
+    byId("container-summary").textContent = error.message;
+  }
+}
+
+async function createContainer(event) {
+  event.preventDefault();
+  const button = byId("create-container");
+  button.disabled = true;
+  byId("container-message").textContent = "正在创建并启动容器";
+  try {
+    const result = await request("/api/containers", {
+      method: "POST",
+      body: JSON.stringify({
+        node_id: byId("container-node-id").value,
+        role: byId("container-role").value,
+        slots: Number(byId("container-slots").value),
+      }),
+    });
+    byId("container-message").textContent = `${result.node_id} 已创建并加入调度`;
+    byId("container-node-id").value = "";
+    await Promise.all([loadContainers(), loadNodes()]);
+  } catch (error) {
+    byId("container-message").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function runContainerAction(nodeId, action) {
+  if (action === "remove" &&
+      !window.confirm(`确认移除节点容器 ${nodeId}？节点数据卷将保留。`)) return;
+  const verbs = {start: "启动", stop: "停止", remove: "移除"};
+  byId("container-message").textContent = `正在${verbs[action]} ${nodeId}`;
+  try {
+    await request(`/api/containers/${encodeURIComponent(nodeId)}/${action}`, {method: "POST"});
+    byId("container-message").textContent = `${nodeId} 操作完成`;
+    await Promise.all([loadContainers(), loadNodes()]);
+  } catch (error) {
+    byId("container-message").textContent = error.message;
+  }
+}
+
 function formatBytes(value) {
   if (value === null || value === undefined) return "—";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -321,6 +403,7 @@ async function loadResources() {
     ["system-disclosure", loadSystemConfig],
     ["providers-disclosure", loadProviders],
     ["nodes-disclosure", loadNodes],
+    ["containers-disclosure", loadContainers],
     ["load-disclosure", loadNodeLoad],
     ["acceptance-prerequisites-disclosure", loadAcceptancePrerequisites],
     ["test-environment-disclosure", loadTestEnvironmentConfig],
@@ -337,10 +420,12 @@ function refreshWhenExpanded(id, load) {
 byId("refresh-system").addEventListener("click", loadSystemConfig);
 byId("refresh-providers").addEventListener("click", loadProviders);
 byId("refresh-nodes").addEventListener("click", loadNodes);
+byId("refresh-containers").addEventListener("click", loadContainers);
 byId("refresh-load").addEventListener("click", loadNodeLoad);
 refreshWhenExpanded("system-disclosure", loadSystemConfig);
 refreshWhenExpanded("providers-disclosure", loadProviders);
 refreshWhenExpanded("nodes-disclosure", loadNodes);
+refreshWhenExpanded("containers-disclosure", loadContainers);
 refreshWhenExpanded("load-disclosure", loadNodeLoad);
 byId("refresh-acceptance-prerequisites").addEventListener("click", loadAcceptancePrerequisites);
 refreshWhenExpanded("acceptance-prerequisites-disclosure", loadAcceptancePrerequisites);
@@ -351,6 +436,11 @@ byId("delete-test-environment").addEventListener("click", deleteTestEnvironment)
 byId("check-test-environment").addEventListener("click", checkTestEnvironment);
 byId("edit-test-environment").addEventListener("click", () => setTestEnvironmentEditMode(true));
 byId("cancel-test-environment").addEventListener("click", () => fillTestEnvironmentForm());
+byId("container-form").addEventListener("submit", createContainer);
+byId("managed-containers").addEventListener("click", (event) => {
+  const button = event.target.closest(".container-action");
+  if (button) runContainerAction(button.dataset.nodeId, button.dataset.action);
+});
 window.addEventListener("taskhub:projects", () => {
   if (byId("test-environment-disclosure").open) loadTestEnvironmentConfig();
 });

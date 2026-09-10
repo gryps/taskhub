@@ -103,6 +103,20 @@ make run
 
 Open `http://localhost:8200`.
 
+## Run The Seed Controller With Docker
+
+The alpha seed deployment packages the current Web/API controller with a durable,
+internal PostgreSQL service. On Windows Docker Desktop run:
+
+```powershell
+.\deploy\seed\start-seed.ps1
+```
+
+See `docs/deployment/seed-node.md` for scope, credentials, persistence, and
+acceptance checks. The alpha Web console can create role-selected containers on
+the Seed Docker host. SSH-based creation on additional physical hosts is specified
+in `docs/requirements/seed-ssh-multihost.md` and is not yet implemented.
+
 For PostgreSQL persistence:
 
 ```bash

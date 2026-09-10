@@ -15,6 +15,7 @@ let eventSource;
 let pendingAction;
 let deploymentTimer;
 let registeredProjects = [];
+let passwordSetupRequired = false;
 
 const byId = (id) => document.getElementById(id);
 const stageIndex = (name) => stages.findIndex(([id]) => id === (
@@ -451,20 +452,55 @@ function applySelectedRepository() {
 }
 
 async function login() {
-  byId("login-message").textContent = "";
+  const message = byId("login-message");
+  const button = byId("login-button");
+  message.textContent = "";
+  let path = "/api/auth/login";
+  let payload = {token: byId("admin-token").value};
+  if (passwordSetupRequired) {
+    const password = byId("new-admin-password").value;
+    if (password.length < 10) {
+      message.textContent = "管理员密码至少需要 10 个字符";
+      return;
+    }
+    if (password !== byId("confirm-admin-password").value) {
+      message.textContent = "两次输入的管理员密码不一致";
+      return;
+    }
+    path = "/api/auth/setup";
+    payload = {bootstrap_token: byId("bootstrap-token").value, password};
+  }
+  button.disabled = true;
+  button.textContent = passwordSetupRequired ? "正在设置" : "正在登录";
   try {
-    await request("/api/auth/login", {
-      method: "POST", body: JSON.stringify({token: byId("admin-token").value}),
-    });
+    await request(path, {method: "POST", body: JSON.stringify(payload)});
     byId("admin-token").value = "";
+    byId("bootstrap-token").value = "";
+    byId("new-admin-password").value = "";
+    byId("confirm-admin-password").value = "";
     await bootstrap();
   } catch (error) {
-    byId("login-message").textContent = error.message;
+    message.textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = passwordSetupRequired ? "设置密码并登录" : "安全登录";
   }
+}
+
+function renderAuthentication(state) {
+  passwordSetupRequired = Boolean(state.setup_required);
+  byId("password-setup").classList.toggle("hidden", !passwordSetupRequired);
+  byId("login-password-field").classList.toggle("hidden", passwordSetupRequired);
+  byId("login-title").textContent = passwordSetupRequired ? "设置管理员密码" : "登录控制台";
+  byId("login-description").textContent = passwordSetupRequired
+    ? "首次使用需要创建管理员密码，完成后将直接进入控制台。"
+    : "管理 AI 软件交付任务、运行节点与验收证据。";
+  byId("login-button").textContent = passwordSetupRequired ? "设置密码并登录" : "安全登录";
 }
 
 async function bootstrap() {
   const state = await request("/api/auth/status");
+  renderAuthentication(state);
   byId("login").classList.toggle("hidden", state.authenticated);
   byId("workspace").classList.toggle("hidden", !state.authenticated);
   byId("logout").classList.toggle("hidden", !state.authenticated);
@@ -582,7 +618,9 @@ request("/api/health").then(() => {
   byId("health").innerHTML = '<i aria-hidden="true"></i>服务异常';
 });
 byId("login-button").addEventListener("click", login);
-byId("admin-token").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
+["admin-token", "bootstrap-token", "new-admin-password", "confirm-admin-password"].forEach((id) => {
+  byId(id).addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
+});
 byId("logout").addEventListener("click", async () => { await request("/api/auth/logout", {method: "POST"}); await bootstrap(); });
 byId("show-project-form").addEventListener("click", () => {
   byId("attach-project-form").classList.add("hidden");

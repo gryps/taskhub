@@ -35,3 +35,26 @@ Updated: 2026-09-10
 - Latest task-table backup before v12: `task-inline-expand-pre-20260910T0010/taskhub-task-inline-expand.tar.gz`.
 - Deploy only intended frontend and documentation files. Preserve `.env`, `.venv`, database state, workspaces, artifacts and node/provider configuration.
 - Startup currently emits LangGraph warnings about future strict msgpack handling for registered domain model types. This warning predates and is unrelated to the frontend changes.
+
+## Seed Node Alpha Baseline
+
+- On 2026-09-10, the seed package was deployed to Windows Docker Desktop at `192.168.31.31`; its LAN entry point is `http://192.168.31.31:8200`.
+- The deployment root is `C:\taskhub-seed`. The host-local `deploy\seed\.env` contains generated credentials and must never be committed or copied into an image.
+- The running stack contains `taskhub-seed-controller-1` and `taskhub-seed-postgres-1`. PostgreSQL is internal-only; port `8200/tcp` is the only published application port.
+- Persistent volumes are `taskhub-seed_taskhub-data` and `taskhub-seed_postgres-data`. Both containers returned to healthy after restart with the same volume names, and the database retained six public application tables.
+- Docker Hub access was unreliable from this host. The verified fallback is the DaoCloud prefix mirror `m.daocloud.io/docker.io/library/...`; the selected linux/amd64 image manifests matched the official Docker Hub manifests before deployment.
+- This alpha proves a self-contained Web/API controller with LangGraph and PostgreSQL. Web-driven creation and configuration of additional role containers is the next product increment, not part of this baseline.
+- The seed controller now enables persistent administrator-password login through `TASKHUB_ADMIN_PASSWORD_FILE=/var/lib/taskhub/config/admin-password.json`. Its first page requires the deployment bootstrap token plus a new password and confirmation; later logins accept only the password.
+- Passwords are stored only as salted `scrypt` hashes. The deployment was deliberately left in `setup_required=true` state so the operator, not the maintainer, chooses the first password.
+- The first-password release uses `styles.css?v=13` and `app.js?v=6` on `.31`. Edge screenshots at 1440x1000 and 680x900 confirmed a centered, readable setup card without page overflow.
+- Rollback assets for this release are `C:\taskhub-seed\backups\auth-pre-20260910T054833` and Docker image `taskhub-v2-seed:backup-20260910T054833`.
+- Release verification: 164 tests passed, 6 skipped; targeted Ruff, JavaScript syntax, Compose config, container health, LAN auth status, static asset versions, persistent volume names and six PostgreSQL application tables all passed.
+
+## Seed Web Container Lifecycle (Rapid Development)
+
+- On 2026-09-10, rapid-development source mounts were enabled on `192.168.31.31`; the Docker image remains `taskhub-v2-seed:0.1.0-alpha` and was not rebuilt.
+- **系统配置 → 节点容器** creates execution, test and preproduction node containers, starts/stops/removes them, and keeps `nodes.json` synchronized with container lifecycle. Removing a user node preserves its named data volume by default.
+- Web-created nodes join only `taskhub-seed_default` and publish no host ports. The controller has authenticated Docker Socket access, which is host-administrator-equivalent; this alpha must remain on a trusted LAN.
+- The current seed image proves container lifecycle, Python node-agent health and scheduling registration. It intentionally lacks Codex, Git, SSH, Node.js and browsers; the confirmed release direction is one unified `taskhub-node` image with role-controlled startup profiles.
+- Rapid verification created `smoke-test-0910`, observed it as Docker `healthy`, confirmed authenticated node health and the `test`/`acceptance` workloads, then removed both the temporary container and its data volume. The node registry returned to empty.
+- Targeted verification after the change: Ruff passed; 19 auth/container/task-center tests passed; all three frontend JavaScript syntax checks and `git diff --check` passed. Edge inspection at 1440×1000 and 680×900 showed consistent system-configuration styling, stacked narrow-screen fields and no page-level horizontal overflow. LAN health remained `{"status":"ok","orchestrator":"langgraph"}`; static assets are `styles.css?v=14` and `resource-center.js?v=6`.

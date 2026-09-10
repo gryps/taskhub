@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=12">
+  <link rel="stylesheet" href="/static/styles.css?v=14">
 </head>
 <body>
   <header class="app-header">
@@ -22,10 +22,16 @@
       <div class="login-intro">
         <span class="eyebrow">TASKHUB V2</span>
         <h1 id="login-title">登录控制台</h1>
-        <p>管理 AI 软件交付任务、运行节点与验收证据。</p>
+        <p id="login-description">管理 AI 软件交付任务、运行节点与验收证据。</p>
       </div>
-      <label>管理口令<input id="admin-token" type="password" autocomplete="current-password" placeholder="输入管理口令"></label>
-      <button id="login-button">安全登录</button>
+      <label id="login-password-field">管理员密码<input id="admin-token" type="password" autocomplete="current-password" placeholder="输入管理员密码"></label>
+      <div id="password-setup" class="login-setup hidden">
+        <p>请使用部署时生成的初始化口令完成身份确认。密码至少 10 个字符，设置后初始化口令不再用于日常登录。</p>
+        <label class="wide">初始化口令<input id="bootstrap-token" type="password" autocomplete="one-time-code" placeholder="输入部署初始化口令"></label>
+        <label>新管理员密码<input id="new-admin-password" type="password" autocomplete="new-password" minlength="10" maxlength="256" placeholder="至少 10 个字符"></label>
+        <label>确认新密码<input id="confirm-admin-password" type="password" autocomplete="new-password" minlength="10" maxlength="256" placeholder="再次输入新密码"></label>
+      </div>
+      <button id="login-button" type="button">安全登录</button>
       <p id="login-message" role="status"></p>
     </section>
     <div id="workspace" class="hidden">
@@ -222,6 +228,27 @@
       </div>
       <div id="nodes" class="resource-table"></div>
     </details>
+    <details id="containers-disclosure" class="providers-section resource-disclosure">
+      <summary><span>节点容器</span><span id="container-summary" class="muted">正在检查</span></summary>
+      <form id="container-form" class="project-form resource-form">
+        <div class="form-grid container-form-grid">
+          <label>节点 ID<input id="container-node-id" required minlength="2" maxlength="32" pattern="[a-z0-9][a-z0-9_-]{1,31}" placeholder="worker-01"></label>
+          <label>节点角色<select id="container-role" required>
+            <option value="execution">执行节点</option>
+            <option value="test">测试节点</option>
+            <option value="preproduction">预生产节点</option>
+          </select></label>
+          <label>并发任务数<input id="container-slots" type="number" min="1" max="16" value="1" required></label>
+        </div>
+        <p class="form-help">容器仅连接 TaskHub 内部网络；预生产节点提供构建、测试和验收能力，项目访问地址仍在“预生产环境”配置。</p>
+        <div class="form-actions">
+          <button id="create-container" type="submit">创建并启动</button>
+          <button id="refresh-containers" type="button" class="secondary">刷新</button>
+          <span id="container-message" role="status"></span>
+        </div>
+      </form>
+      <div id="managed-containers" class="resource-table"></div>
+    </details>
     <details id="load-disclosure" class="providers-section resource-disclosure">
       <summary><span>节点负载（近 5 分钟峰值）</span><span id="load-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
@@ -261,8 +288,8 @@
     </section>
     </div>
   </main>
-  <script src="/static/app.js?v=5"></script>
+  <script src="/static/app.js?v=6"></script>
   <script src="/static/task-center.js?v=12"></script>
-  <script src="/static/resource-center.js?v=5"></script>
+  <script src="/static/resource-center.js?v=6"></script>
 </body>
 </html>

@@ -1,0 +1,73 @@
+name: taskhub-seed
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: taskhub
+      POSTGRES_USER: taskhub
+      POSTGRES_PASSWORD: ${TASKHUB_POSTGRES_PASSWORD:?TASKHUB_POSTGRES_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskhub -d taskhub"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  controller:
+    image: taskhub-v2-seed:0.1.0-alpha
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      pull: false
+      args:
+        TASKHUB_VERSION: 0.1.0-alpha
+        HTTP_PROXY: ${TASKHUB_BUILD_PROXY:-}
+        HTTPS_PROXY: ${TASKHUB_BUILD_PROXY:-}
+    restart: unless-stopped
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${TASKHUB_PORT:-8200}:8200"
+    environment:
+      PYTHONPATH: /opt/taskhub/src
+      TASKHUB_ENV: seed
+      TASKHUB_CHECKPOINTER: postgres
+      TASKHUB_POSTGRES_DSN: postgresql://taskhub:${TASKHUB_POSTGRES_PASSWORD}@postgres:5432/taskhub
+      TASKHUB_PROVIDER: deterministic
+      TASKHUB_ADMIN_TOKEN: ${TASKHUB_ADMIN_TOKEN:?TASKHUB_ADMIN_TOKEN is required}
+      TASKHUB_ADMIN_PASSWORD_FILE: /var/lib/taskhub/config/admin-password.json
+      TASKHUB_SESSION_SECRET: ${TASKHUB_SESSION_SECRET:?TASKHUB_SESSION_SECRET is required}
+      TASKHUB_COOKIE_SECURE: "false"
+      TASKHUB_PROVIDER_SECRETS_FILE: /var/lib/taskhub/config/providers.env
+      TASKHUB_PROVIDER_WORKDIR: /var/lib/taskhub/repositories
+      TASKHUB_PROJECTS_FILE: /var/lib/taskhub/config/projects.json
+      TASKHUB_NODES_FILE: /var/lib/taskhub/config/nodes.json
+      TASKHUB_NODE_STATE_FILE: /var/lib/taskhub/state/node-state.json
+      TASKHUB_NODE_TOKEN: ${TASKHUB_NODE_TOKEN:?TASKHUB_NODE_TOKEN is required}
+      TASKHUB_CONTAINER_PROVISIONING_ENABLED: "true"
+      TASKHUB_DOCKER_SOCKET: /var/run/docker.sock
+      TASKHUB_DOCKER_NETWORK: taskhub-seed_default
+      TASKHUB_NODE_CONTAINER_IMAGE: taskhub-v2-seed:0.1.0-alpha
+      TASKHUB_PROVIDER_HEALTH_FILE: /var/lib/taskhub/state/provider-health.json
+      TASKHUB_MANAGED_REPOSITORY_ROOT: /var/lib/taskhub/repositories
+      TASKHUB_WORKSPACE_ROOT: /var/lib/taskhub/workspaces
+      TASKHUB_ARTIFACT_ROOT: /var/lib/taskhub/artifacts
+      TASKHUB_WORKER_MODE: local
+      TASKHUB_TEST_RUNNER: scheduled
+      TASKHUB_SELF_DEPLOY_ENABLED: "false"
+    volumes:
+      - taskhub-data:/var/lib/taskhub
+      - ../../src:/opt/taskhub/src:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "0"
+
+volumes:
+  postgres-data:
+  taskhub-data:
