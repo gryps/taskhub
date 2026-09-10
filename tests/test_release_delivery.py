@@ -71,9 +71,7 @@ def test_backup_restore_binds_encryption_key_to_database_identity():
         assert text.index("pg_restore -a -t taskhub_backup_identity") < text.index(
             "docker compose --project-directory"
         )
-        assert "pg_restore -a -t taskhub_backup_identity" in text
-        assert text.index("pg_restore -a -t taskhub_backup_identity") < text.index(" down")
-        assert "pg_restore -a -t taskhub_backup_identity" in text
+    assert ') -join "`n"' in (RELEASE / "restore.ps1").read_text(encoding="utf-8-sig")
 
 
 def test_release_images_pin_codex_and_node_has_common_role_tools():

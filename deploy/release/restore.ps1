@@ -33,13 +33,13 @@ if ((Get-KeyFingerprint $BackupKey) -ne $ExpectedFingerprint) {
 $BackupPostgresImage = Get-FileEnvValue (Join-Path $BackupDirectory "backup.env") "TASKHUB_POSTGRES_IMAGE"
 docker load -i (Join-Path $BackupDirectory "images.tar")
 if ($LASTEXITCODE -ne 0) { throw "备份镜像导入失败。" }
-$IdentityList = docker run --rm -v "${BackupDirectory}:/backup:ro" $BackupPostgresImage `
-    pg_restore -l /backup/postgres.dump
+$IdentityList = (docker run --rm -v "${BackupDirectory}:/backup:ro" $BackupPostgresImage `
+    pg_restore -l /backup/postgres.dump) -join "`n"
 if ($LASTEXITCODE -ne 0 -or $IdentityList -notmatch 'taskhub_backup_identity') {
     throw "PostgreSQL 备份缺少加密密钥身份表。"
 }
-$IdentityData = docker run --rm -v "${BackupDirectory}:/backup:ro" $BackupPostgresImage `
-    pg_restore -a -t taskhub_backup_identity -f - /backup/postgres.dump
+$IdentityData = (docker run --rm -v "${BackupDirectory}:/backup:ro" $BackupPostgresImage `
+    pg_restore -a -t taskhub_backup_identity -f - /backup/postgres.dump) -join "`n"
 if ($LASTEXITCODE -ne 0 -or $IdentityData -notmatch [regex]::Escape($ExpectedFingerprint)) {
     throw "PostgreSQL 备份身份与配置加密主密钥不匹配。"
 }
