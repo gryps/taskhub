@@ -2,6 +2,7 @@ FROM python:3.12-slim-bookworm
 
 ARG TASKHUB_VERSION=0.1.0-alpha
 ARG TASKHUB_COMMIT=unknown
+ARG CODEX_VERSION=0.153.4
 
 LABEL org.opencontainers.image.title="TaskHub Unified Worker Node" \
       org.opencontainers.image.version="${TASKHUB_VERSION}" \
@@ -13,18 +14,29 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DEFAULT_TIMEOUT=120 \
     PIP_RETRIES=8 \
     TASKHUB_NODE_ROLE=test \
-    TASKHUB_NODE_WORK_ROOT=/var/lib/taskhub-node/jobs
+    TASKHUB_NODE_WORK_ROOT=/var/lib/taskhub-node/jobs \
+    TASKHUB_CODEX_CLI_BIN=/usr/local/bin/codex \
+    TASKHUB_CODEX_PLUS_HOME=/var/lib/taskhub-node/codex/plus \
+    TASKHUB_CODEX_PRO_HOME=/var/lib/taskhub-node/codex/pro \
+    TASKHUB_CODEX_API_HOME=/var/lib/taskhub-node/codex/api
 
 RUN apt-get update -o Acquire::Retries=5 \
-    && apt-get install -y --no-install-recommends curl git nodejs npm openssh-client \
+    && apt-get install -y --no-install-recommends ca-certificates curl git nodejs npm openssh-client \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 taskhub \
     && useradd --uid 10001 --gid taskhub --create-home --shell /usr/sbin/nologin taskhub
+RUN mkdir -p /opt/codex-home \
+    && curl -fsSL --retry 5 https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh \
+    && HOME=/opt/codex-home CODEX_RELEASE="${CODEX_VERSION}" CODEX_INSTALL_DIR=/usr/local/bin \
+       CODEX_NON_INTERACTIVE=1 sh /tmp/install-codex.sh \
+    && codex --version \
+    && chmod -R a+rX /opt/codex-home \
+    && rm -f /tmp/install-codex.sh
 
 WORKDIR /opt/taskhub
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN python -m pip install . \
+RUN python -m pip install '.[dev,browser]' \
     && mkdir -p /var/lib/taskhub-node/jobs \
     && chown -R taskhub:taskhub /var/lib/taskhub-node /opt/taskhub
 

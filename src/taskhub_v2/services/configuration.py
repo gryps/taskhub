@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +15,7 @@ from taskhub_v2.domain.configuration import (
     PlatformSettingsUpdate,
 )
 from taskhub_v2.security import SecretCipher, mask_secret
+from taskhub_v2.services.configuration_views import audit_view, metadata, safe_error
 
 MODEL_SCOPE = "model_services"
 PLATFORM_SCOPE = "platform"
@@ -112,7 +111,7 @@ class ManagedConfigurationService:
                 for card in desired.get("model_cards", [])
             },
             "encryption_configured": self.cipher is not None,
-            **_metadata(record),
+            **metadata(record),
         }
 
     async def update_model_services(
@@ -198,7 +197,7 @@ class ManagedConfigurationService:
                 "config_encryption_key",
                 "node_token",
             ],
-            **_metadata(record),
+            **metadata(record),
         }
 
     async def update_platform_settings(
@@ -284,7 +283,7 @@ class ManagedConfigurationService:
                         ),
                     }
                 except (httpx.HTTPError, ConfigurationError) as exc:
-                    result = {"available": False, "detail": _safe_error(exc)}
+                    result = {"available": False, "detail": safe_error(exc)}
         await self.store.add_audit(
             operator=operator,
             scope=MODEL_SCOPE,
@@ -320,7 +319,7 @@ class ManagedConfigurationService:
                 "detail": f"服务返回 HTTP {response.status_code}",
             }
         except httpx.HTTPError as exc:
-            return {"available": False, "detail": _safe_error(exc)}
+            return {"available": False, "detail": safe_error(exc)}
 
     def _card_credential_state(
         self, card: dict[str, Any], secrets: dict[str, str]
@@ -333,7 +332,7 @@ class ManagedConfigurationService:
 
     async def audit(self, scope: str | None = None, limit: int = 50) -> dict[str, Any]:
         items = await self.store.list_audit(scope, limit)
-        return {"events": [_audit_view(item) for item in items]}
+        return {"events": [audit_view(item) for item in items]}
 
     async def _model_values(self, record) -> tuple[dict[str, Any], dict[str, str]]:
         desired = {field: getattr(self.settings, field) for field in MODEL_FIELDS}
@@ -391,35 +390,3 @@ class ManagedConfigurationService:
         )
         if any(not secrets[secret] or not desired[model] for secret, model in required):
             raise ConfigurationError("routed mode requires GPT, DeepSeek and MiniMax credentials")
-
-
-def _metadata(record) -> dict[str, Any]:
-    if not record:
-        return {
-            "version": 0,
-            "applied_version": 0,
-            "restart_required": False,
-            "updated_at": None,
-            "applied_at": None,
-        }
-    return {
-        "version": record.version,
-        "applied_version": record.applied_version,
-        "restart_required": record.version != record.applied_version,
-        "updated_at": record.updated_at.isoformat(),
-        "applied_at": record.applied_at.isoformat() if record.applied_at else None,
-    }
-
-
-def _audit_view(item: dict[str, Any]) -> dict[str, Any]:
-    created = item["created_at"]
-    return {
-        **item,
-        "created_at": created.isoformat() if isinstance(created, datetime) else str(created),
-    }
-
-
-def _safe_error(error: Exception) -> str:
-    text = re.sub(r"(?i)bearer\s+\S+", "Bearer [redacted]", str(error))
-    text = re.sub(r"[A-Za-z0-9_-]{24,}", "[redacted]", text)
-    return f"连接失败：{type(error).__name__} · {text[:180]}"

@@ -99,11 +99,15 @@ def build_acceptance(settings: Settings, test_scheduler=None):
     )
 
 
-def build_test_scheduler(settings: Settings, local_coder=None):
+def build_test_scheduler(settings: Settings, local_coder=None, token_resolver=None):
     if settings.test_runner == "local":
         return LocalTestScheduler()
     return NodeScheduler(
         NodeRegistry(settings.nodes_file),
-        NodeRunner(settings.node_token, local_coder=local_coder),
+        NodeRunner(
+            settings.node_token,
+            local_coder=local_coder,
+            token_resolver=token_resolver,
+        ),
         settings.node_state_file,
     )

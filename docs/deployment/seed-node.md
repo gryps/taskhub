@@ -9,9 +9,11 @@ installation can start TaskHub without a host Python environment.
 The controller can create execution, test, and preproduction node containers on
 the Seed host or an admitted remote Linux Docker host from the Web UI. It uses the deterministic provider and local worker so the UI and
 LangGraph workflow can be evaluated without copying provider credentials into the
-image. The alpha image has only the Python/TaskHub runtime; full coding, Node.js,
-browser, Git, and publication capabilities require the planned unified
-`taskhub-node` release image with role-controlled startup profiles.
+image. The historical alpha Seed image has only the Python/TaskHub runtime. The
+standard release now builds a unified `taskhub-node` image with role-controlled
+workloads, Git, Python/pytest, Node.js/npm, Playwright's Python package and Codex
+CLI. Browser binaries and project-specific databases remain explicit task
+capabilities rather than universal image requirements.
 
 ## Services
 
@@ -25,12 +27,12 @@ browser, Git, and publication capabilities require the planned unified
 Both services use named Docker volumes. Deleting a container does not delete its
 data; deleting the Compose volumes does.
 
-The seed controller intentionally does not contain Git, Codex, Node.js, or
-browser tooling. The controller image includes the OpenSSH client used only
+The standard Seed controller contains Codex CLI for ChatGPT device authorization,
+but not Git, Node.js or browser tooling. The controller image includes the OpenSSH client used only
 for strict-fingerprint remote host admission; it contains no SSH private key or
 preconfigured host trust. The installer also builds `taskhub-node:0.1.0-alpha`
-from `deploy/node/Dockerfile`; it contains Git and Node.js/npm but does not yet
-contain Codex CLI or browser runtimes.
+from `deploy/node/Dockerfile`; it contains the common role runtime but does not
+preinstall browser binaries.
 
 ## Web node lifecycle
 
@@ -152,8 +154,9 @@ docker compose --project-directory .\deploy\seed --env-file .\deploy\seed\.env `
   controller. Access to that socket is equivalent to Docker-host administrator
   authority; keep this alpha on a trusted LAN and never make its HTTP port public.
 - Only containers carrying TaskHub's managed label are listed or operated on by
-  the lifecycle API. Local nodes publish no host ports. Remote Alpha nodes publish
-  a selected Agent port and receive the shared deployment node token; firewall the
-  port to the Seed host and trusted LAN.
+  the lifecycle API. Local nodes publish no host ports. Each managed node receives
+  a different encrypted-at-rest credential; plaintext is injected only into that
+  node. Remote Alpha nodes publish a selected Agent port, so firewall the port to
+  the Seed host and trusted LAN.
 - A later hardened release should replace direct socket access with a restricted
   provisioning service or socket proxy before deployment outside a trusted host.

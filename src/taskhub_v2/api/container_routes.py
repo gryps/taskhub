@@ -41,7 +41,7 @@ def create_container(payload: ContainerCreate, request: Request) -> dict:
 
 @router.post("/{node_id}/{action}")
 def container_action(node_id: str, action: str, request: Request) -> dict:
-    if action not in {"start", "stop", "remove"}:
+    if action not in {"start", "stop", "remove", "rotate-credential"}:
         raise HTTPException(status_code=404, detail="unknown container action")
     try:
         return manager(request).action(node_id, action)

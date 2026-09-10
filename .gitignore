@@ -14,6 +14,8 @@ id_ecdsa.*
 id_ed25519
 id_ed25519.*
 deploy/seed/.docker-cli/
+deploy/release/backups/
+deploy/release/images/
 .venv/
 __pycache__/
 .pytest_cache/

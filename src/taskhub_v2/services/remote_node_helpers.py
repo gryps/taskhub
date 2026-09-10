@@ -38,8 +38,8 @@ def node_definition(address: str, request: RemoteNodeCreate) -> NodeDefinition:
     )
 
 
-def remote_node_view(record) -> dict[str, Any]:
-    return {
+def remote_node_view(record, credential: dict | None = None) -> dict[str, Any]:
+    view = {
         **record.payload,
         "container_id": record.container_id,
         "image_digest": record.image_digest,
@@ -48,3 +48,6 @@ def remote_node_view(record) -> dict[str, Any]:
         "status_reason": record.status_reason,
         "updated_at": record.updated_at.isoformat(),
     }
+    if credential is not None:
+        view["credential"] = credential
+    return view

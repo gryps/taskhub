@@ -1,11 +1,14 @@
 # TaskHub Deployment
 
-TaskHub deployment starts with one seed controller and expands to dedicated
-execution, acceptance, browser, and preproduction nodes. The seed controller is
-the control plane; it is not a complete coding or browser-test node.
+TaskHub deployment starts with one Seed controller and one preloaded unified
+Node image. The Seed is the control plane; role-selected Node containers provide
+execution, test and preproduction workloads.
 
-Read `seed-node.md` for the current alpha seed deployment. The Web console can
-create role-selected containers on the Seed Docker host. SSH-based creation on
-additional physical hosts remains planned work and must not be represented as
-available until the acceptance criteria in `../requirements/seed-ssh-multihost.md`
-are satisfied.
+Use the immutable release Compose and cross-platform scripts in `deploy/release`.
+Read `ubuntu.md` or `windows-docker-desktop.md` for installation, upgrade and
+recovery. `seed-node.md` records the earlier rapid-development Alpha environment.
+
+The Web console can create role-selected containers on the Seed Docker host or
+an admitted remote Linux Docker host. It distributes the Node image by registry,
+mirror, remote cache or SSH `docker load`, then verifies architecture and image
+identity before starting the container.

@@ -31,6 +31,7 @@ from taskhub_v2.providers import build_provider
 from taskhub_v2.providers.health import ProviderHealthStore
 from taskhub_v2.security.auth import CSRF_COOKIE, SESSION_COOKIE, AuthService
 from taskhub_v2.security.encryption import SecretCipher
+from taskhub_v2.security.node_credentials import NodeCredentialVault
 from taskhub_v2.services import RunService
 from taskhub_v2.services.configuration import ManagedConfigurationService
 from taskhub_v2.services.containers import ContainerManager
@@ -97,6 +98,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             managed_configuration = ManagedConfigurationService(settings, managed_store, cipher)
             effective_settings = await managed_configuration.apply()
+            node_credentials = NodeCredentialVault(
+                effective_settings.node_credentials_file,
+                cipher,
+            )
             persistent_codex = Path(effective_settings.model_account_root).parent / "bin/codex"
             if not Path(effective_settings.codex_cli_bin).is_file() and persistent_codex.is_file():
                 effective_settings = effective_settings.model_copy(
@@ -129,6 +134,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     image=effective_settings.node_container_image,
                     node_token=effective_settings.node_token,
                     nodes_file=effective_settings.nodes_file,
+                    credentials=node_credentials,
                 )
             app.state.remote_nodes = RemoteNodeService(
                 remote_store,
@@ -144,10 +150,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 registry_password=effective_settings.node_registry_password,
                 default_cpu=effective_settings.default_node_cpu_limit,
                 default_memory=effective_settings.default_node_memory_limit,
+                credentials=node_credentials,
+                reconcile_interval_seconds=effective_settings.node_heartbeat_seconds,
             )
             provider = build_provider(effective_settings, provider_health)
             local_coder = build_coder(effective_settings, provider_health)
-            test_scheduler = build_test_scheduler(effective_settings, local_coder)
+            test_scheduler = build_test_scheduler(
+                effective_settings,
+                local_coder,
+                token_resolver=node_credentials.resolve,
+            )
             graph = build_main_graph(
                 provider,
                 build_worker(
@@ -174,6 +186,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             app.state.provider_catalog = ProviderCatalog(effective_settings, provider_health)
             app.state.node_scheduler = test_scheduler
+            app.state.node_credentials = node_credentials
+            app.state.remote_nodes.start_reconciliation()
             await managed_configuration.mark_applied()
             try:
                 yield

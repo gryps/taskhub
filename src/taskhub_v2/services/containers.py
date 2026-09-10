@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import http.client
 import json
-import socket
 from pathlib import Path
-from threading import Lock
+from threading import RLock
 from typing import BinaryIO
 from urllib.parse import quote, urlencode
 
 from pydantic import BaseModel, Field
 
 from taskhub_v2.domain.models import NodeDefinition
+from taskhub_v2.security.node_credentials import NodeCredentialError
+from taskhub_v2.services.docker_engine import DockerSocketClient, DockerUnavailableError
 
 ROLE_WORKLOADS = {
     "execution": {"build", "coding"},
@@ -25,98 +25,8 @@ class ContainerCreate(BaseModel):
     slots: int = Field(default=1, ge=1, le=16)
 
 
-class DockerUnavailableError(RuntimeError):
-    pass
-
-
 class DockerConflictError(RuntimeError):
     pass
-
-
-class UnixSocketConnection(http.client.HTTPConnection):
-    def __init__(self, socket_path: str):
-        super().__init__("localhost")
-        self.socket_path = socket_path
-
-    def connect(self):
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.connect(self.socket_path)
-
-
-class DockerSocketClient:
-    def __init__(self, socket_path: str):
-        self.socket_path = socket_path
-
-    def request(self, method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
-        connection = UnixSocketConnection(self.socket_path)
-        body = json.dumps(payload).encode() if payload is not None else None
-        headers = {"Content-Type": "application/json"} if body is not None else {}
-        try:
-            connection.request(method, path, body=body, headers=headers)
-            response = connection.getresponse()
-            raw = response.read()
-        except (OSError, http.client.HTTPException) as exc:
-            raise DockerUnavailableError(f"Docker Engine 不可用：{exc}") from exc
-        finally:
-            connection.close()
-        data = json.loads(raw) if raw else {}
-        return response.status, data
-
-    def download(self, path: str, destination: BinaryIO) -> None:
-        connection = UnixSocketConnection(self.socket_path)
-        try:
-            connection.request("GET", path)
-            response = connection.getresponse()
-            if response.status != 200:
-                raw = response.read()
-                try:
-                    detail = json.loads(raw).get("message", "无法导出镜像")
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    detail = "无法导出镜像"
-                raise DockerUnavailableError(detail)
-            while chunk := response.read(1024 * 1024):
-                destination.write(chunk)
-        except (OSError, http.client.HTTPException) as exc:
-            raise DockerUnavailableError(f"Docker Engine 导出镜像失败：{exc}") from exc
-        finally:
-            connection.close()
-
-    def upload(self, path: str, source: BinaryIO, length: int) -> list[dict]:
-        connection = UnixSocketConnection(self.socket_path)
-        try:
-            connection.request(
-                "POST",
-                path,
-                body=source,
-                headers={
-                    "Content-Type": "application/x-tar",
-                    "Content-Length": str(length),
-                },
-            )
-            response = connection.getresponse()
-            raw = response.read()
-        except (OSError, http.client.HTTPException) as exc:
-            raise DockerUnavailableError(f"Docker Engine 导入镜像失败：{exc}") from exc
-        finally:
-            connection.close()
-        messages = []
-        for line in raw.splitlines():
-            try:
-                messages.append(json.loads(line))
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                continue
-        error = next(
-            (
-                item.get("error") or (item.get("errorDetail") or {}).get("message")
-                for item in messages
-                if item.get("error") or item.get("errorDetail")
-            ),
-            "",
-        )
-        if response.status != 200 or error:
-            detail = error or f"Docker Engine 导入镜像失败：HTTP {response.status}"
-            raise DockerUnavailableError(detail)
-        return messages
 
 
 class ContainerManager:
@@ -131,26 +41,28 @@ class ContainerManager:
         image: str,
         node_token: str,
         nodes_file: str,
+        credentials=None,
         client=None,
     ):
         self.enabled = enabled
         self.network = network
         self.image = image
         self.node_token = node_token
+        self.credentials = credentials
         self.nodes_file = Path(nodes_file)
         self.client = client or DockerSocketClient(socket_path)
-        self.lock = Lock()
+        self.lock = RLock()
 
     def _require_available(self):
         if not self.enabled:
             raise DockerUnavailableError("当前部署未启用 Web 容器管理")
-        if not self.node_token:
+        if not self.node_token and not self.credentials:
             raise DockerUnavailableError("尚未配置节点通信令牌")
 
     def status(self) -> dict:
         if not self.enabled:
             return {"enabled": False, "available": False, "detail": "当前部署未启用"}
-        if not self.node_token:
+        if not self.node_token and not self.credentials:
             return {"enabled": True, "available": False, "detail": "尚未配置节点通信令牌"}
         status, version = self.client.request("GET", "/version")
         if status != 200:
@@ -186,9 +98,13 @@ class ContainerManager:
         )
         if status != 200:
             raise DockerUnavailableError(data.get("message", "无法读取容器"))
-        return [self._view(item) for item in data]
+        views = [self._view(item) for item in data]
+        if self.credentials:
+            for item in views:
+                item["credential"] = self.credentials.metadata(item["node_id"])
+        return views
 
-    def create(self, request: ContainerCreate) -> dict:
+    def create(self, request: ContainerCreate, *, _token: str | None = None) -> dict:
         self._require_available()
         name = f"taskhub-node-{request.node_id}"
         workloads = ROLE_WORKLOADS[request.role]
@@ -209,7 +125,7 @@ class ContainerManager:
             "Env": [
                 f"TASKHUB_NODE_ID={request.node_id}",
                 f"TASKHUB_NODE_ROLE={request.role}",
-                f"TASKHUB_NODE_TOKEN={self.node_token}",
+                "TASKHUB_NODE_TOKEN=__TASKHUB_NODE_CREDENTIAL__",
                 "TASKHUB_NODE_WORK_ROOT=/var/lib/taskhub-node/jobs",
             ],
             "Cmd": ["sh", "-c", node_command],
@@ -237,12 +153,33 @@ class ContainerManager:
         with self.lock:
             if any(node.id == request.node_id for node in self._registered_nodes()):
                 raise DockerConflictError("节点 ID 已存在")
-            status, data = self.client.request(
-                "POST", f"/containers/create?name={quote(name)}", payload
-            )
+            try:
+                token = _token or (
+                    self.credentials.issue(request.node_id)
+                    if self.credentials
+                    else self.node_token
+                )
+            except NodeCredentialError as exc:
+                raise DockerUnavailableError(str(exc)) from exc
+            payload["Env"] = [
+                item.replace("__TASKHUB_NODE_CREDENTIAL__", token)
+                for item in payload["Env"]
+            ]
+            try:
+                status, data = self.client.request(
+                    "POST", f"/containers/create?name={quote(name)}", payload
+                )
+            except Exception:
+                if self.credentials:
+                    self.credentials.revoke(request.node_id)
+                raise
             if status == 409:
+                if self.credentials:
+                    self.credentials.revoke(request.node_id)
                 raise DockerConflictError(data.get("message", "同名容器已存在"))
             if status != 201:
+                if self.credentials:
+                    self.credentials.revoke(request.node_id)
                 raise DockerUnavailableError(data.get("message", "容器创建失败"))
             container_id = data["Id"]
             status, start_data = self.client.request(
@@ -250,6 +187,8 @@ class ContainerManager:
             )
             if status not in {204, 304}:
                 self.client.request("DELETE", f"/containers/{quote(container_id)}?force=true")
+                if self.credentials:
+                    self.credentials.revoke(request.node_id)
                 raise DockerUnavailableError(start_data.get("message", "容器启动失败"))
             try:
                 self._register(
@@ -263,6 +202,8 @@ class ContainerManager:
                 )
             except Exception:
                 self.client.request("DELETE", f"/containers/{quote(container_id)}?force=true")
+                if self.credentials:
+                    self.credentials.revoke(request.node_id)
                 raise
         return {
             "id": container_id,
@@ -276,6 +217,8 @@ class ContainerManager:
 
     def action(self, node_id: str, action: str) -> dict:
         self._require_available()
+        if action == "rotate-credential":
+            return self.rotate_credential(node_id)
         container = self._find(node_id)
         container_id = container["Id"]
         if action == "start":
@@ -294,7 +237,36 @@ class ContainerManager:
         if action == "remove":
             with self.lock:
                 self._unregister(node_id)
+            if self.credentials:
+                self.credentials.revoke(node_id)
         return {"node_id": node_id, "action": action, "ok": True}
+
+    def rotate_credential(self, node_id: str) -> dict:
+        if not self.credentials:
+            raise DockerUnavailableError("当前节点仍使用旧版部署级令牌，无法独立轮换")
+        with self.lock:
+            container = self._find(node_id)
+            node = next(
+                (item for item in self._registered_nodes() if item.id == node_id), None
+            )
+            if not node:
+                raise DockerUnavailableError("节点调度记录不存在，无法安全轮换")
+            role = (container.get("Labels") or {}).get("io.taskhub.role", "")
+            try:
+                token = self.credentials.rotate(node_id)
+            except NodeCredentialError as exc:
+                raise DockerUnavailableError(str(exc)) from exc
+            status, data = self.client.request(
+                "DELETE", f"/containers/{container['Id']}?force=true"
+            )
+            if status != 204:
+                raise DockerUnavailableError(data.get("message", "旧节点容器移除失败"))
+            self._unregister(node_id)
+            result = self.create(
+                ContainerCreate(node_id=node_id, role=role, slots=node.slots),
+                _token=token,
+            )
+        return {**result, "credential": self.credentials.metadata(node_id)}
 
     def _find(self, node_id: str) -> dict:
         filters = json.dumps({"label": [f"{self.label}=true", f"io.taskhub.node-id={node_id}"]})

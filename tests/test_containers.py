@@ -1,9 +1,12 @@
 import json
 
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 from taskhub_v2.api.app import create_app
 from taskhub_v2.config import Settings
+from taskhub_v2.security.encryption import SecretCipher
+from taskhub_v2.security.node_credentials import NodeCredentialVault
 from taskhub_v2.services.containers import ContainerCreate, ContainerManager
 
 
@@ -56,7 +59,7 @@ class FakeDockerClient:
         raise AssertionError((method, path, payload))
 
 
-def manager(tmp_path, client=None):
+def manager(tmp_path, client=None, credentials=None):
     return ContainerManager(
         enabled=True,
         socket_path="/unused/docker.sock",
@@ -64,6 +67,7 @@ def manager(tmp_path, client=None):
         image="taskhub:test",
         node_token="node-secret",
         nodes_file=str(tmp_path / "nodes.json"),
+        credentials=credentials,
         client=client or FakeDockerClient(),
     )
 
@@ -115,6 +119,25 @@ def test_container_status_is_disabled_without_runtime_authorization(tmp_path):
         "available": False,
         "detail": "当前部署未启用",
     }
+
+
+def test_local_container_uses_rotatable_per_node_credential(tmp_path):
+    credentials = NodeCredentialVault(
+        str(tmp_path / "credentials.json"),
+        SecretCipher(Fernet.generate_key().decode()),
+    )
+    docker = FakeDockerClient()
+    subject = manager(tmp_path, docker, credentials)
+    subject.create(ContainerCreate(node_id="test-01", role="test", slots=2))
+    original = credentials.resolve("test-01")
+
+    rotated = subject.action("test-01", "rotate-credential")
+
+    assert credentials.resolve("test-01") != original
+    assert rotated["credential"]["version"] == 2
+    assert subject.list()[0]["credential"]["status"] == "active"
+    subject.action("test-01", "remove")
+    assert credentials.resolve("test-01") == ""
 
 
 def test_container_routes_require_auth_and_csrf(tmp_path):

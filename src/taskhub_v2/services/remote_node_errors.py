@@ -1,0 +1,2 @@
+class RemoteNodeError(RuntimeError):
+    pass

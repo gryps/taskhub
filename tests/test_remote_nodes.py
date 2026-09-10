@@ -4,9 +4,10 @@ from pathlib import Path
 from taskhub_v2.domain.remote_nodes import RemoteNodeCreate
 from taskhub_v2.persistence.configuration import MemoryConfigurationStore
 from taskhub_v2.persistence.hosts import MemoryHostStore, new_host_record
-from taskhub_v2.persistence.remote_nodes import MemoryRemoteNodeStore
+from taskhub_v2.persistence.remote_nodes import MemoryRemoteNodeStore, new_remote_node_record
+from taskhub_v2.services import remote_node_helpers as node_helpers
 from taskhub_v2.services.image_distribution import image_sources
-from taskhub_v2.services.remote_nodes import RemoteNodeService
+from taskhub_v2.services.remote_nodes import RemoteNodeError, RemoteNodeService
 
 
 class FakeRegistry:
@@ -18,6 +19,7 @@ class FakeRegistry:
         return False
 
     def register_node(self, node):
+        self.nodes = [item for item in self.nodes if item.id != node.id]
         self.nodes.append(node)
 
     def unregister_node(self, node_id):
@@ -57,6 +59,38 @@ class FakeHosts:
         return "Loaded image"
 
 
+class FakeCredentials:
+    def __init__(self):
+        self.values = {}
+        self.versions = {}
+
+    def issue(self, node_id):
+        self.versions[node_id] = self.versions.get(node_id, 0) + 1
+        value = f"unique-{node_id}-{self.versions[node_id]}"
+        self.values[node_id] = value
+        return value
+
+    def ensure(self, node_id):
+        return self.values.get(node_id) or self.issue(node_id)
+
+    def resolve(self, node_id):
+        return self.values.get(node_id, "")
+
+    def rotate(self, node_id):
+        self.versions[node_id] += 1
+        self.values[node_id] = f"rotated-{node_id}-{self.versions[node_id]}"
+        return self.values[node_id]
+
+    def revoke(self, node_id):
+        self.values.pop(node_id, None)
+
+    def metadata(self, node_id):
+        return {
+            "status": "active" if node_id in self.values else "revoked",
+            "version": self.versions.get(node_id, 0),
+        }
+
+
 async def make_service(pull_output):
     host_store = MemoryHostStore()
     await host_store.save(
@@ -92,13 +126,43 @@ async def make_service(pull_output):
         image_proxy="mirror.example/docker.io",
         registry_username="puller",
         registry_password="registry-secret",
+        credentials=FakeCredentials(),
     )
 
-    async def healthy(_address, _request):
+    async def healthy(_address, _request, _token):
         return None
 
     service._wait_healthy = healthy
     return service, store, hosts, registry
+
+
+class ReconcileHosts:
+    def __init__(self):
+        self.exists = False
+        self.state = "missing"
+        self.create_count = 0
+
+    async def check(self, _host_id):
+        return {"status": "available", "status_reason": "available"}
+
+    async def run_remote_script(self, _host_id, script, timeout=120):
+        if "printf 'EXISTS=0" in script:
+            return (
+                f"EXISTS={1 if self.exists else 0}\nSTATE={self.state}\n"
+                f"CONTAINER={'container-123' if self.exists else ''}\n"
+            )
+        if "docker_run create" in script:
+            self.exists = True
+            self.state = "running"
+            self.create_count += 1
+            return "CONTAINER=container-123\nSTATE=running\n"
+        if " start " in script:
+            self.state = "running"
+            return "STATE=running\n"
+        if " stop " in script:
+            self.state = "exited"
+            return "STATE=exited\n"
+        raise AssertionError((script, timeout))
 
 
 def test_remote_node_uses_registry_and_persists_completed_progress():
@@ -192,3 +256,128 @@ def test_image_sources_prioritize_private_registry_then_proxy():
         ("proxy", "mirror.example/docker.io/taskhub-node:0.1.0-alpha"),
         ("configured-registry", "taskhub-node:0.1.0-alpha"),
     ]
+
+
+def test_reconciliation_recreates_missing_container_once_and_registers_agent():
+    async def scenario():
+        host_store = MemoryHostStore()
+        await host_store.save(
+            new_host_record(
+                host_id="worker-host",
+                payload={
+                    "address": "192.0.2.20",
+                    "port": 22,
+                    "username": "taskhub",
+                    "docker_access": "direct",
+                    "allowed_roles": ["execution"],
+                },
+                encrypted_private_key="encrypted",
+                host_key="host key",
+                fingerprint="SHA256:test",
+                status="available",
+                facts={"architecture": "x86_64"},
+                status_reason="available",
+            )
+        )
+        store = MemoryRemoteNodeStore()
+        await store.save(
+            new_remote_node_record(
+                node_id="worker-01",
+                host_id="worker-host",
+                payload={
+                    "node_id": "worker-01",
+                    "host_id": "worker-host",
+                    "role": "execution",
+                    "slots": 1,
+                    "host_port": 8020,
+                    "cpu_limit": "",
+                    "memory_limit": "",
+                    "image": "taskhub-node:0.1.0-alpha",
+                },
+                container_id="old-container",
+                image_digest="sha256:image",
+                desired_state="running",
+                actual_state="offline",
+                status_reason="Seed restarted",
+            )
+        )
+        hosts = ReconcileHosts()
+        registry = FakeRegistry()
+        credentials = FakeCredentials()
+        credentials.issue("worker-01")
+        service = RemoteNodeService(
+            store,
+            hosts,
+            host_store,
+            MemoryConfigurationStore(),
+            registry,
+            image="taskhub-node:0.1.0-alpha",
+            node_token="legacy",
+            credentials=credentials,
+        )
+
+        async def healthy(_address, _request, token):
+            assert token == credentials.resolve("worker-01")
+
+        service._wait_healthy = healthy
+        await service.reconcile_once()
+        await service.reconcile_once()
+
+        record = await store.get("worker-01")
+        assert hosts.create_count == 1
+        assert record.actual_state == "running"
+        assert record.container_id == "container-123"
+        assert record.payload["reconciliation"]["agent_last_seen_at"]
+        assert [node.id for node in registry.nodes] == ["worker-01"]
+
+        revoked = await service.revoke_credential("worker-01")
+        assert revoked["credential"]["status"] == "revoked"
+        assert revoked["desired_state"] == "stopped"
+        assert registry.nodes == []
+
+        restarted = await service.action("worker-01", "start")
+        assert restarted["credential"]["status"] == "active"
+        assert restarted["credential"]["version"] == 2
+        assert restarted["actual_state"] == "running"
+        assert [node.id for node in registry.nodes] == ["worker-01"]
+
+    asyncio.run(scenario())
+
+
+def test_reconciliation_removes_unreachable_agent_from_scheduling_then_recovers():
+    async def scenario():
+        service, store, _hosts, registry = await make_service(
+            "FOUND=1\nSOURCE=private-registry\nIMAGE_ID=sha256:remote-image\n"
+            "ARCH=amd64\nOS=linux\nDIGESTS=repo@sha256:resolved\n"
+        )
+        request = RemoteNodeCreate(
+            node_id="worker-04",
+            host_id="worker-host",
+            role="execution",
+            slots=1,
+            host_port=8024,
+        )
+        await service.create(request)
+        await asyncio.gather(*service._tasks.values())
+        record = await store.get("worker-04")
+
+        async def failing(_address, _request, _token):
+            raise RemoteNodeError("network unavailable")
+
+        service._wait_healthy = failing
+        await service._mark_offline(record, "network unavailable")
+        assert registry.nodes == []
+        assert (await store.get("worker-04")).actual_state == "offline"
+
+        async def healthy(_address, _request, _token):
+            return None
+
+        service._wait_healthy = healthy
+        registry.register_node(node_helpers.node_definition("192.0.2.20", request))
+        await service._save_reconciled(
+            await store.get("worker-04"), "running", "recovered", seen=True
+        )
+        assert (await store.get("worker-04")).actual_state == "running"
+        assert [node.id for node in registry.nodes] == ["worker-04"]
+
+    asyncio.run(scenario())

@@ -103,7 +103,13 @@ printf 'FOUND=1\nSOURCE=ssh-transfer\nIMAGE_ID=%s\nARCH=%s\nOS=%s\nDIGESTS=%s\n'
 
 
 def create_script(
-    request: RemoteNodeCreate, image: str, token: str, cpu: str, memory: str
+    request: RemoteNodeCreate,
+    image: str,
+    token: str,
+    cpu: str,
+    memory: str,
+    *,
+    replace_existing: bool = False,
 ) -> str:
     name = f"taskhub-node-{request.node_id}"
     quoted_image = shlex.quote(image)
@@ -135,11 +141,15 @@ def create_script(
     args.append(image)
     command = " ".join(item if item == '"$env_file"' else shlex.quote(item) for item in args)
     token_line = shlex.quote(f"TASKHUB_NODE_TOKEN={token}")
+    existing = (
+        f"docker_run rm -f {shlex.quote(name)} >/dev/null\n"
+        if replace_existing
+        else "echo '节点容器已存在' >&2\n  exit 17\n"
+    )
     return f"""set -eu
 docker_run() {{ __TASKHUB_DOCKER__ "$@"; }}
 if docker_run container inspect {shlex.quote(name)} >/dev/null 2>&1; then
-  echo '节点容器已存在' >&2
-  exit 17
+  {existing.rstrip()}
 fi
 docker_run image inspect {quoted_image} >/dev/null 2>&1
 env_file=$(mktemp)
@@ -154,13 +164,34 @@ printf 'CONTAINER=%s\nSTATE=%s\n' "$container" "$state"
 """
 
 
+def runtime_script(node_id: str, docker_access: str) -> str:
+    docker = docker_prefix(docker_access)
+    name = shlex.quote(f"taskhub-node-{node_id}")
+    return f"""set -eu
+if ! {docker} container inspect {name} >/dev/null 2>&1; then
+  printf 'EXISTS=0\nSTATE=missing\nCONTAINER=\n'
+  exit 0
+fi
+container=$({docker} container inspect {name} --format '{{{{.Id}}}}')
+state=$({docker} container inspect {name} --format '{{{{.State.Status}}}}')
+printf 'EXISTS=1\nSTATE=%s\nCONTAINER=%s\n' "$state" "$container"
+"""
+
+
 def action_script(node_id: str, docker_access: str, action: str, remove_volume: bool) -> str:
     docker = docker_prefix(docker_access)
     name = f"taskhub-node-{node_id}"
     if action == "remove":
         volume = f"{name}-data"
-        remove = f"\n{docker} volume rm {shlex.quote(volume)} >/dev/null" if remove_volume else ""
-        return f"set -eu\n{docker} rm -f {shlex.quote(name)} >/dev/null{remove}\n"
+        remove = (
+            f"\n{docker} volume rm {shlex.quote(volume)} >/dev/null 2>&1 || true"
+            if remove_volume
+            else ""
+        )
+        return (
+            f"set -eu\n{docker} rm -f {shlex.quote(name)} >/dev/null 2>&1 || true"
+            f"{remove}\n"
+        )
     command = {"start": "start", "stop": "stop", "restart": "restart"}[action]
     return (
         f"set -eu\n{docker} {command} {shlex.quote(name)} >/dev/null\n"

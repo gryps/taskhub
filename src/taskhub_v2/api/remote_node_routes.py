@@ -49,3 +49,23 @@ async def remote_node_action(
         raise HTTPException(status_code=404, detail="远程节点不存在") from exc
     except (HostAdmissionError, RemoteNodeError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/{node_id}/credential/rotate")
+async def rotate_remote_node_credential(node_id: str, service: ServiceDep) -> dict:
+    try:
+        return await service.rotate_credential(node_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="远程节点不存在") from exc
+    except (HostAdmissionError, RemoteNodeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/{node_id}/credential/revoke")
+async def revoke_remote_node_credential(node_id: str, service: ServiceDep) -> dict:
+    try:
+        return await service.revoke_credential(node_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="远程节点不存在") from exc
+    except (HostAdmissionError, RemoteNodeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

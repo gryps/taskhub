@@ -9,6 +9,7 @@ from typing import Any
 
 from taskhub_v2.domain.remote_nodes import RemoteNodeCreate
 from taskhub_v2.persistence.remote_nodes import new_remote_node_record
+from taskhub_v2.security.node_credentials import NodeCredentialError
 from taskhub_v2.services import image_distribution as image_ops
 from taskhub_v2.services import remote_node_helpers as node_helpers
 from taskhub_v2.services.containers import (
@@ -17,13 +18,11 @@ from taskhub_v2.services.containers import (
     DockerUnavailableError,
 )
 from taskhub_v2.services.hosts import PhysicalHostService
+from taskhub_v2.services.remote_node_errors import RemoteNodeError
+from taskhub_v2.services.remote_node_lifecycle import RemoteNodeLifecycleMixin
 
 
-class RemoteNodeError(RuntimeError):
-    pass
-
-
-class RemoteNodeService:
+class RemoteNodeService(RemoteNodeLifecycleMixin):
     def __init__(
         self,
         store,
@@ -40,6 +39,8 @@ class RemoteNodeService:
         registry_password: str = "",
         default_cpu: str = "",
         default_memory: str = "",
+        credentials=None,
+        reconcile_interval_seconds: int = 15,
     ):
         self.store = store
         self.hosts = hosts
@@ -54,22 +55,31 @@ class RemoteNodeService:
         self.registry_password = registry_password
         self.default_cpu = default_cpu
         self.default_memory = default_memory
+        self.credentials = credentials
+        self.reconcile_interval_seconds = max(5, reconcile_interval_seconds)
         self._tasks: dict[str, asyncio.Task] = {}
+        self._reconcile_task: asyncio.Task | None = None
+        self._node_locks: dict[str, asyncio.Lock] = {}
 
     async def list(self) -> dict[str, Any]:
         return {
-            "nodes": [node_helpers.remote_node_view(item) for item in await self.store.list()]
+            "nodes": [
+                node_helpers.remote_node_view(item, self._credential_metadata(item.node_id))
+                for item in await self.store.list()
+            ]
         }
 
     async def create(self, request: RemoteNodeCreate) -> dict[str, Any]:
-        if not self.node_token:
+        if not self.node_token and not self.credentials:
             raise RemoteNodeError("尚未配置节点通信令牌")
         if not re.fullmatch(r"[A-Za-z0-9._:/@-]+", self.image or ""):
             raise RemoteNodeError("默认工作节点镜像未配置或格式无效")
         host = await self.host_store.get(request.host_id)
         if not host:
             raise KeyError(request.host_id)
-        allowed_roles = host.payload.get("allowed_roles", ["execution", "test", "preproduction"])
+        allowed_roles = host.payload.get(
+            "allowed_roles", ["execution", "test", "preproduction"]
+        )
         if request.role not in allowed_roles:
             raise RemoteNodeError(f"主机 {request.host_id} 不允许承载该节点角色")
         if await self.store.get(request.node_id) or self.registry.node_exists(request.node_id):
@@ -77,37 +87,53 @@ class RemoteNodeService:
 
         cpu = request.cpu_limit or self.default_cpu
         memory = request.memory_limit or self.default_memory
-        record = await self.store.save(
-            new_remote_node_record(
-                node_id=request.node_id,
-                host_id=request.host_id,
-                payload={
-                    **request.model_dump(mode="json"),
-                    "image": self.image,
-                    "cpu_limit": cpu,
-                    "memory_limit": memory,
-                    "distribution": {
-                        "phase": "queued",
-                        "percent": 0,
-                        "source": "",
-                        "detail": "等待开始镜像分发",
+        token = self._issue_credential(request.node_id)
+        try:
+            record = await self.store.save(
+                new_remote_node_record(
+                    node_id=request.node_id,
+                    host_id=request.host_id,
+                    payload={
+                        **request.model_dump(mode="json"),
+                        "image": self.image,
+                        "cpu_limit": cpu,
+                        "memory_limit": memory,
+                        "distribution": {
+                            "phase": "queued",
+                            "percent": 0,
+                            "source": "",
+                            "detail": "等待开始镜像分发",
+                        },
                     },
-                },
-                container_id="",
-                image_digest="",
-                desired_state="running",
-                actual_state="distributing",
-                status_reason="等待开始镜像分发",
+                    container_id="",
+                    image_digest="",
+                    desired_state="running",
+                    actual_state="distributing",
+                    status_reason="等待开始镜像分发",
+                )
             )
-        )
-        task = asyncio.create_task(self._provision(request, host, cpu, memory))
+        except Exception:
+            self._revoke_credential(request.node_id)
+            raise
+        task = asyncio.create_task(self._provision(request, host, cpu, memory, token))
         self._tasks[request.node_id] = task
         task.add_done_callback(
             lambda _task, node_id=request.node_id: self._tasks.pop(node_id, None)
         )
-        return node_helpers.remote_node_view(record)
+        return node_helpers.remote_node_view(
+            record, self._credential_metadata(request.node_id)
+        )
 
-    async def _provision(self, request, host, cpu: str, memory: str) -> None:
+    async def _provision(
+        self, request, host, cpu: str, memory: str, token: str
+    ) -> None:
+        lock = self._node_locks.setdefault(request.node_id, asyncio.Lock())
+        async with lock:
+            await self._provision_locked(request, host, cpu, memory, token)
+
+    async def _provision_locked(
+        self, request, host, cpu: str, memory: str, token: str
+    ) -> None:
         try:
             await self._progress(request.node_id, "checking", 5, "检查目标主机镜像与架构")
             await self._progress(
@@ -140,7 +166,9 @@ class RemoteNodeService:
                     f"已从{image_ops.source_label(source)}取得镜像，正在核对摘要与架构",
                     source=source,
                 )
-                digest = image_ops.validate_remote_image(self.image, host.facts, image_values)
+                digest = image_ops.validate_remote_image(
+                    self.image, host.facts, image_values
+                )
             else:
                 detail = image_values.get("ERROR", "仓库和代理均未提供该镜像")
                 await self._progress(
@@ -152,7 +180,6 @@ class RemoteNodeService:
                 )
                 digest = await self._transfer_image(request, host)
                 source = "ssh-transfer"
-
             await self._progress(
                 request.node_id,
                 "creating",
@@ -164,9 +191,7 @@ class RemoteNodeService:
             output = await self.hosts.run_remote_script(
                 request.host_id,
                 image_ops.apply_host_docker_access(
-                    image_ops.create_script(
-                        request, self.image, self.node_token, cpu, memory
-                    ),
+                    image_ops.create_script(request, self.image, token, cpu, memory),
                     host.payload["docker_access"],
                 ),
                 timeout=180,
@@ -185,7 +210,7 @@ class RemoteNodeService:
                 detail="容器已启动，正在等待 Node Agent 健康检查",
                 source=source,
             )
-            await self._wait_healthy(host.payload["address"], request)
+            await self._wait_healthy(host.payload["address"], request, token)
             self.registry.register_node(
                 node_helpers.node_definition(host.payload["address"], request)
             )
@@ -216,7 +241,9 @@ class RemoteNodeService:
     async def _transfer_image(self, request: RemoteNodeCreate, host) -> str:
         with tempfile.NamedTemporaryFile(prefix="taskhub-node-", suffix=".tar") as archive:
             try:
-                local = await asyncio.to_thread(self.registry.export_image, self.image, archive)
+                local = await asyncio.to_thread(
+                    self.registry.export_image, self.image, archive
+                )
             except DockerUnavailableError as exc:
                 raise RemoteNodeError(
                     f"远程仓库拉取失败，且 Seed 本机无法导出镜像：{exc}"
@@ -255,13 +282,7 @@ class RemoteNodeService:
         return digest
 
     async def _progress(
-        self,
-        node_id: str,
-        phase: str,
-        percent: int,
-        detail: str,
-        *,
-        source: str = "",
+        self, node_id: str, phase: str, percent: int, detail: str, *, source: str = "",
         digest: str = "",
     ) -> None:
         await self._save_runtime(
@@ -276,17 +297,9 @@ class RemoteNodeService:
         )
 
     async def _save_runtime(
-        self,
-        node_id: str,
-        *,
-        actual_state: str,
-        phase: str,
-        percent: int,
-        detail: str,
-        source: str = "",
-        digest: str = "",
-        image_digest: str | None = None,
-        container_id: str | None = None,
+        self, node_id: str, *, actual_state: str, phase: str, percent: int,
+        detail: str, source: str = "", digest: str = "",
+        image_digest: str | None = None, container_id: str | None = None,
     ):
         record = await self.store.get(node_id)
         if not record:
@@ -307,76 +320,46 @@ class RemoteNodeService:
                 record,
                 payload=payload,
                 container_id=record.container_id if container_id is None else container_id,
-                image_digest=(
-                    record.image_digest if image_digest is None else image_digest
-                ),
+                image_digest=record.image_digest if image_digest is None else image_digest,
                 actual_state=actual_state,
                 status_reason=detail,
             )
         )
 
-    async def action(self, node_id: str, action: str, *, remove_volume: bool = False) -> dict:
-        record = await self.store.get(node_id)
-        if not record:
-            raise KeyError(node_id)
-        host = await self.host_store.get(record.host_id)
-        if not host:
-            raise RemoteNodeError("节点所属物理主机不存在")
-        if not record.container_id:
-            if action != "remove":
-                raise RemoteNodeError("镜像分发尚未完成，当前只能移除该节点记录")
-            task = self._tasks.get(node_id)
-            if task and not task.done():
-                task.cancel()
-            await self.store.delete(node_id)
-            await self._audit("remove", node_id, record.host_id, "passed")
-            return {"node_id": node_id, "action": action, "ok": True}
-        output = await self.hosts.run_remote_script(
-            record.host_id,
-            image_ops.action_script(
-                node_id, host.payload["docker_access"], action, remove_volume
-            ),
-            timeout=120,
-        )
-        if action == "remove":
-            self.registry.unregister_node(node_id)
-            await self.store.delete(node_id)
-            await self._audit("remove", node_id, record.host_id, "passed")
-            return {"node_id": node_id, "action": action, "ok": True}
-        values = image_ops.values(output)
-        state = values.get("STATE", "unknown")
-        desired = "stopped" if action == "stop" else "running"
-        reason = f"远程容器已{ {'start': '启动', 'stop': '停止', 'restart': '重启'}[action] }"
-        if action == "stop":
-            self.registry.unregister_node(node_id)
-        else:
-            request = RemoteNodeCreate.model_validate(
-                {key: record.payload[key] for key in RemoteNodeCreate.model_fields}
-            )
-            await self._wait_healthy(host.payload["address"], request)
-            self.registry.register_node(
-                node_helpers.node_definition(host.payload["address"], request)
-            )
-            reason = "Node Agent 健康且已加入调度"
-            state = "running"
-        saved = await self.store.save(
-            replace(record, desired_state=desired, actual_state=state, status_reason=reason)
-        )
-        await self._audit(action, node_id, record.host_id, "passed")
-        return node_helpers.remote_node_view(saved)
-
-    async def close(self) -> None:
-        tasks = [task for task in self._tasks.values() if not task.done()]
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-
-    async def _wait_healthy(self, address: str, request: RemoteNodeCreate) -> None:
+    async def _wait_healthy(
+        self, address: str, request: RemoteNodeCreate, token: str
+    ) -> None:
         try:
-            await node_helpers.wait_healthy(address, request, self.node_token)
+            await node_helpers.wait_healthy(address, request, token)
         except RuntimeError as exc:
             raise RemoteNodeError(str(exc)) from exc
+
+    def _issue_credential(self, node_id: str) -> str:
+        try:
+            return self.credentials.issue(node_id) if self.credentials else self.node_token
+        except NodeCredentialError as exc:
+            raise RemoteNodeError(str(exc)) from exc
+
+    def _ensure_credential(self, node_id: str) -> str:
+        try:
+            return self.credentials.ensure(node_id) if self.credentials else self.node_token
+        except NodeCredentialError as exc:
+            raise RemoteNodeError(str(exc)) from exc
+
+    def _resolve_credential(self, node_id: str) -> str:
+        try:
+            return self.credentials.resolve(node_id) if self.credentials else self.node_token
+        except NodeCredentialError as exc:
+            raise RemoteNodeError(str(exc)) from exc
+
+    def _revoke_credential(self, node_id: str) -> None:
+        if self.credentials:
+            self.credentials.revoke(node_id)
+
+    def _credential_metadata(self, node_id: str) -> dict:
+        if self.credentials:
+            return self.credentials.metadata(node_id)
+        return {"status": "legacy-shared", "version": 0}
 
     async def _audit(self, action: str, node_id: str, host_id: str, result: str) -> None:
         await self.configuration_store.add_audit(

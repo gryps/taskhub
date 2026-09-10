@@ -38,10 +38,11 @@ class NodeExecutionError(RuntimeError):
 
 
 class NodeRunner:
-    def __init__(self, token: str, transport=None, local_coder=None):
+    def __init__(self, token: str, transport=None, local_coder=None, token_resolver=None):
         self.token = token
         self.transport = transport
         self.local_coder = local_coder
+        self.token_resolver = token_resolver
 
     async def run(
         self,
@@ -100,9 +101,10 @@ class NodeRunner:
                 "system": controller_diagnostics(get_settings()),
             }
         try:
-            async with self._client(timeout=100 if "browser_acceptance" in node.workloads else 5) as client:
+            timeout = 100 if "browser_acceptance" in node.workloads else 5
+            async with self._client(timeout=timeout) as client:
                 response = await client.get(
-                    f"{node.url.rstrip('/')}/api/health", headers=self._headers()
+                    f"{node.url.rstrip('/')}/api/health", headers=self._headers(node)
                 )
                 response.raise_for_status()
                 return response.json()
@@ -137,7 +139,7 @@ class NodeRunner:
                         "feedback": feedback,
                         "archive_sha256": digest,
                     },
-                    headers=self._headers(),
+                    headers=self._headers(node),
                 )
                 response.raise_for_status()
             result = await asyncio.to_thread(
@@ -177,7 +179,7 @@ class NodeRunner:
                         "artifact_paths": artifact_paths,
                         "execution_environment": execution_environment,
                     },
-                    headers=self._headers(),
+                    headers=self._headers(node),
                 )
                 executed.raise_for_status()
         except Exception as exc:
@@ -203,7 +205,7 @@ class NodeRunner:
         async with self._client(timeout=120) as client:
             response = await client.get(
                 f"{node.url.rstrip('/')}/api/jobs/{job_id}/artifacts/{quote(path, safe='/')}",
-                headers=self._headers(),
+                headers=self._headers(node),
             )
             response.raise_for_status()
             return response.content
@@ -213,15 +215,16 @@ class NodeRunner:
             f"{node.url.rstrip('/')}/api/jobs/{job_id}/workspace",
             params={"sha256": digest},
             content=archive,
-            headers={**self._headers(), "Content-Type": "application/gzip"},
+            headers={**self._headers(node), "Content-Type": "application/gzip"},
         )
         uploaded.raise_for_status()
 
     def _client(self, timeout: int) -> httpx.AsyncClient:
         return httpx.AsyncClient(timeout=timeout, trust_env=False, transport=self.transport)
 
-    def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.token}"}
+    def _headers(self, node: NodeDefinition) -> dict[str, str]:
+        token = self.token_resolver(node.id) if self.token_resolver else self.token
+        return {"Authorization": f"Bearer {token}"}
 
     @staticmethod
     def _archive(workdir: Path) -> bytes:

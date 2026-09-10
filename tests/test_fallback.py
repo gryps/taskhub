@@ -11,6 +11,13 @@ class FailingProvider:
         raise RuntimeError("quota")
 
 
+class QuotaProvider:
+    async def create_plan(self, requirement: str):
+        error = RuntimeError("quota")
+        error.reason = "quota_exceeded"
+        raise error
+
+
 class WorkingProvider:
     async def create_plan(self, requirement: str):
         return ModelResult(
@@ -38,11 +45,14 @@ def test_router_skips_cooling_provider_then_retries_preferred(tmp_path: Path):
         now = [100.0]
         health = ProviderHealthStore(
             str(tmp_path / "health.json"),
+            failure_threshold=1,
+            recovery_threshold=1,
             quota_cooldown_seconds=10,
             transient_cooldown_seconds=10,
+            switch_lock_seconds=10,
             clock=lambda: now[0],
         )
-        first = FailingProvider()
+        first = QuotaProvider()
         second = WorkingProvider()
         router = FallbackModelProvider(
             {"first": first, "second": second},
@@ -51,9 +61,9 @@ def test_router_skips_cooling_provider_then_retries_preferred(tmp_path: Path):
         )
 
         initial = await router.create_plan("requirement")
-        assert initial.failed_providers == ["first:RuntimeError"]
+        assert initial.failed_providers == ["first:quota_exceeded"]
         cooling = await router.create_plan("requirement")
-        assert cooling.failed_providers == ["first:cooldown:RuntimeError"]
+        assert cooling.failed_providers == ["first:cooldown:quota_exceeded"]
         now[0] = 111.0
         recovered = WorkingProvider()
         router.providers["first"] = recovered

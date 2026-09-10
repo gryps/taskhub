@@ -185,7 +185,8 @@ function credentialState(metadata) {
 function renderConfigurationAudit(target, events) {
   const actionNames = {update: "保存配置", connection_test: "连接测试", apply: "启动生效",
     admit: "登记主机", check: "重新检测", create: "创建节点", start: "启动节点",
-    stop: "停止节点", restart: "重启节点", remove: "移除节点"};
+    stop: "停止节点", restart: "重启节点", remove: "移除节点",
+    rotate_credential: "轮换节点凭据", revoke_credential: "吊销节点凭据"};
   const resultNames = {pending_restart: "等待重启", passed: "通过", failed: "失败", applied: "已生效"};
   const rows = events.map((item) => {
     const summary = item.parameter_summary || {};
@@ -629,8 +630,12 @@ function containerActions(item) {
     : `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="${location}" data-action="start">启动</button>`;
   const restart = location === "remote" && item.state === "running"
     ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="remote" data-action="restart">重启</button>` : "";
+  const rotate = item.credential?.status === "active"
+    ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="${location}" data-action="rotate-credential">轮换凭据</button>` : "";
+  const revoke = location === "remote" && item.credential?.status === "active"
+    ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="remote" data-action="revoke-credential">吊销凭据</button>` : "";
   return `<div class="container-actions">${primary}
-    ${restart}
+    ${restart}${rotate}${revoke}
     <button type="button" class="secondary container-action remove-container"
       data-node-id="${nodeId}" data-location="${location}" data-action="remove">移除</button></div>`;
 }
@@ -688,11 +693,15 @@ async function loadContainers() {
           <small>${Number(distribution.percent || 0)}% · ${escapeHtml(distribution.detail || item.status || "")}</small>`
         : `<small>${escapeHtml(item.status)}</small>`;
       const stateClass = item.state === "running" ? "ok" : item.state === "error" ? "bad" : "warn";
+      const credential = item.credential
+        ? ` · 凭据 v${Number(item.credential.version || 0)} ${item.credential.status === "active" ? "有效" : "已吊销"}` : "";
+      const reconciled = item.reconciliation?.checked_at
+        ? ` · 协调 ${new Date(item.reconciliation.checked_at).toLocaleTimeString()}` : "";
       return `
       <div class="resource-row container-row">
         <strong>${escapeHtml(item.node_id)}<small>${escapeHtml(item.name)} · ${escapeHtml(item.host_id)}</small></strong>
         <span>${escapeHtml(containerRoleNames[item.role] || item.role)}</span>
-        <span class="${stateClass}">${escapeHtml(item.state)}${progress}</span>
+        <span class="${stateClass}">${escapeHtml(item.state)}${progress}<small>${escapeHtml(credential + reconciled)}</small></span>
         ${containerActions(item)}
       </div>`;
     }).join("");
@@ -755,11 +764,20 @@ async function createContainer(event) {
 async function runContainerAction(nodeId, action, location) {
   if (action === "remove" &&
       !window.confirm(`确认移除节点容器 ${nodeId}？节点数据卷将保留。`)) return;
-  const verbs = {start: "启动", stop: "停止", restart: "重启", remove: "移除"};
+  if (action === "rotate-credential" &&
+      !window.confirm(`确认轮换 ${nodeId} 的独立凭据？节点将短暂重建并保留数据卷。`)) return;
+  if (action === "revoke-credential" &&
+      !window.confirm(`确认吊销 ${nodeId} 的独立凭据？节点将停止并退出调度。`)) return;
+  const verbs = {start: "启动", stop: "停止", restart: "重启", remove: "移除",
+    "rotate-credential": "轮换凭据", "revoke-credential": "吊销凭据"};
   byId("container-message").textContent = `正在${verbs[action]} ${nodeId}`;
   try {
     const prefix = location === "remote" ? "/api/remote-nodes" : "/api/containers";
-    await request(`${prefix}/${encodeURIComponent(nodeId)}/${action}`, {
+    const credentialAction = {"rotate-credential": "rotate", "revoke-credential": "revoke"}[action];
+    const endpoint = credentialAction && location === "remote"
+      ? `${prefix}/${encodeURIComponent(nodeId)}/credential/${credentialAction}`
+      : `${prefix}/${encodeURIComponent(nodeId)}/${action}`;
+    await request(endpoint, {
       method: "POST", body: action === "remove" && location === "remote"
         ? JSON.stringify({remove_volume: false}) : undefined,
     });

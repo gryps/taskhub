@@ -43,6 +43,7 @@ class Settings(BaseModel):
     test_runner: Literal["local", "scheduled"] = "local"
     nodes_file: str = "/home/gryps/.config/taskhub-v2/nodes.json"
     node_state_file: str = "/home/gryps/.local/state/taskhub-v2/node-state.json"
+    node_credentials_file: str = "/home/gryps/.config/taskhub-v2/node-credentials.json"
     node_token: str = Field(default="", repr=False)
     container_provisioning_enabled: bool = False
     docker_socket: str = "/var/run/docker.sock"
@@ -153,6 +154,10 @@ def get_settings() -> Settings:
         node_state_file=os.getenv(
             "TASKHUB_NODE_STATE_FILE",
             "/home/gryps/.local/state/taskhub-v2/node-state.json",
+        ),
+        node_credentials_file=os.getenv(
+            "TASKHUB_NODE_CREDENTIALS_FILE",
+            "/home/gryps/.config/taskhub-v2/node-credentials.json",
         ),
         node_token=os.getenv("TASKHUB_NODE_TOKEN", ""),
         container_provisioning_enabled=os.getenv(
