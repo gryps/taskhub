@@ -1,5 +1,6 @@
-param([Parameter(Mandatory = $true)][string]$BackupDirectory)
-$ErrorActionPreference = "Stop"
+﻿param([Parameter(Mandatory = $true)][string]$BackupDirectory)
+$ErrorActionPreference = "Continue"
+$PSDefaultParameterValues["*:ErrorAction"] = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $EnvFile = Join-Path $Root ".env"

@@ -1,8 +1,9 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$Version,
     [string]$OfflineBundle = ""
 )
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
+$PSDefaultParameterValues["*:ErrorAction"] = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $EnvFile = Join-Path $Root ".env"

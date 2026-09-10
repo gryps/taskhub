@@ -27,6 +27,15 @@ def test_release_kit_contains_cross_platform_lifecycle_assets():
     assert expected.issubset({path.name for path in RELEASE.iterdir()})
 
 
+def test_windows_scripts_are_powershell_51_safe():
+    for path in RELEASE.glob("*.ps1"):
+        payload = path.read_bytes()
+        assert payload.startswith(b"\xef\xbb\xbf")
+        text = payload.decode("utf-8-sig")
+        assert '$ErrorActionPreference = "Continue"' in text
+        assert '$PSDefaultParameterValues["*:ErrorAction"] = "Stop"' in text
+
+
 def test_release_compose_is_immutable_and_keeps_postgres_private():
     payload = yaml.safe_load((RELEASE / "compose.yaml").read_text(encoding="utf-8"))
     controller = payload["services"]["controller"]
