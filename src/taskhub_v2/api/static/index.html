@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=17">
+  <link rel="stylesheet" href="/static/styles.css?v=18">
 </head>
 <body>
   <header class="app-header">
@@ -313,7 +313,11 @@
             <option value="direct">用户直接执行 Docker</option>
             <option value="sudo">免密 sudo 执行 Docker</option>
           </select></label>
-          <label>用途<input id="host-purpose" maxlength="200" placeholder="执行 / 测试 / 预生产"></label>
+          <fieldset class="wide role-selector"><legend>允许承载的节点角色</legend>
+            <label><input type="checkbox" name="host-role" value="execution" checked>执行节点</label>
+            <label><input type="checkbox" name="host-role" value="test" checked>测试节点</label>
+            <label><input type="checkbox" name="host-role" value="preproduction" checked>预生产节点</label>
+          </fieldset>
           <label>标签<input id="host-labels" maxlength="300" placeholder="linux,ssd,internal"></label>
           <label class="wide">SSH 私钥<textarea id="host-private-key" required maxlength="32768" rows="5" autocomplete="off" spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></label>
           <label class="wide">备注<textarea id="host-notes" maxlength="1000" rows="2"></textarea></label>
@@ -340,9 +344,10 @@
       </div>
       <div class="resource-subsection-head"><strong>调度与 Agent 状态</strong><span>容器运行不等于节点可调度</span></div>
       <div id="nodes" class="resource-table"></div>
-      <div class="resource-subsection-head"><strong>创建本机节点</strong><span id="container-summary" class="muted">正在检查</span></div>
+      <div class="resource-subsection-head"><strong>创建节点</strong><span id="container-summary" class="muted">正在检查</span></div>
       <form id="container-form" class="project-form resource-form">
         <div class="form-grid container-form-grid">
+          <label>目标主机<select id="container-target" required><option value="local">Seed 本机</option></select></label>
           <label>节点 ID<input id="container-node-id" required minlength="2" maxlength="32" pattern="[a-z0-9][a-z0-9_-]{1,31}" placeholder="worker-01"></label>
           <label>节点角色<select id="container-role" required>
             <option value="execution">执行节点</option>
@@ -350,8 +355,11 @@
             <option value="preproduction">预生产节点</option>
           </select></label>
           <label>并发任务数<input id="container-slots" type="number" min="1" max="16" value="1" required></label>
+          <label class="remote-node-field hidden">Agent 访问端口<input id="container-host-port" type="number" min="1024" max="65535" value="8020"></label>
+          <label class="remote-node-field hidden">CPU 限额<input id="container-cpu-limit" maxlength="32" placeholder="留空使用平台默认值"></label>
+          <label class="remote-node-field hidden">内存限额<input id="container-memory-limit" maxlength="32" placeholder="例如 4g"></label>
         </div>
-        <p class="form-help">当前快速开发版本只在 Seed 本机 Docker 创建节点。远程主机选择、资源限额和统一 taskhub-node 镜像将在 SSH 编排阶段提供。</p>
+        <p class="form-help">远程节点将使用平台设置中的统一工作镜像；目标主机必须已通过 SSH 准入，并允许承载所选角色。</p>
         <div class="form-actions">
           <button id="create-container" type="submit">创建并启动</button>
           <span id="container-message" role="status"></span>
@@ -400,6 +408,6 @@
   </main>
   <script src="/static/app.js?v=6"></script>
   <script src="/static/task-center.js?v=12"></script>
-  <script src="/static/resource-center.js?v=9"></script>
+  <script src="/static/resource-center.js?v=10"></script>
 </body>
 </html>

@@ -6,8 +6,8 @@ The alpha seed package runs the current TaskHub Web/API controller and a durable
 PostgreSQL checkpointer on one Docker host. It proves that a clean Docker Desktop
 installation can start TaskHub without a host Python environment.
 
-The controller can create execution, test, and preproduction node containers from
-the Web UI. It uses the deterministic provider and local worker so the UI and
+The controller can create execution, test, and preproduction node containers on
+the Seed host or an admitted remote Linux Docker host from the Web UI. It uses the deterministic provider and local worker so the UI and
 LangGraph workflow can be evaluated without copying provider credentials into the
 image. The alpha image has only the Python/TaskHub runtime; full coding, Node.js,
 browser, Git, and publication capabilities require the planned unified
@@ -19,23 +19,25 @@ browser, Git, and publication capabilities require the planned unified
 | --- | --- | --- |
 | `controller` | TaskHub Web, API, LangGraph orchestration | `8200/tcp` |
 | `postgres` | Checkpoints and task index | none |
-| Web-created node | Role-selected node agent and job workspace | none |
+| Local Web-created node | Role-selected node agent and job workspace | none |
+| Remote Web-created node | Role-selected node agent and job workspace | selected Agent port |
 
 Both services use named Docker volumes. Deleting a container does not delete its
 data; deleting the Compose volumes does.
 
 The seed controller intentionally does not contain Git, Codex, Node.js, or
-browser tooling. The controller image now includes the OpenSSH client used only
+browser tooling. The controller image includes the OpenSSH client used only
 for strict-fingerprint remote host admission; it contains no SSH private key or
-preconfigured host trust. Web-created alpha nodes prove lifecycle, registration, scheduling
-and health reporting; those additional capabilities belong in the unified
-`taskhub-node` release image rather than the Seed controller.
+preconfigured host trust. The installer also builds `taskhub-node:0.1.0-alpha`
+from `deploy/node/Dockerfile`; it contains Git and Node.js/npm but does not yet
+contain Codex CLI or browser runtimes.
 
 ## Web node lifecycle
 
-Open **系统配置 → 节点容器**, enter a unique lower-case node ID, choose a role and
-slot count, then select **创建并启动**. TaskHub creates the container on its private
-Compose network and atomically adds it to `nodes.json`.
+Open **系统配置 → 工作节点**, select the Seed host or an admitted remote host,
+enter a unique lower-case node ID, choose an allowed role and slot count, then
+select **创建并启动**. Remote hosts must already contain the configured node image
+or be able to pull it from its registry. A Seed-local image tag is not copied by SSH.
 
 | Role | Registered workloads |
 | --- | --- |
@@ -55,7 +57,7 @@ From the repository root in PowerShell:
 ```
 
 The script creates `deploy/seed/.env` once, generates random credentials and a
-Fernet configuration-encryption key, builds the application image, starts both
+Fernet configuration-encryption key, builds the Seed and unified node images, starts both
 services, and waits for `/api/health`. Existing environment files are upgraded
 in place with a new encryption key if that field is absent.
 
@@ -121,7 +123,8 @@ docker compose --project-directory .\deploy\seed --env-file .\deploy\seed\.env `
   controller. Access to that socket is equivalent to Docker-host administrator
   authority; keep this alpha on a trusted LAN and never make its HTTP port public.
 - Only containers carrying TaskHub's managed label are listed or operated on by
-  the lifecycle API. Node containers publish no host ports and receive only the
-  shared node communication token.
+  the lifecycle API. Local nodes publish no host ports. Remote Alpha nodes publish
+  a selected Agent port and receive the shared deployment node token; firewall the
+  port to the Seed host and trusted LAN.
 - A later hardened release should replace direct socket access with a restricted
   provisioning service or socket proxy before deployment outside a trusted host.

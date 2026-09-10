@@ -9,6 +9,7 @@ HOST_ID_PATTERN = r"^[a-z0-9][a-z0-9_-]{1,31}$"
 ADDRESS_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 USERNAME_PATTERN = r"^[a-z_][a-z0-9_-]{0,31}$"
 FINGERPRINT_PATTERN = r"^SHA256:[A-Za-z0-9+/]{20,60}$"
+HostRole = Literal["execution", "test", "preproduction"]
 
 
 class HostConnection(BaseModel):
@@ -31,9 +32,18 @@ class HostConnection(BaseModel):
 class PhysicalHostCreate(HostConnection):
     host_id: str = Field(pattern=HOST_ID_PATTERN)
     display_name: str = Field(min_length=1, max_length=100)
-    purpose: str = Field(default="", max_length=200)
+    allowed_roles: list[HostRole] = Field(
+        default_factory=lambda: ["execution", "test", "preproduction"],
+        min_length=1,
+        max_length=3,
+    )
     labels: list[str] = Field(default_factory=list, max_length=20)
     notes: str = Field(default="", max_length=1000)
+
+    @field_validator("allowed_roles")
+    @classmethod
+    def unique_roles(cls, values: list[HostRole]) -> list[HostRole]:
+        return list(dict.fromkeys(values))
 
     @field_validator("labels")
     @classmethod

@@ -54,7 +54,7 @@ services:
       TASKHUB_CONTAINER_PROVISIONING_ENABLED: "true"
       TASKHUB_DOCKER_SOCKET: /var/run/docker.sock
       TASKHUB_DOCKER_NETWORK: taskhub-seed_default
-      TASKHUB_NODE_CONTAINER_IMAGE: taskhub-v2-seed:0.1.0-alpha
+      TASKHUB_NODE_CONTAINER_IMAGE: taskhub-node:0.1.0-alpha
       TASKHUB_PROVIDER_HEALTH_FILE: /var/lib/taskhub/state/provider-health.json
       TASKHUB_MANAGED_REPOSITORY_ROOT: /var/lib/taskhub/repositories
       TASKHUB_WORKSPACE_ROOT: /var/lib/taskhub/workspaces

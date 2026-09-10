@@ -43,7 +43,7 @@ class Settings(BaseModel):
     container_provisioning_enabled: bool = False
     docker_socket: str = "/var/run/docker.sock"
     docker_network: str = "taskhub-seed_default"
-    node_container_image: str = "taskhub-v2-seed:0.1.0-alpha"
+    node_container_image: str = "taskhub-node:0.1.0-alpha"
     seed_public_url: str = ""
     node_callback_url: str = ""
     node_image_registry: str = ""
@@ -148,7 +148,7 @@ def get_settings() -> Settings:
         docker_socket=os.getenv("TASKHUB_DOCKER_SOCKET", "/var/run/docker.sock"),
         docker_network=os.getenv("TASKHUB_DOCKER_NETWORK", "taskhub-seed_default"),
         node_container_image=os.getenv(
-            "TASKHUB_NODE_CONTAINER_IMAGE", "taskhub-v2-seed:0.1.0-alpha"
+            "TASKHUB_NODE_CONTAINER_IMAGE", "taskhub-node:0.1.0-alpha"
         ),
         seed_public_url=os.getenv("TASKHUB_SEED_PUBLIC_URL", ""),
         node_callback_url=os.getenv("TASKHUB_NODE_CALLBACK_URL", ""),

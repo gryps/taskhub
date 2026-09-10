@@ -3,7 +3,6 @@ import hashlib
 import hmac
 import json
 import os
-import platform
 import re
 import shutil
 import subprocess
@@ -37,6 +36,11 @@ from taskhub_v2.node_agent.test_database import TestDatabaseManager
 from taskhub_v2.services.diagnostics import coding_prerequisites_ok, node_diagnostics
 
 JOB_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
+NODE_ROLE_WORKLOADS = {
+    "execution": ["build", "coding"],
+    "test": ["acceptance", "test"],
+    "preproduction": ["acceptance", "build", "test"],
+}
 
 
 class ExecuteRequest(BaseModel):
@@ -53,8 +57,10 @@ class ExecuteRequest(BaseModel):
     @classmethod
     def safe_execution_environment(cls, value: dict[str, str]) -> dict[str, str]:
         allowed = {
-            "TASKHUB_TEST_TARGET_URL", "TASKHUB_TEST_EDGE_HOST",
-            "TASKHUB_TEST_ORIGIN_HOST", "TASKHUB_TEST_EXPECTED_ENVIRONMENT",
+            "TASKHUB_TEST_TARGET_URL",
+            "TASKHUB_TEST_EDGE_HOST",
+            "TASKHUB_TEST_ORIGIN_HOST",
+            "TASKHUB_TEST_EXPECTED_ENVIRONMENT",
             "TASKHUB_TEST_ENVIRONMENT_PROFILE",
         }
         if not set(value).issubset(allowed) or any(len(item) > 500 for item in value.values()):
@@ -70,8 +76,9 @@ class CodingRequest(BaseModel):
 
 
 class NodeRuntime:
-    def __init__(self, node_id: str, token: str, root: str, max_upload_bytes: int):
+    def __init__(self, node_id: str, role: str, token: str, root: str, max_upload_bytes: int):
         self.node_id = node_id
+        self.role = role if role in NODE_ROLE_WORKLOADS else "test"
         self.token = token
         self.root = Path(root).resolve()
         self.max_upload_bytes = max_upload_bytes
@@ -99,6 +106,7 @@ class NodeRuntime:
 def create_node_app() -> FastAPI:
     runtime = NodeRuntime(
         node_id=os.getenv("TASKHUB_NODE_ID", "node-local"),
+        role=os.getenv("TASKHUB_NODE_ROLE", "test"),
         token=os.getenv("TASKHUB_NODE_TOKEN", ""),
         root=os.getenv("TASKHUB_NODE_WORK_ROOT", "/var/lib/taskhub-node/jobs"),
         max_upload_bytes=int(os.getenv("TASKHUB_NODE_MAX_UPLOAD_BYTES", "104857600")),
@@ -122,12 +130,12 @@ def create_node_app() -> FastAPI:
         usage = shutil.disk_usage(runtime.root)
         database = await asyncio.to_thread(test_databases.probe)
         prerequisites = browser_prerequisites()
-        capabilities = await asyncio.to_thread(
-            runtime_capabilities, database, prerequisites
-        )
+        capabilities = await asyncio.to_thread(runtime_capabilities, database, prerequisites)
         return {
             "status": "ok",
             "node_id": runtime.node_id,
+            "role": runtime.role,
+            "workloads": NODE_ROLE_WORKLOADS[runtime.role],
             "cpu_count": os.cpu_count() or 1,
             "disk_free_bytes": usage.free,
             "load": runtime.load_sampler.peak(),
@@ -154,8 +162,7 @@ def create_node_app() -> FastAPI:
         async with lock:
             metadata = target / ".taskhub-workspace.json"
             if metadata.is_file() and json.loads(metadata.read_text()).get("sha256") == sha256:
-                return {"job_id": job_id, "archive_sha256": sha256, "size": 0,
-                        "reused": True}
+                return {"job_id": job_id, "archive_sha256": sha256, "size": 0, "reused": True}
             digest = hashlib.sha256()
             size = 0
             descriptor, archive_name = tempfile.mkstemp(dir=runtime.root, suffix=".tar.gz")
@@ -164,7 +171,9 @@ def create_node_app() -> FastAPI:
                     async for chunk in request.stream():
                         size += len(chunk)
                         if size > runtime.max_upload_bytes:
-                            raise HTTPException(status_code=413, detail="workspace archive too large")
+                            raise HTTPException(
+                                status_code=413, detail="workspace archive too large"
+                            )
                         digest.update(chunk)
                         archive.write(chunk)
                 if digest.hexdigest() != sha256:
@@ -192,9 +201,7 @@ def create_node_app() -> FastAPI:
             runtime_capabilities, database, browser_prerequisites()
         )
         missing = sorted(
-            name
-            for name in payload.required_capabilities
-            if not capabilities.get(name)
+            name for name in payload.required_capabilities if not capabilities.get(name)
         )
         if missing:
             raise HTTPException(
@@ -238,18 +245,24 @@ def create_node_app() -> FastAPI:
                 }
                 if "test_database" in payload.required_capabilities:
                     with test_databases.database(job_id) as database_environment:
-                        tests.extend(await run_commands(
-                            target, payload.commands, payload.timeout_seconds,
-                            execution_environment={**environment, **database_environment},
-                        ))
+                        tests.extend(
+                            await run_commands(
+                                target,
+                                payload.commands,
+                                payload.timeout_seconds,
+                                execution_environment={**environment, **database_environment},
+                            )
+                        )
                 else:
-                    tests.extend(await run_commands(
-                        target, payload.commands, payload.timeout_seconds,
-                        execution_environment=environment,
-                    ))
-            artifacts = _artifact_manifest(
-                target, payload.artifact_paths, runtime.max_upload_bytes
-            )
+                    tests.extend(
+                        await run_commands(
+                            target,
+                            payload.commands,
+                            payload.timeout_seconds,
+                            execution_environment=environment,
+                        )
+                    )
+            artifacts = _artifact_manifest(target, payload.artifact_paths, runtime.max_upload_bytes)
             result = {
                 "node_id": runtime.node_id,
                 "job_id": job_id,
@@ -272,7 +285,9 @@ def create_node_app() -> FastAPI:
             return result
 
     @app.get("/api/jobs/{job_id}/artifacts/{artifact_path:path}")
-    async def download_artifact(job_id: str, artifact_path: str, authorization: str = Header(default="")):
+    async def download_artifact(
+        job_id: str, artifact_path: str, authorization: str = Header(default="")
+    ):
         runtime.authorize(authorization)
         target = runtime.job_dir(job_id)
         path = (target / artifact_path).resolve()
@@ -287,6 +302,8 @@ def create_node_app() -> FastAPI:
         authorization: str = Header(default=""),
     ) -> Response:
         runtime.authorize(authorization)
+        if "coding" not in NODE_ROLE_WORKLOADS[runtime.role]:
+            raise HTTPException(status_code=403, detail="node role does not allow coding")
         if not coding_available():
             raise HTTPException(status_code=409, detail="coding is not configured")
         target = runtime.job_dir(job_id)
@@ -343,9 +360,20 @@ def _artifact_manifest(root: Path, requested: list[str], max_bytes: int) -> list
         if relative.is_absolute() or ".." in relative.parts:
             raise HTTPException(status_code=422, detail="invalid artifact path")
         candidate = (root / relative).resolve()
-        paths = [candidate] if candidate.is_file() else sorted(candidate.rglob("*")) if candidate.is_dir() else []
+        paths = (
+            [candidate]
+            if candidate.is_file()
+            else sorted(candidate.rglob("*"))
+            if candidate.is_dir()
+            else []
+        )
         for path in paths:
-            if path in seen or path.is_symlink() or not path.is_file() or not path.is_relative_to(root):
+            if (
+                path in seen
+                or path.is_symlink()
+                or not path.is_file()
+                or not path.is_relative_to(root)
+            ):
                 continue
             seen.add(path)
             size = path.stat().st_size
@@ -353,7 +381,9 @@ def _artifact_manifest(root: Path, requested: list[str], max_bytes: int) -> list
             if total > max_bytes:
                 raise HTTPException(status_code=413, detail="browser artifacts too large")
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            result.append({"path": path.relative_to(root).as_posix(), "sha256": digest, "size": size})
+            result.append(
+                {"path": path.relative_to(root).as_posix(), "sha256": digest, "size": size}
+            )
     return result
 
 
@@ -364,7 +394,9 @@ async def _prepare_browser_acceptance_dependencies(
         return []
     if not (target / "package.json").is_file() or (target / "node_modules").is_dir():
         return []
-    if not any(Path(command[0]).name.lower() in {"npx", "npx.cmd"} for command in commands if command):
+    if not any(
+        Path(command[0]).name.lower() in {"npx", "npx.cmd"} for command in commands if command
+    ):
         return []
     command = ["npm", "ci"] if (target / "package-lock.json").is_file() else ["npm", "install"]
     command.extend(["--ignore-scripts", "--no-audit", "--no-fund"])

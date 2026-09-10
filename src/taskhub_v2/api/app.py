@@ -14,6 +14,7 @@ from taskhub_v2.api.host_routes import router as host_router
 from taskhub_v2.api.node_routes import router as node_router
 from taskhub_v2.api.project_routes import router as project_router
 from taskhub_v2.api.provider_routes import router as provider_router
+from taskhub_v2.api.remote_node_routes import router as remote_node_router
 from taskhub_v2.api.routes import router
 from taskhub_v2.api.system_routes import router as system_router
 from taskhub_v2.config import Settings, get_settings
@@ -21,6 +22,7 @@ from taskhub_v2.deployment import DeploymentManager
 from taskhub_v2.persistence.checkpoints import checkpoint_store
 from taskhub_v2.persistence.configuration import configuration_store
 from taskhub_v2.persistence.hosts import physical_host_store
+from taskhub_v2.persistence.remote_nodes import remote_node_store
 from taskhub_v2.persistence.task_index import task_index_store
 from taskhub_v2.projects import ProjectProvisioner, ProjectRegistry
 from taskhub_v2.providers import build_provider
@@ -32,6 +34,7 @@ from taskhub_v2.services.configuration import ManagedConfigurationService
 from taskhub_v2.services.containers import ContainerManager
 from taskhub_v2.services.hosts import PhysicalHostService
 from taskhub_v2.services.providers import ProviderCatalog
+from taskhub_v2.services.remote_nodes import RemoteNodeService
 from taskhub_v2.workers import (
     build_acceptance,
     build_coder,
@@ -76,6 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async with (
             configuration_store(settings) as managed_store,
             physical_host_store(settings) as host_store,
+            remote_node_store(settings) as remote_store,
             checkpoint_store(settings) as checkpointer,
             task_index_store(settings) as task_index,
         ):
@@ -103,6 +107,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     node_token=effective_settings.node_token,
                     nodes_file=effective_settings.nodes_file,
                 )
+            app.state.remote_nodes = RemoteNodeService(
+                remote_store,
+                app.state.physical_hosts,
+                host_store,
+                managed_store,
+                app.state.container_manager,
+                image=effective_settings.node_container_image,
+                node_token=effective_settings.node_token,
+                default_cpu=effective_settings.default_node_cpu_limit,
+                default_memory=effective_settings.default_node_memory_limit,
+            )
             provider = build_provider(effective_settings, provider_health)
             local_coder = build_coder(effective_settings, provider_health)
             test_scheduler = build_test_scheduler(effective_settings, local_coder)
@@ -156,6 +171,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(configuration_router)
     app.include_router(container_router)
     app.include_router(host_router)
+    app.include_router(remote_node_router)
     app.include_router(project_router)
     app.include_router(node_router)
     app.include_router(deployment_router)

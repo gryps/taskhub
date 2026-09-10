@@ -68,15 +68,11 @@ class PhysicalHostService:
         if outcome["status"] != "available":
             raise HostAdmissionError(outcome["detail"])
         existing = await self.store.get(request.host_id)
-        payload = request.model_dump(
-            exclude={"private_key", "expected_fingerprint"}, mode="json"
-        )
+        payload = request.model_dump(exclude={"private_key", "expected_fingerprint"}, mode="json")
         record = new_host_record(
             host_id=request.host_id,
             payload=payload,
-            encrypted_private_key=self.cipher.encrypt(
-                request.private_key.get_secret_value()
-            ),
+            encrypted_private_key=self.cipher.encrypt(request.private_key.get_secret_value()),
             host_key=outcome["host_key"],
             fingerprint=outcome["fingerprint"],
             status="available",
@@ -124,6 +120,22 @@ class PhysicalHostService:
         saved = await self.store.save(updated)
         await self._audit("check", host_id, result)
         return _host_view(saved)
+
+    async def run_remote_script(self, host_id: str, script: str, timeout: int = 120) -> str:
+        record = await self.store.get(host_id)
+        if not record:
+            raise KeyError(host_id)
+        if record.status != "available":
+            raise HostAdmissionError(f"物理主机 {host_id} 当前不可用：{record.status_reason}")
+        if not self.cipher:
+            raise HostAdmissionError("主机凭据加密根密钥不可用")
+        return await asyncio.to_thread(
+            _run_remote_script,
+            record,
+            self.cipher.decrypt(record.encrypted_private_key),
+            script,
+            timeout,
+        )
 
     def _probe(self, request: HostConnection) -> dict[str, Any]:
         _require_ssh_tools()
@@ -233,7 +245,8 @@ def _run_remote_probe(
             "IdentitiesOnly=yes",
             "-o",
             "StrictHostKeyChecking=yes",
-            "-o", f"UserKnownHostsFile={known_hosts_path}",
+            "-o",
+            f"UserKnownHostsFile={known_hosts_path}",
             f"{request.username}@{request.address}",
             "sh",
             "-s",
@@ -270,10 +283,61 @@ def _run_remote_probe(
     }
 
 
+def _run_remote_script(
+    record: PhysicalHostRecord, private_key: str, script: str, timeout: int
+) -> str:
+    payload = record.payload
+    with tempfile.TemporaryDirectory(prefix="taskhub-host-") as directory:
+        key_path = Path(directory, "identity")
+        known_hosts_path = Path(directory, "known_hosts")
+        key_path.write_text(private_key.strip() + "\n", encoding="utf-8")
+        key_path.chmod(0o600)
+        known_hosts_path.write_text(record.host_key + "\n", encoding="utf-8")
+        command = [
+            "ssh",
+            "-i",
+            str(key_path),
+            "-p",
+            str(payload["port"]),
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=8",
+            "-o",
+            "IdentitiesOnly=yes",
+            "-o",
+            "StrictHostKeyChecking=yes",
+            "-o",
+            f"UserKnownHostsFile={known_hosts_path}",
+            f"{payload['username']}@{payload['address']}",
+            "sh",
+            "-s",
+        ]
+        try:
+            result = subprocess.run(
+                command,
+                input=script,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env={**os.environ, "LC_ALL": "C"},
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise HostAdmissionError(f"SSH 远程操作失败：{_safe_error(exc)}") from exc
+    if result.returncode:
+        raise HostAdmissionError(f"SSH 远程操作失败：{_safe_text(result.stderr)}")
+    return result.stdout
+
+
 def _host_view(record: PhysicalHostRecord) -> dict[str, Any]:
     labels = {"available": "可用", "degraded": "异常", "unreachable": "不可达"}
+    payload = dict(record.payload)
+    # Records admitted by the earlier Alpha used a free-text purpose field.
+    payload.pop("purpose", None)
+    payload.setdefault("allowed_roles", ["execution", "test", "preproduction"])
     return {
-        **record.payload,
+        **payload,
         "fingerprint": record.fingerprint,
         "status": record.status,
         "status_label": labels.get(record.status, record.status),

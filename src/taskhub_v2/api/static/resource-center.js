@@ -99,13 +99,15 @@ function credentialState(metadata) {
 
 function renderConfigurationAudit(target, events) {
   const actionNames = {update: "保存配置", connection_test: "连接测试", apply: "启动生效",
-    admit: "登记主机", check: "重新检测"};
+    admit: "登记主机", check: "重新检测", create: "创建节点", start: "启动节点",
+    stop: "停止节点", restart: "重启节点", remove: "移除节点"};
   const resultNames = {pending_restart: "等待重启", passed: "通过", failed: "失败", applied: "已生效"};
   const rows = events.map((item) => {
     const summary = item.parameter_summary || {};
     const fields = (summary.changed_fields || []).join(" · ") ||
       (summary.provider_id ? `服务：${summary.provider_id}` :
-        summary.host_id ? `主机：${summary.host_id}` : `版本：${summary.version || "—"}`);
+        summary.node_id ? `节点：${summary.node_id} · 主机：${summary.host_id}` :
+          summary.host_id ? `主机：${summary.host_id}` : `版本：${summary.version || "—"}`);
     const secrets = (summary.replaced_secrets || []).length
       ? `<small>已替换密钥：${summary.replaced_secrets.map(escapeHtml).join(" · ")}</small>` : "";
     const resultClass = item.result === "failed" ? "bad" :
@@ -256,6 +258,12 @@ async function loadNodes() {
 }
 
 let pendingHostFingerprint = "";
+let physicalHostInventory = [];
+
+function selectedHostRoles() {
+  return [...document.querySelectorAll('input[name="host-role"]:checked')]
+    .map((item) => item.value);
+}
 
 function hostConnectionPayload() {
   return {
@@ -291,6 +299,8 @@ async function loadPhysicalHosts() {
       request("/api/containers/status"), request("/api/hosts"),
       request("/api/settings/audit?scope=physical_hosts&limit=8"),
     ]);
+    physicalHostInventory = inventory.hosts;
+    refreshContainerTargets();
     const stateClass = status.available ? "ok" : status.enabled ? "bad" : "warn";
     const stateLabel = status.available ? "可用" : status.enabled ? "异常" : "未启用";
     const available = inventory.hosts.filter((item) => item.status === "available").length;
@@ -301,7 +311,7 @@ async function loadPhysicalHosts() {
         <strong>${escapeHtml(item.display_name)}<small>${escapeHtml(item.host_id)} · ${escapeHtml(item.address)}:${item.port}</small></strong>
         <span class="${hostStatusClass(item.status)}">${escapeHtml(item.status_label)}<small>${escapeHtml(item.status_reason)}</small></span>
         <span>Docker ${escapeHtml(item.facts?.docker_version || "—")}<small>${escapeHtml(item.facts?.os || "尚未检测")}</small></span>
-        <span>${escapeHtml(hostFacts(item.facts))}<small>SSH ${escapeHtml(item.username)} · ${escapeHtml(item.fingerprint)}</small>
+        <span>${escapeHtml(hostFacts(item.facts))}<small>角色：${(item.allowed_roles || []).map((role) => escapeHtml(containerRoleNames[role] || role)).join(" · ")}</small><small>SSH ${escapeHtml(item.username)} · ${escapeHtml(item.fingerprint)}</small>
           <button type="button" class="secondary host-action" data-host-id="${escapeHtml(item.host_id)}">重新检测</button></span>
       </div>`).join("");
     byId("physical-hosts").innerHTML = `<div class="resource-row resource-header">
@@ -352,7 +362,7 @@ async function savePhysicalHost(event) {
         ...hostConnectionPayload(), expected_fingerprint: pendingHostFingerprint,
         host_id: byId("host-id").value.trim(),
         display_name: byId("host-name").value.trim(),
-        purpose: byId("host-purpose").value.trim(),
+        allowed_roles: selectedHostRoles(),
         labels: byId("host-labels").value.split(",").map((item) => item.trim()).filter(Boolean),
         notes: byId("host-notes").value.trim(),
       }),
@@ -469,32 +479,67 @@ const containerRoleNames = {
 
 function containerActions(item) {
   const nodeId = escapeHtml(item.node_id);
+  const location = escapeHtml(item.location || "local");
   const primary = item.state === "running"
-    ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-action="stop">停止</button>`
-    : `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-action="start">启动</button>`;
+    ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="${location}" data-action="stop">停止</button>`
+    : `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="${location}" data-action="start">启动</button>`;
+  const restart = location === "remote" && item.state === "running"
+    ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="remote" data-action="restart">重启</button>` : "";
   return `<div class="container-actions">${primary}
+    ${restart}
     <button type="button" class="secondary container-action remove-container"
-      data-node-id="${nodeId}" data-action="remove">移除</button></div>`;
+      data-node-id="${nodeId}" data-location="${location}" data-action="remove">移除</button></div>`;
+}
+
+function refreshContainerTargets() {
+  const select = byId("container-target");
+  const previous = select.value || "local";
+  select.innerHTML = '<option value="local">Seed 本机</option>' + physicalHostInventory
+    .filter((item) => item.status === "available")
+    .map((item) => `<option value="${escapeHtml(item.host_id)}">${escapeHtml(item.display_name)} · 远程</option>`)
+    .join("");
+  select.value = [...select.options].some((item) => item.value === previous) ? previous : "local";
+  updateRemoteNodeFields();
+}
+
+function updateRemoteNodeFields() {
+  const hostId = byId("container-target").value;
+  const remote = hostId !== "local";
+  document.querySelectorAll(".remote-node-field").forEach((item) => item.classList.toggle("hidden", !remote));
+  const host = physicalHostInventory.find((item) => item.host_id === hostId);
+  const allowed = new Set(host?.allowed_roles || ["execution", "test", "preproduction"]);
+  [...byId("container-role").options].forEach((item) => {
+    item.disabled = remote && !allowed.has(item.value);
+  });
+  if (byId("container-role").selectedOptions[0]?.disabled) {
+    const first = [...byId("container-role").options].find((item) => !item.disabled);
+    if (first) byId("container-role").value = first.value;
+  }
 }
 
 async function loadContainers() {
   byId("container-summary").textContent = "正在读取 Docker Engine";
   try {
-    const status = await request("/api/containers/status");
-    byId("container-form").classList.toggle("hidden", !status.available);
-    if (!status.available) {
-      byId("container-summary").textContent = status.detail || "不可用";
-      byId("managed-containers").innerHTML = "";
-      return;
-    }
-    const data = await request("/api/containers");
-    const running = data.containers.filter((item) => item.state === "running").length;
+    const [status, remoteData, hostData] = await Promise.all([
+      request("/api/containers/status"), request("/api/remote-nodes"), request("/api/hosts"),
+    ]);
+    physicalHostInventory = hostData.hosts;
+    refreshContainerTargets();
+    const localData = status.available ? await request("/api/containers") : {containers: []};
+    const local = localData.containers.map((item) => ({...item, location: "local", host_id: "Seed 本机"}));
+    const remote = remoteData.nodes.map((item) => ({
+      ...item, location: "remote", state: item.actual_state,
+      status: item.status_reason, name: `taskhub-node-${item.node_id}`,
+    }));
+    const containers = [...local, ...remote];
+    byId("container-form").classList.toggle("hidden", !status.available && !physicalHostInventory.some((item) => item.status === "available"));
+    const running = containers.filter((item) => item.state === "running").length;
     byId("container-summary").textContent =
-      `${running}/${data.containers.length} 运行 · ${status.detail}`;
+      `${running}/${containers.length} 运行 · 本机 ${status.available ? "可用" : "不可用"} · 远程 ${remote.length}`;
     const empty = `<div class="resource-row container-row"><span>尚未创建节点容器</span><span>—</span><span>—</span><span>使用上方表单创建</span></div>`;
-    const rows = data.containers.map((item) => `
+    const rows = containers.map((item) => `
       <div class="resource-row container-row">
-        <strong>${escapeHtml(item.node_id)}<small>${escapeHtml(item.name)}</small></strong>
+        <strong>${escapeHtml(item.node_id)}<small>${escapeHtml(item.name)} · ${escapeHtml(item.host_id)}</small></strong>
         <span>${escapeHtml(containerRoleNames[item.role] || item.role)}</span>
         <span class="${item.state === "running" ? "ok" : "warn"}">${escapeHtml(item.state)}<small>${escapeHtml(item.status)}</small></span>
         ${containerActions(item)}
@@ -513,13 +558,22 @@ async function createContainer(event) {
   button.disabled = true;
   byId("container-message").textContent = "正在创建并启动容器";
   try {
-    const result = await request("/api/containers", {
+    const hostId = byId("container-target").value;
+    const remote = hostId !== "local";
+    const payload = {
+      node_id: byId("container-node-id").value,
+      role: byId("container-role").value,
+      slots: Number(byId("container-slots").value),
+    };
+    if (remote) Object.assign(payload, {
+      host_id: hostId,
+      host_port: Number(byId("container-host-port").value),
+      cpu_limit: byId("container-cpu-limit").value,
+      memory_limit: byId("container-memory-limit").value,
+    });
+    const result = await request(remote ? "/api/remote-nodes" : "/api/containers", {
       method: "POST",
-      body: JSON.stringify({
-        node_id: byId("container-node-id").value,
-        role: byId("container-role").value,
-        slots: Number(byId("container-slots").value),
-      }),
+      body: JSON.stringify(payload),
     });
     byId("container-message").textContent = `${result.node_id} 已创建并加入调度`;
     byId("container-node-id").value = "";
@@ -531,13 +585,17 @@ async function createContainer(event) {
   }
 }
 
-async function runContainerAction(nodeId, action) {
+async function runContainerAction(nodeId, action, location) {
   if (action === "remove" &&
       !window.confirm(`确认移除节点容器 ${nodeId}？节点数据卷将保留。`)) return;
-  const verbs = {start: "启动", stop: "停止", remove: "移除"};
+  const verbs = {start: "启动", stop: "停止", restart: "重启", remove: "移除"};
   byId("container-message").textContent = `正在${verbs[action]} ${nodeId}`;
   try {
-    await request(`/api/containers/${encodeURIComponent(nodeId)}/${action}`, {method: "POST"});
+    const prefix = location === "remote" ? "/api/remote-nodes" : "/api/containers";
+    await request(`${prefix}/${encodeURIComponent(nodeId)}/${action}`, {
+      method: "POST", body: action === "remove" && location === "remote"
+        ? JSON.stringify({remove_volume: false}) : undefined,
+    });
     byId("container-message").textContent = `${nodeId} 操作完成`;
     await Promise.all([loadContainers(), loadNodes()]);
   } catch (error) {
@@ -788,9 +846,10 @@ byId("physical-hosts").addEventListener("click", (event) => {
   if (button) checkPhysicalHost(button.dataset.hostId);
 });
 byId("container-form").addEventListener("submit", createContainer);
+byId("container-target").addEventListener("change", updateRemoteNodeFields);
 byId("managed-containers").addEventListener("click", (event) => {
   const button = event.target.closest(".container-action");
-  if (button) runContainerAction(button.dataset.nodeId, button.dataset.action);
+  if (button) runContainerAction(button.dataset.nodeId, button.dataset.action, button.dataset.location);
 });
 window.addEventListener("taskhub:projects", () => {
   if (byId("test-environment-disclosure").open) loadTestEnvironmentConfig();

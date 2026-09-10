@@ -140,6 +140,7 @@ class ContainerManager:
             },
             "Env": [
                 f"TASKHUB_NODE_ID={request.node_id}",
+                f"TASKHUB_NODE_ROLE={request.role}",
                 f"TASKHUB_NODE_TOKEN={self.node_token}",
                 "TASKHUB_NODE_WORK_ROOT=/var/lib/taskhub-node/jobs",
             ],
@@ -273,9 +274,21 @@ class ContainerManager:
         temporary.replace(self.nodes_file)
 
     def _register(self, node: NodeDefinition):
-        nodes = self._registered_nodes()
+        nodes = [item for item in self._registered_nodes() if item.id != node.id]
         nodes.append(node)
         self._write_nodes(nodes)
 
     def _unregister(self, node_id: str):
         self._write_nodes([node for node in self._registered_nodes() if node.id != node_id])
+
+    def register_node(self, node: NodeDefinition) -> None:
+        with self.lock:
+            self._register(node)
+
+    def unregister_node(self, node_id: str) -> None:
+        with self.lock:
+            self._unregister(node_id)
+
+    def node_exists(self, node_id: str) -> bool:
+        with self.lock:
+            return any(node.id == node_id for node in self._registered_nodes())

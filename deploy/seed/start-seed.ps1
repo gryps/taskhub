@@ -106,6 +106,17 @@ if ($LASTEXITCODE -ne 0) {
     throw "TaskHub seed image failed to build."
 }
 
+docker --config $DockerConfigDirectory build --pull=false `
+    --build-arg "TASKHUB_VERSION=0.1.0-alpha" `
+    --build-arg "HTTP_PROXY=$BuildProxy" `
+    --build-arg "HTTPS_PROXY=$BuildProxy" `
+    --tag taskhub-node:0.1.0-alpha `
+    --file (Join-Path $RepositoryRoot "deploy\node\Dockerfile") `
+    $RepositoryRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "TaskHub unified node image failed to build."
+}
+
 & $ComposeCommand --project-directory $SeedDirectory --env-file $EnvironmentFile `
     -f $ComposeFile up -d --no-build --pull never
 if ($LASTEXITCODE -ne 0) {
