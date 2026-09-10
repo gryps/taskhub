@@ -6,7 +6,10 @@ version=${TASKHUB_VERSION:-0.1.0-alpha}
 codex_version=${CODEX_VERSION:-0.153.4}
 platform=${TASKHUB_PLATFORM:-linux/amd64}
 registry=${TASKHUB_REGISTRY:-}
-commit=$(git -C "$root" rev-parse HEAD 2>/dev/null || printf 'unknown')
+commit=${TASKHUB_COMMIT:-}
+if [ -z "$commit" ]; then
+  commit=$(git -C "$root" rev-parse HEAD 2>/dev/null || printf 'unknown')
+fi
 prefix=""
 mirror_args=""
 if [ -n "$registry" ]; then

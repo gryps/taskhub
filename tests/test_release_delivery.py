@@ -92,6 +92,7 @@ def test_release_images_pin_codex_and_node_has_common_role_tools():
 
     for name in ("build-images.sh", "build-images.ps1"):
         build_script = (RELEASE / name).read_text(encoding="utf-8-sig")
+        assert "TASKHUB_COMMIT" in build_script
         assert "DEBIAN_MIRROR" in build_script
         assert "DEBIAN_SECURITY_MIRROR" in build_script
 

@@ -10,7 +10,11 @@ $Registry = if ($env:TASKHUB_REGISTRY) { $env:TASKHUB_REGISTRY.TrimEnd('/') + "/
 $MirrorArgs = @()
 if ($env:DEBIAN_MIRROR) { $MirrorArgs += @("--build-arg", "DEBIAN_MIRROR=$($env:DEBIAN_MIRROR)") }
 if ($env:DEBIAN_SECURITY_MIRROR) { $MirrorArgs += @("--build-arg", "DEBIAN_SECURITY_MIRROR=$($env:DEBIAN_SECURITY_MIRROR)") }
-$Commit = (git -C $RepoRoot rev-parse HEAD 2>$null)
+$Commit = if ($env:TASKHUB_COMMIT) {
+    $env:TASKHUB_COMMIT
+} else {
+    (git -C $RepoRoot rev-parse HEAD 2>$null)
+}
 if (-not $Commit) { $Commit = "unknown" }
 $SeedImage = "${Registry}taskhub-seed:$Version"
 $NodeImage = "${Registry}taskhub-node:$Version"
