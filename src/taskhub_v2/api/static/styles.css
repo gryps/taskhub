@@ -222,6 +222,45 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 }
 .login-setup .wide { grid-column: 1 / -1; }
 .login p[role="status"] { grid-column: 1 / -1; color: var(--danger); margin: 0; min-height: 18px; font-size: 12px; }
+.login-downloads { grid-column: 1 / -1; margin-top: 2px; }
+
+.public-image-downloads {
+  margin-bottom: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.login .public-image-downloads { margin-bottom: 0; background: var(--surface-subtle); box-shadow: none; }
+.public-image-downloads > summary {
+  min-height: 52px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  list-style: none;
+}
+.public-image-downloads > summary::-webkit-details-marker { display: none; }
+.public-image-downloads > summary::after { content: "+"; color: var(--text-tertiary); font-size: 17px; }
+.public-image-downloads[open] > summary::after { content: "−"; }
+.public-image-downloads > summary > span:first-child { display: grid; gap: 2px; }
+.public-image-downloads > summary strong { color: var(--text); font-size: 14px; }
+.public-image-downloads > summary small,
+.public-image-downloads > summary > span:last-of-type { color: var(--text-secondary); font-size: 11px; }
+.image-download-content { padding: 0 14px 14px; border-top: 1px solid var(--border); }
+.image-download-content > p { margin: 11px 0; color: var(--text-secondary); font-size: 12px; }
+.image-registry-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.image-registry-group { min-width: 0; padding: 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-subtle); }
+.image-registry-group > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.image-registry-group > div:first-child strong { font-size: 12px; }
+.image-registry-group > div:first-child span { color: var(--text-tertiary); font-size: 10px; }
+.image-download-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-top: 6px; }
+.image-download-row > span { color: var(--text-secondary); font-size: 11px; font-weight: 700; }
+.image-download-row code { min-width: 0; overflow-wrap: anywhere; color: var(--text); font-size: 10px; line-height: 1.45; }
+.image-download-row button { min-height: 30px; padding: 4px 8px; white-space: nowrap; font-size: 10px; }
 
 .task-filters {
   display: grid;
@@ -761,6 +800,7 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .timeline li { grid-template-columns: 80px 1fr; }
   .timeline li span:last-child { grid-column: 1 / -1; }
   .task-filters { grid-template-columns: 1fr 1fr; }
+  .image-registry-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {
@@ -788,6 +828,10 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .login > * { grid-column: 1; }
   .login-setup { grid-template-columns: 1fr; }
   .login-setup > * { grid-column: 1; }
+  .public-image-downloads > summary { align-items: flex-start; }
+  .public-image-downloads > summary > span:last-of-type { display: none; }
+  .image-download-row { grid-template-columns: 34px minmax(0, 1fr); }
+  .image-download-row button { grid-column: 2; justify-self: start; }
   .acceptance-submit { grid-template-columns: 1fr; }
 }
 

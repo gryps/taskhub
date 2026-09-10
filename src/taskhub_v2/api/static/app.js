@@ -17,6 +17,25 @@ let deploymentTimer;
 let registeredProjects = [];
 let passwordSetupRequired = false;
 
+const publicImageRegistries = [
+  {
+    name: "GitHub Container Registry",
+    shortName: "GHCR",
+    images: [
+      ["Seed", "ghcr.io/gryps/taskhub-seed:0.1.0-alpha"],
+      ["Node", "ghcr.io/gryps/taskhub-node:0.1.0-alpha"],
+    ],
+  },
+  {
+    name: "阿里云容器镜像服务",
+    shortName: "杭州 ACR",
+    images: [
+      ["Seed", "crpi-kgqnka7pmz9f3sml.cn-hangzhou.personal.cr.aliyuncs.com/taskhub-v2/taskhub-seed:0.1.0-alpha"],
+      ["Node", "crpi-kgqnka7pmz9f3sml.cn-hangzhou.personal.cr.aliyuncs.com/taskhub-v2/taskhub-node:0.1.0-alpha"],
+    ],
+  },
+];
+
 const byId = (id) => document.getElementById(id);
 const stageIndex = (name) => stages.findIndex(([id]) => id === (
   name === "implementation_blocked" ? "implementation" :
@@ -26,6 +45,45 @@ const stageIndex = (name) => stages.findIndex(([id]) => id === (
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
 })[character]);
+
+function renderPublicImageDownloads() {
+  const groups = publicImageRegistries.map((registry) => `
+    <section class="image-registry-group">
+      <div><strong>${escapeHtml(registry.name)}</strong><span>${escapeHtml(registry.shortName)}</span></div>
+      ${registry.images.map(([role, reference]) => `
+        <div class="image-download-row">
+          <span>${escapeHtml(role)}</span>
+          <code>${escapeHtml(reference)}</code>
+          <button type="button" class="secondary copy-image-reference" data-image-reference="${escapeHtml(reference)}" aria-label="复制 ${escapeHtml(role)} 镜像拉取命令" aria-live="polite">复制 pull</button>
+        </div>`).join("")}
+    </section>`).join("");
+  document.querySelectorAll("[data-public-image-downloads]").forEach((host) => {
+    host.innerHTML = `<details class="public-image-downloads">
+      <summary><span><strong>公开镜像下载</strong><small>0.1.0-alpha · linux/amd64</small></span><span>GHCR · 阿里云 ACR</span></summary>
+      <div class="image-download-content">
+        <p>两个镜像仓库均支持匿名拉取。国内网络优先使用阿里云 ACR。</p>
+        <div class="image-registry-grid">${groups}</div>
+      </div>
+    </details>`;
+  });
+}
+
+async function copyImageReference(button) {
+  const command = `docker pull ${button.dataset.imageReference}`;
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(command);
+  } else {
+    const input = document.createElement("textarea");
+    input.value = command;
+    input.setAttribute("readonly", "");
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand("copy");
+    input.remove();
+  }
+  button.textContent = "已复制";
+  window.setTimeout(() => { button.textContent = "复制 pull"; }, 1600);
+}
 
 function renderFlow(stage, status, backendSteps = null) {
   const active = stage ? stageIndex(stage) : -1;
@@ -619,6 +677,10 @@ request("/api/health").then(() => {
   byId("health").innerHTML = '<i aria-hidden="true"></i>服务异常';
 });
 byId("login-button").addEventListener("click", login);
+document.addEventListener("click", (event) => {
+  const button = event.target.closest(".copy-image-reference");
+  if (button) copyImageReference(button).catch(() => { button.textContent = "复制失败"; });
+});
 ["admin-token", "bootstrap-token", "new-admin-password", "confirm-admin-password"].forEach((id) => {
   byId(id).addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
 });
@@ -642,4 +704,5 @@ byId("project-type").addEventListener("change", applyProjectPreset);
 byId("attach-project-form").addEventListener("submit", attachProject);
 byId("attach-project-repository").addEventListener("change", applySelectedRepository);
 renderFlow();
+renderPublicImageDownloads();
 bootstrap().catch((error) => { byId("login-message").textContent = error.message; });

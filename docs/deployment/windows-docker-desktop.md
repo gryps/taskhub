@@ -11,6 +11,15 @@
 
 ## 在线安装
 
+TaskHub 镜像已公开，可任选一组地址：
+
+| 来源 | Seed | Node |
+| --- | --- | --- |
+| GitHub GHCR | `ghcr.io/gryps/taskhub-seed:0.1.0-alpha` | `ghcr.io/gryps/taskhub-node:0.1.0-alpha` |
+| 阿里云杭州 ACR | `crpi-kgqnka7pmz9f3sml.cn-hangzhou.personal.cr.aliyuncs.com/taskhub-v2/taskhub-seed:0.1.0-alpha` | `crpi-kgqnka7pmz9f3sml.cn-hangzhou.personal.cr.aliyuncs.com/taskhub-v2/taskhub-node:0.1.0-alpha` |
+
+两个来源均支持匿名拉取；国内网络优先尝试阿里云 ACR。正式部署始终使用明确版本，不依赖 `latest`。
+
 将标准交付目录放到固定位置，例如 `C:\taskhub`，在 PowerShell 执行：
 
 ```powershell

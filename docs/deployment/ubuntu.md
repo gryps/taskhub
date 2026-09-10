@@ -11,6 +11,15 @@ TaskHub 安装脚本不会询问 sudo 密码。如果 `docker info` 报权限错
 
 ## 在线安装
 
+TaskHub 镜像已公开，可任选一组地址：
+
+| 来源 | Seed | Node |
+| --- | --- | --- |
+| GitHub GHCR | `ghcr.io/gryps/taskhub-seed:0.1.0-alpha` | `ghcr.io/gryps/taskhub-node:0.1.0-alpha` |
+| 阿里云杭州 ACR | `crpi-kgqnka7pmz9f3sml.cn-hangzhou.personal.cr.aliyuncs.com/taskhub-v2/taskhub-seed:0.1.0-alpha` | `crpi-kgqnka7pmz9f3sml.cn-hangzhou.personal.cr.aliyuncs.com/taskhub-v2/taskhub-node:0.1.0-alpha` |
+
+两个来源均支持匿名拉取；国内网络优先尝试阿里云 ACR。正式部署始终使用明确版本，不依赖 `latest`。
+
 将标准交付目录放到固定位置，例如 `/opt/taskhub`，先按发布方提供的仓库地址修改 `.env.example` 中的三个镜像引用，或让初始化脚本生成默认配置后再编辑 `.env`。
 
 ```bash

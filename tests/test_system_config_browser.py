@@ -43,6 +43,12 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto(url, wait_until="networkidle")
+        login_downloads = page.locator("#login .public-image-downloads")
+        expect(login_downloads).to_be_visible()
+        login_downloads.locator("summary").click()
+        expect(login_downloads.locator(".image-download-row")).to_have_count(4)
+        expect(login_downloads).to_contain_text("ghcr.io/gryps/taskhub-seed:0.1.0-alpha")
+        expect(login_downloads).to_contain_text("personal.cr.aliyuncs.com/taskhub-v2/taskhub-node:0.1.0-alpha")
         page.locator("#admin-token").fill("browser-layout-token")
         page.locator("#login-button").click()
 
@@ -57,6 +63,7 @@ def test_onboarding_and_role_overview_layout(tmp_path):
 
         page.locator("#onboarding-later").click()
         page.locator("#nav-resources").click()
+        expect(page.locator("#resource-page .public-image-downloads")).to_be_visible()
         expect(page.locator(".runtime-role-card")).to_have_count(4)
         expect(page.locator("#system-summary")).to_contain_text("角色环境")
         assert len(page.locator(".runtime-role-grid").evaluate(

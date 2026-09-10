@@ -40,6 +40,7 @@ Read the matching tests under `tests/` before changing a DOM contract. Do not in
 - Keep managed platform parameters dense and aligned: three columns on wide screens, two on intermediate widths and one on narrow screens. Keep related input and select heights identical.
 - Present model services only as repeatable cards, without a duplicate provider resource list or fixed provider fieldsets. Each card is both the status presentation and configuration surface, and owns provider/authentication information plus per-role primary or ordered-backup assignments. ChatGPT device authorization must display the backend-issued code and must never expose the stored token.
 - Keep section refresh actions beside their captions as compact labeled secondary buttons; do not float isolated icon-only refresh controls in long disclosures.
+- Keep public Seed/Node image downloads available before login and in system configuration from one frontend data source. Show explicit versions, architecture and both GHCR/Aliyun ACR references without adding another primary configuration disclosure.
 - In the work-node inventory, show per-node credential version/status and reconciliation time without exposing credential material. Require confirmation before credential rotation or revocation, explain the resulting target-node restart/stop, and preserve the node data volume.
 - Increment the query-string version for every changed static asset referenced by `index.html`.
 - Update `docs/frontend-design.md` when a design decision changes and update `docs/agent/memory-notes.md` after a release.

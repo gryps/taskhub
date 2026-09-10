@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=24">
+  <link rel="stylesheet" href="/static/styles.css?v=25">
 </head>
 <body>
   <header class="app-header">
@@ -33,6 +33,7 @@
       </div>
       <button id="login-button" type="button">安全登录</button>
       <p id="login-message" role="status"></p>
+      <div class="login-downloads" data-public-image-downloads></div>
     </section>
     <div id="workspace" class="hidden">
     <nav class="side-menu" aria-label="主菜单">
@@ -260,6 +261,7 @@
       </div>
       <div class="page-actions"><button id="open-onboarding" type="button" class="secondary">首次启动向导</button></div>
     </div>
+    <div data-public-image-downloads></div>
     <details id="system-disclosure" class="providers-section resource-disclosure" open>
       <summary><span>运行概览</span><span id="system-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
@@ -427,7 +429,7 @@
     </section>
     </div>
   </main>
-  <script src="/static/app.js?v=7"></script>
+  <script src="/static/app.js?v=8"></script>
   <script src="/static/task-center.js?v=13"></script>
   <script src="/static/resource-center.js?v=17"></script>
   <script src="/static/onboarding.js?v=2"></script>
