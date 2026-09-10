@@ -64,34 +64,95 @@ function prerequisiteAction(action) {
 }
 
 async function loadSystemConfig() {
-  byId("system-summary").textContent = "正在读取系统版本、组件与前置条件";
+  byId("system-summary").textContent = "正在读取 Seed 控制面运行条件";
   try {
     const data = await request("/api/system/config");
     const controllerStatus = checkStatusLabel(data.status);
-    const nodeChecks = (data.nodes || []).flatMap((node) => node.system?.checks || []);
-    const failed = [...data.controller.checks, ...nodeChecks]
+    const failed = data.controller.checks
       .filter((item) => item.status === "fail").length;
-    byId("system-summary").textContent = `控制器 ${controllerStatus} · ${failed} 个失败项`;
-    const nodeRows = (data.nodes || []).map((node) => {
-      const title = `${node.node_id} · ${node.kind} · ${node.status}`;
-      const checks = node.system?.checks || [];
-      return checks.length
-        ? renderCheckRows(title, checks)
-        : `<div class="resource-row check-group"><strong>${escapeHtml(title)}</strong>
-          <span class="warn">未上报</span><span></span><span>${escapeHtml(node.detail || "节点版本不支持系统检测")}</span></div>`;
-    }).join("");
+    const online = (data.nodes || []).filter((node) => node.status === "ok").length;
+    byId("system-summary").textContent =
+      `控制面 ${controllerStatus} · 工作节点 ${online}/${(data.nodes || []).length} 在线 · ${failed} 个失败项`;
     byId("system-checks").innerHTML = `<div class="resource-row resource-header">
       <span>检测项</span><span>结果</span><span>当前状态</span><span>建议 / 路径</span>
-    </div>${renderCheckRows(`${data.controller.host} · ${data.controller.role}`, data.controller.checks)}${nodeRows}`;
+    </div>${renderCheckRows(`${data.controller.host} · ${data.controller.role}`, data.controller.checks)}`;
   } catch (error) {
     byId("system-summary").textContent = error.message;
+  }
+}
+
+function configurationState(data) {
+  if (data.restart_required) return `v${data.version} 已保存 · 重启后生效`;
+  if (data.version) return `v${data.version} 已生效`;
+  return "使用部署默认值";
+}
+
+function fillValue(id, value) {
+  byId(id).value = value === null || value === undefined ? "" : value;
+}
+
+function credentialState(metadata) {
+  if (!metadata?.configured) return "未配置";
+  const source = metadata.source === "managed" ? "Web 加密配置" : "部署环境";
+  return `已配置 · ${source} · ${metadata.mask}`;
+}
+
+function renderConfigurationAudit(target, events) {
+  const actionNames = {update: "保存配置", connection_test: "连接测试", apply: "启动生效"};
+  const resultNames = {pending_restart: "等待重启", passed: "通过", failed: "失败", applied: "已生效"};
+  const rows = events.map((item) => {
+    const summary = item.parameter_summary || {};
+    const fields = (summary.changed_fields || []).join(" · ") ||
+      (summary.provider_id ? `服务：${summary.provider_id}` : `版本：${summary.version || "—"}`);
+    const secrets = (summary.replaced_secrets || []).length
+      ? `<small>已替换密钥：${summary.replaced_secrets.map(escapeHtml).join(" · ")}</small>` : "";
+    const resultClass = item.result === "failed" ? "bad" :
+      item.result === "pending_restart" ? "warn" : "ok";
+    return `<div class="resource-row audit-row">
+      <strong>${escapeHtml(actionNames[item.action] || item.action)}<small>${new Date(item.created_at).toLocaleString()}</small></strong>
+      <span>${escapeHtml(item.operator)}</span><span>${escapeHtml(fields)}${secrets}</span>
+      <span class="${resultClass}">${escapeHtml(resultNames[item.result] || item.result)}</span>
+    </div>`;
+  }).join("");
+  byId(target).innerHTML = `<div class="resource-row audit-row resource-header">
+    <span>操作 / 时间</span><span>操作者</span><span>参数摘要</span><span>结果</span>
+  </div>${rows || '<div class="resource-row audit-row"><span>尚无配置操作</span><span>—</span><span>—</span><span>—</span></div>'}`;
+}
+
+function fillModelConfiguration(data) {
+  const values = data.desired;
+  fillValue("model-provider-mode", values.provider);
+  fillValue("model-openai-proxy", values.openai_proxy_url);
+  fillValue("model-openai-base", values.openai_base_url);
+  fillValue("model-openai-name", values.openai_model);
+  fillValue("model-gpt-base", values.gpt_base_url);
+  fillValue("model-gpt-name", values.gpt_model);
+  fillValue("model-gpt-planner", values.gpt_planner_model);
+  fillValue("model-gpt-coder", values.gpt_coder_model);
+  fillValue("model-gpt-supervisor", values.gpt_supervisor_model);
+  fillValue("model-deepseek-base", values.deepseek_base_url);
+  fillValue("model-deepseek-name", values.deepseek_model);
+  fillValue("model-minimax-base", values.minimax_base_url);
+  fillValue("model-minimax-name", values.minimax_model);
+  ["openai", "gpt", "deepseek", "minimax"].forEach((name) => {
+    fillValue(`model-${name}-key`, "");
+    byId(`model-${name}-key-state`).textContent =
+      credentialState(data.secrets[`${name}_api_key`]);
+  });
+  byId("model-config-state").textContent = configurationState(data);
+  if (!data.encryption_configured) {
+    byId("model-config-state").textContent += " · 加密主密钥未配置";
   }
 }
 
 async function loadProviders() {
   byId("provider-summary").textContent = "正在读取模型状态与计费信息";
   try {
-    const data = await request("/api/providers");
+    const [data, configuration, audit] = await Promise.all([
+      request("/api/providers"),
+      request("/api/settings/model-services"),
+      request("/api/settings/audit?scope=model_services&limit=8"),
+    ]);
     const ready = data.providers.filter((item) => item.configured).length;
     byId("provider-summary").textContent = `${ready}/${data.providers.length} 可用 · OpenAI 走代理 · 其他模型直连`;
     byId("providers").innerHTML = `<div class="resource-row resource-header">
@@ -103,8 +164,71 @@ async function loadProviders() {
         <span class="model-cell">${roleModelsView(item)}<small>网络：${escapeHtml(item.route)}</small></span>
         <div class="usage-cell">${billingView(item.billing)}</div>
       </div>`).join("")}`;
+    fillModelConfiguration(configuration);
+    renderConfigurationAudit("model-config-audit", audit.events);
   } catch (error) {
     byId("provider-summary").textContent = error.message;
+  }
+}
+
+async function saveModelServices(event) {
+  event.preventDefault();
+  const button = byId("save-model-services");
+  const payload = {
+    provider: byId("model-provider-mode").value,
+    openai_proxy_url: byId("model-openai-proxy").value,
+    openai_base_url: byId("model-openai-base").value,
+    openai_model: byId("model-openai-name").value,
+    gpt_base_url: byId("model-gpt-base").value,
+    gpt_model: byId("model-gpt-name").value,
+    gpt_planner_model: byId("model-gpt-planner").value,
+    gpt_coder_model: byId("model-gpt-coder").value,
+    gpt_supervisor_model: byId("model-gpt-supervisor").value,
+    deepseek_base_url: byId("model-deepseek-base").value,
+    deepseek_model: byId("model-deepseek-name").value,
+    minimax_base_url: byId("model-minimax-base").value,
+    minimax_model: byId("model-minimax-name").value,
+  };
+  ["openai", "gpt", "deepseek", "minimax"].forEach((name) => {
+    const value = byId(`model-${name}-key`).value;
+    if (value) payload[`${name}_api_key`] = value;
+  });
+  button.disabled = true;
+  byId("model-config-message").textContent = "正在安全保存";
+  try {
+    const result = await request("/api/settings/model-services", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    fillModelConfiguration(result);
+    const audit = await request("/api/settings/audit?scope=model_services&limit=8");
+    renderConfigurationAudit("model-config-audit", audit.events);
+    byId("model-config-message").textContent = result.restart_required
+      ? "配置已保存；重启 Seed 控制器后生效" : "配置已保存并生效";
+  } catch (error) {
+    byId("model-config-message").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function testModelService() {
+  const button = byId("test-model-service");
+  button.disabled = true;
+  byId("model-config-message").textContent = "正在测试已保存的服务配置";
+  try {
+    const result = await request("/api/settings/model-services/test", {
+      method: "POST",
+      body: JSON.stringify({provider_id: byId("model-test-provider").value}),
+    });
+    byId("model-config-message").textContent = result.available
+      ? `连接可用：${result.detail}` : `连接不可用：${result.detail}`;
+    const audit = await request("/api/settings/audit?scope=model_services&limit=8");
+    renderConfigurationAudit("model-config-audit", audit.events);
+  } catch (error) {
+    byId("model-config-message").textContent = error.message;
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -114,7 +238,7 @@ async function loadNodes() {
     const ready = data.nodes.filter((item) => item.status === "ok").length;
     byId("node-summary").textContent = `${ready}/${data.nodes.length} 在线`;
     byId("nodes").innerHTML = `<div class="resource-row node-row resource-header">
-      <span>执行节点</span><span>状态</span><span>负载</span><span>能力</span>
+      <span>工作节点</span><span>状态</span><span>负载</span><span>能力</span>
     </div>${data.nodes.map((item) => `
       <div class="resource-row node-row">
         <strong>${escapeHtml(item.node_id)}</strong>
@@ -126,6 +250,112 @@ async function loadNodes() {
       </div>`).join("")}`;
   } catch (error) {
     byId("node-summary").textContent = error.message;
+  }
+}
+
+async function loadPhysicalHosts() {
+  byId("host-summary").textContent = "正在检查 Seed 本机 Docker";
+  try {
+    const status = await request("/api/containers/status");
+    const stateClass = status.available ? "ok" : status.enabled ? "bad" : "warn";
+    const stateLabel = status.available ? "可用" : status.enabled ? "异常" : "未启用";
+    byId("host-summary").textContent =
+      `Seed 本机 ${stateLabel} · 远程 SSH 主机待实现`;
+    byId("physical-hosts").innerHTML = `<div class="resource-row resource-header">
+      <span>物理主机</span><span>状态</span><span>Docker</span><span>说明</span>
+    </div><div class="resource-row">
+      <strong>Seed 本机<small>local-docker</small></strong>
+      <span class="${stateClass}">${stateLabel}</span>
+      <span>${escapeHtml(status.detail || "未检测")}</span>
+      <span>当前仅支持在 Seed 所在主机创建节点容器。远程主机登记、SSH 指纹确认和准入检测将在下一阶段提供。</span>
+    </div>`;
+  } catch (error) {
+    byId("host-summary").textContent = error.message;
+  }
+}
+
+function fillPlatformConfiguration(data) {
+  const values = data.desired;
+  fillValue("platform-seed-url", values.seed_public_url);
+  fillValue("platform-callback-url", values.node_callback_url);
+  fillValue("platform-node-image", values.node_container_image);
+  fillValue("platform-registry", values.node_image_registry);
+  fillValue("platform-image-proxy", values.node_image_proxy);
+  fillValue("platform-default-slots", values.default_node_slots);
+  fillValue("platform-cpu-limit", values.default_node_cpu_limit);
+  fillValue("platform-memory-limit", values.default_node_memory_limit);
+  fillValue("platform-heartbeat", values.node_heartbeat_seconds);
+  fillValue("platform-offline", values.node_offline_seconds);
+  fillValue("platform-log-retention", values.log_retention_days);
+  fillValue("platform-artifact-retention", values.artifact_retention_days);
+  byId("platform-config-state").textContent = configurationState(data);
+}
+
+async function loadPlatformSettings() {
+  byId("platform-summary").textContent = "正在读取运行配置";
+  try {
+    const [status, configuration, audit] = await Promise.all([
+      request("/api/containers/status"),
+      request("/api/settings/platform"),
+      request("/api/settings/audit?scope=platform&limit=8"),
+    ]);
+    const desired = configuration.desired;
+    byId("platform-summary").textContent = configuration.restart_required
+      ? `平台配置 v${configuration.version} 等待重启`
+      : `工作镜像 ${desired.node_container_image || "未指定"}`;
+    byId("platform-settings").innerHTML = `<div class="resource-row resource-header">
+      <span>设置</span><span>当前状态</span><span>当前值</span><span>生效方式</span>
+    </div>
+    <div class="resource-row"><strong>工作节点镜像</strong>
+      <span class="${configuration.restart_required ? "warn" : "ok"}">${configuration.restart_required ? "等待生效" : "已生效"}</span>
+      <code>${escapeHtml(desired.node_container_image || "—")}</code><span>保存后重启 Seed 控制器，使后续新节点使用此镜像。</span></div>
+    <div class="resource-row"><strong>节点内部网络</strong>
+      <span class="${status.network ? "ok" : "warn"}">${status.network ? "已配置" : "未提供"}</span>
+      <code>${escapeHtml(status.network || "—")}</code><span>启动根配置；工作节点默认不发布宿主机端口。</span></div>
+    <div class="resource-row"><strong>敏感启动配置</strong><span class="ok">受保护</span>
+      <span>数据库、会话密钥、加密主密钥、节点令牌</span><span>继续由 Docker Secret 或环境变量提供，Web 不回读原文。</span></div>
+    <div class="resource-row"><strong>Web 管理配置</strong><span class="ok">已开放</span>
+      <span>地址、镜像策略、默认限额、心跳和保留策略</span><span>所有保存与启动生效动作均写入审计记录。</span></div>`;
+    fillPlatformConfiguration(configuration);
+    renderConfigurationAudit("platform-config-audit", audit.events);
+  } catch (error) {
+    byId("platform-summary").textContent = error.message;
+  }
+}
+
+async function savePlatformSettings(event) {
+  event.preventDefault();
+  const button = byId("save-platform-settings");
+  const payload = {
+    seed_public_url: byId("platform-seed-url").value,
+    node_callback_url: byId("platform-callback-url").value,
+    node_container_image: byId("platform-node-image").value,
+    node_image_registry: byId("platform-registry").value,
+    node_image_proxy: byId("platform-image-proxy").value,
+    default_node_slots: Number(byId("platform-default-slots").value),
+    default_node_cpu_limit: byId("platform-cpu-limit").value,
+    default_node_memory_limit: byId("platform-memory-limit").value,
+    node_heartbeat_seconds: Number(byId("platform-heartbeat").value),
+    node_offline_seconds: Number(byId("platform-offline").value),
+    log_retention_days: Number(byId("platform-log-retention").value),
+    artifact_retention_days: Number(byId("platform-artifact-retention").value),
+  };
+  button.disabled = true;
+  byId("platform-config-message").textContent = "正在保存平台设置";
+  try {
+    const result = await request("/api/settings/platform", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    fillPlatformConfiguration(result);
+    const audit = await request("/api/settings/audit?scope=platform&limit=8");
+    renderConfigurationAudit("platform-config-audit", audit.events);
+    byId("platform-config-message").textContent = result.restart_required
+      ? "配置已保存；重启 Seed 控制器后生效" : "配置已保存并生效";
+  } catch (error) {
+    byId("platform-config-message").textContent = error.message;
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -295,6 +525,12 @@ async function loadAcceptancePrerequisites() {
   }
 }
 
+async function loadWorkNodes() {
+  await Promise.all([
+    loadNodes(), loadContainers(), loadNodeLoad(), loadAcceptancePrerequisites(),
+  ]);
+}
+
 function selectedTestEnvironmentProject() {
   return registeredProjects.find((item) => item.id === byId("test-environment-project").value);
 }
@@ -402,11 +638,9 @@ async function loadResources() {
   const sections = [
     ["system-disclosure", loadSystemConfig],
     ["providers-disclosure", loadProviders],
-    ["nodes-disclosure", loadNodes],
-    ["containers-disclosure", loadContainers],
-    ["load-disclosure", loadNodeLoad],
-    ["acceptance-prerequisites-disclosure", loadAcceptancePrerequisites],
-    ["test-environment-disclosure", loadTestEnvironmentConfig],
+    ["hosts-disclosure", loadPhysicalHosts],
+    ["nodes-disclosure", loadWorkNodes],
+    ["platform-disclosure", loadPlatformSettings],
   ];
   await Promise.all(sections.filter(([id]) => byId(id).open).map(([, load]) => load()));
 }
@@ -419,16 +653,14 @@ function refreshWhenExpanded(id, load) {
 
 byId("refresh-system").addEventListener("click", loadSystemConfig);
 byId("refresh-providers").addEventListener("click", loadProviders);
-byId("refresh-nodes").addEventListener("click", loadNodes);
-byId("refresh-containers").addEventListener("click", loadContainers);
-byId("refresh-load").addEventListener("click", loadNodeLoad);
+byId("refresh-hosts").addEventListener("click", loadPhysicalHosts);
+byId("refresh-nodes").addEventListener("click", loadWorkNodes);
+byId("refresh-platform").addEventListener("click", loadPlatformSettings);
 refreshWhenExpanded("system-disclosure", loadSystemConfig);
 refreshWhenExpanded("providers-disclosure", loadProviders);
-refreshWhenExpanded("nodes-disclosure", loadNodes);
-refreshWhenExpanded("containers-disclosure", loadContainers);
-refreshWhenExpanded("load-disclosure", loadNodeLoad);
-byId("refresh-acceptance-prerequisites").addEventListener("click", loadAcceptancePrerequisites);
-refreshWhenExpanded("acceptance-prerequisites-disclosure", loadAcceptancePrerequisites);
+refreshWhenExpanded("hosts-disclosure", loadPhysicalHosts);
+refreshWhenExpanded("nodes-disclosure", loadWorkNodes);
+refreshWhenExpanded("platform-disclosure", loadPlatformSettings);
 refreshWhenExpanded("test-environment-disclosure", loadTestEnvironmentConfig);
 byId("test-environment-project").addEventListener("change", fillTestEnvironmentForm);
 byId("test-environment-form").addEventListener("submit", saveTestEnvironment);
@@ -436,6 +668,9 @@ byId("delete-test-environment").addEventListener("click", deleteTestEnvironment)
 byId("check-test-environment").addEventListener("click", checkTestEnvironment);
 byId("edit-test-environment").addEventListener("click", () => setTestEnvironmentEditMode(true));
 byId("cancel-test-environment").addEventListener("click", () => fillTestEnvironmentForm());
+byId("model-services-form").addEventListener("submit", saveModelServices);
+byId("test-model-service").addEventListener("click", testModelService);
+byId("platform-settings-form").addEventListener("submit", savePlatformSettings);
 byId("container-form").addEventListener("submit", createContainer);
 byId("managed-containers").addEventListener("click", (event) => {
   const button = event.target.closest(".container-action");

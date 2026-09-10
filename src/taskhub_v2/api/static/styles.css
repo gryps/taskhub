@@ -382,8 +382,44 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .resource-disclosure > summary > span:first-child { font-size: 14px; font-weight: 750; color: var(--text); }
 .resource-disclosure > summary .muted { margin-left: auto; text-align: right; font-size: 11px; }
 .resource-actions { min-height: 44px; padding: 0 14px 8px; }
+.resource-caption { color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.resource-subsection-head {
+  min-height: 44px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-subtle);
+  font-size: 12px;
+}
+.resource-subsection-head strong { color: var(--text); }
+.resource-subsection-head span { color: var(--text-secondary); text-align: right; }
+.project-settings-disclosure { margin-top: 0; }
 .resource-form { margin: 0; border-width: 1px 0 0; border-radius: 0; box-shadow: none; }
 .container-form-grid { grid-template-columns: minmax(180px, 1.4fr) minmax(160px, 1fr) minmax(130px, .7fr); }
+.configuration-form { padding: 18px 16px; }
+.configuration-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.configuration-grid fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-subtle);
+}
+.configuration-grid legend { padding: 0 6px; color: var(--text); font-size: 12px; font-weight: 750; }
+.configuration-grid fieldset label:last-of-type,
+.configuration-grid .credential-state { grid-column: 1 / -1; }
+.credential-state { color: var(--text-secondary); font-size: 11px; }
+.configuration-actions { flex-wrap: wrap; }
+.configuration-actions select { width: auto; min-width: 180px; }
+#model-config-message, #platform-config-message { color: var(--text-secondary); font-size: 12px; }
+.audit-row { grid-template-columns: 1fr .8fr 1.6fr .7fr; }
 .form-help { margin: 12px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
 .resource-table { overflow-x: auto; border-top: 1px solid var(--border); background: var(--surface); }
 .resource-row { min-width: 800px; display: grid; grid-template-columns: 1.1fr .7fr 1.1fr 2.1fr; gap: 14px; padding: 13px 16px; align-items: start; border-bottom: 1px solid var(--border); font-size: 12px; }
@@ -445,9 +481,15 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .page-head { align-items: flex-start; }
   .form-grid { grid-template-columns: 1fr; }
   .container-form-grid { grid-template-columns: 1fr; }
+  .configuration-grid { grid-template-columns: 1fr; }
+  .configuration-grid fieldset { grid-template-columns: 1fr; }
+  .configuration-grid fieldset label,
+  .configuration-grid .credential-state { grid-column: auto; }
   .form-grid .wide { grid-column: auto; }
   .flow { grid-template-columns: repeat(2, 1fr); }
   .process-overview .section-head { align-items: flex-start; flex-direction: column; gap: 7px; }
+  .resource-subsection-head { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .resource-subsection-head span { text-align: left; }
   .run-head { flex-wrap: wrap; justify-content: flex-start; }
   .run-head > div:first-child { width: 100%; }
   .run-summary { grid-template-columns: 1fr; }

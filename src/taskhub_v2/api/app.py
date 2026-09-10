@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from taskhub_v2.api.auth_routes import router as auth_router
+from taskhub_v2.api.configuration_routes import router as configuration_router
 from taskhub_v2.api.container_routes import router as container_router
 from taskhub_v2.api.deployment_routes import router as deployment_router
 from taskhub_v2.api.node_routes import router as node_router
@@ -17,12 +18,15 @@ from taskhub_v2.api.system_routes import router as system_router
 from taskhub_v2.config import Settings, get_settings
 from taskhub_v2.deployment import DeploymentManager
 from taskhub_v2.persistence.checkpoints import checkpoint_store
+from taskhub_v2.persistence.configuration import configuration_store
 from taskhub_v2.persistence.task_index import task_index_store
 from taskhub_v2.projects import ProjectProvisioner, ProjectRegistry
 from taskhub_v2.providers import build_provider
 from taskhub_v2.providers.health import ProviderHealthStore
 from taskhub_v2.security.auth import CSRF_COOKIE, SESSION_COOKIE, AuthService
+from taskhub_v2.security.encryption import SecretCipher
 from taskhub_v2.services import RunService
+from taskhub_v2.services.configuration import ManagedConfigurationService
 from taskhub_v2.services.containers import ContainerManager
 from taskhub_v2.services.providers import ProviderCatalog
 from taskhub_v2.workers import (
@@ -55,40 +59,70 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.provider_quota_cooldown_seconds,
         settings.provider_transient_cooldown_seconds,
     )
+    default_container_manager = ContainerManager(
+        enabled=settings.container_provisioning_enabled,
+        socket_path=settings.docker_socket,
+        network=settings.docker_network,
+        image=settings.node_container_image,
+        node_token=settings.node_token,
+        nodes_file=settings.nodes_file,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         async with (
+            configuration_store(settings) as managed_store,
             checkpoint_store(settings) as checkpointer,
             task_index_store(settings) as task_index,
         ):
-            provider = build_provider(settings, provider_health)
-            local_coder = build_coder(settings, provider_health)
-            test_scheduler = build_test_scheduler(settings, local_coder)
+            cipher = (
+                SecretCipher(settings.config_encryption_key)
+                if settings.config_encryption_key
+                else None
+            )
+            managed_configuration = ManagedConfigurationService(settings, managed_store, cipher)
+            effective_settings = await managed_configuration.apply()
+            app.state.settings = effective_settings
+            app.state.managed_configuration = managed_configuration
+            if app.state.container_manager is default_container_manager:
+                app.state.container_manager = ContainerManager(
+                    enabled=effective_settings.container_provisioning_enabled,
+                    socket_path=effective_settings.docker_socket,
+                    network=effective_settings.docker_network,
+                    image=effective_settings.node_container_image,
+                    node_token=effective_settings.node_token,
+                    nodes_file=effective_settings.nodes_file,
+                )
+            provider = build_provider(effective_settings, provider_health)
+            local_coder = build_coder(effective_settings, provider_health)
+            test_scheduler = build_test_scheduler(effective_settings, local_coder)
             graph = build_main_graph(
                 provider,
                 build_worker(
-                    settings,
+                    effective_settings,
                     provider_health,
                     test_scheduler,
                     ScheduledCodingRouter(test_scheduler),
                 ),
                 checkpointer,
-                build_publisher(settings, test_scheduler),
-                build_acceptance(settings, test_scheduler),
+                build_publisher(effective_settings, test_scheduler),
+                build_acceptance(effective_settings, test_scheduler),
             )
             app.state.run_service = RunService(
-                graph, projects if settings.worker_mode == "git" else None, task_index
+                graph,
+                projects if effective_settings.worker_mode == "git" else None,
+                task_index,
             )
             # A memory checkpointer is new for every process and has nothing to repair.
             # PostgreSQL can contain runs created before the task index existed.
-            if settings.checkpointer == "postgres":
+            if effective_settings.checkpointer == "postgres":
                 await app.state.run_service.backfill(checkpointer)
                 app.state.recovery_task = asyncio.create_task(
                     app.state.run_service.recover_interrupted()
                 )
-            app.state.provider_catalog = ProviderCatalog(settings, provider_health)
+            app.state.provider_catalog = ProviderCatalog(effective_settings, provider_health)
             app.state.node_scheduler = test_scheduler
+            await managed_configuration.mark_applied()
             try:
                 yield
             finally:
@@ -105,17 +139,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.projects = projects
     app.state.project_provisioner = project_provisioner
     app.state.deployment_manager = DeploymentManager(settings)
-    app.state.container_manager = ContainerManager(
-        enabled=settings.container_provisioning_enabled,
-        socket_path=settings.docker_socket,
-        network=settings.docker_network,
-        image=settings.node_container_image,
-        node_token=settings.node_token,
-        nodes_file=settings.nodes_file,
-    )
+    app.state.container_manager = default_container_manager
     app.include_router(router)
     app.include_router(provider_router)
     app.include_router(auth_router)
+    app.include_router(configuration_router)
     app.include_router(container_router)
     app.include_router(project_router)
     app.include_router(node_router)

@@ -52,8 +52,10 @@ From the repository root in PowerShell:
 .\deploy\seed\start-seed.ps1
 ```
 
-The script creates `deploy/seed/.env` once, generates random credentials, builds
-the application image, starts both services, and waits for `/api/health`.
+The script creates `deploy/seed/.env` once, generates random credentials and a
+Fernet configuration-encryption key, builds the application image, starts both
+services, and waits for `/api/health`. Existing environment files are upgraded
+in place with a new encryption key if that field is absent.
 
 If Docker Hub is slow or unavailable in mainland China, preload the two public
 base images through the verified DaoCloud prefix mirror before starting:
@@ -71,6 +73,11 @@ deployment bootstrap token and a new administrator password. Retrieve
 `TASKHUB_ADMIN_TOKEN` from the host-local `deploy/seed/.env` file and use it only
 for this initial setup. Later logins accept the administrator password instead.
 Never commit or copy the `.env` file into an image.
+
+The encryption key protects Web-managed provider API keys stored in PostgreSQL.
+It remains a deployment root secret: the Web UI can report whether encryption is
+available but cannot read or replace this key. Back up the `.env` file securely;
+losing this key makes previously stored provider credentials unrecoverable.
 
 The password is stored as a salted `scrypt` hash in the persistent TaskHub data
 volume at `/var/lib/taskhub/config/admin-password.json`; plaintext is never

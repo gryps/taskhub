@@ -17,6 +17,17 @@ function New-HexSecret([int]$ByteCount) {
     return ([BitConverter]::ToString($Bytes) -replace '-', '').ToLowerInvariant()
 }
 
+function New-FernetKey {
+    $Bytes = New-Object byte[] 32
+    $Generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $Generator.GetBytes($Bytes)
+    } finally {
+        $Generator.Dispose()
+    }
+    return [Convert]::ToBase64String($Bytes).Replace('+', '-').Replace('/', '_')
+}
+
 # Docker Desktop's credential helper is unavailable in Windows OpenSSH sessions.
 # The seed uses only public base images, so keep a deployment-local anonymous
 # client configuration and connect directly to the Linux engine pipe.
@@ -43,6 +54,7 @@ if (-not (Test-Path $EnvironmentFile)) {
     $PostgresPassword = New-HexSecret 24
     $AdminToken = New-HexSecret 24
     $SessionSecret = New-HexSecret 48
+    $ConfigEncryptionKey = New-FernetKey
     $NodeToken = New-HexSecret 32
     @(
         "TASKHUB_PORT=$Port"
@@ -50,8 +62,15 @@ if (-not (Test-Path $EnvironmentFile)) {
         "TASKHUB_POSTGRES_PASSWORD=$PostgresPassword"
         "TASKHUB_ADMIN_TOKEN=$AdminToken"
         "TASKHUB_SESSION_SECRET=$SessionSecret"
+        "TASKHUB_CONFIG_ENCRYPTION_KEY=$ConfigEncryptionKey"
         "TASKHUB_NODE_TOKEN=$NodeToken"
     ) | Set-Content -Path $EnvironmentFile -Encoding ascii
+}
+
+if (-not (Select-String -Path $EnvironmentFile `
+        -Pattern '^TASKHUB_CONFIG_ENCRYPTION_KEY=' -Quiet)) {
+    "TASKHUB_CONFIG_ENCRYPTION_KEY=$(New-FernetKey)" | Add-Content `
+        -Path $EnvironmentFile -Encoding ascii
 }
 
 if (-not (Select-String -Path $EnvironmentFile -Pattern '^TASKHUB_NODE_TOKEN=' -Quiet)) {

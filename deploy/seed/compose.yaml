@@ -43,6 +43,7 @@ services:
       TASKHUB_ADMIN_TOKEN: ${TASKHUB_ADMIN_TOKEN:?TASKHUB_ADMIN_TOKEN is required}
       TASKHUB_ADMIN_PASSWORD_FILE: /var/lib/taskhub/config/admin-password.json
       TASKHUB_SESSION_SECRET: ${TASKHUB_SESSION_SECRET:?TASKHUB_SESSION_SECRET is required}
+      TASKHUB_CONFIG_ENCRYPTION_KEY: ${TASKHUB_CONFIG_ENCRYPTION_KEY:?TASKHUB_CONFIG_ENCRYPTION_KEY is required}
       TASKHUB_COOKIE_SECURE: "false"
       TASKHUB_PROVIDER_SECRETS_FILE: /var/lib/taskhub/config/providers.env
       TASKHUB_PROVIDER_WORKDIR: /var/lib/taskhub/repositories

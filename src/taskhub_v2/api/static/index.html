@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=14">
+  <link rel="stylesheet" href="/static/styles.css?v=16">
 </head>
 <body>
   <header class="app-header">
@@ -109,6 +109,27 @@
           </div>
         </div>
       </form>
+      <details id="test-environment-disclosure" class="providers-section project-settings-disclosure resource-disclosure">
+        <summary><span>项目设置 · 预生产与验收环境</span><span id="test-environment-summary" class="muted">未读取</span></summary>
+        <form id="test-environment-form" class="project-form resource-form">
+          <p class="form-note">这里配置当前项目的验收目标。预生产节点负责执行部署和验证，项目环境记录实际访问入口，两者相互关联但不是同一个资源。</p>
+          <div id="test-environment-fields" class="form-grid">
+            <label class="wide">项目<select id="test-environment-project" required></select></label>
+            <label class="wide">测试访问地址<input id="test-environment-url" type="url" required maxlength="500" placeholder="https://preprod.example.com"></label>
+            <label>对外入口服务器<input id="test-environment-edge" required maxlength="253" placeholder="主机名或 IP"></label>
+            <label>应用服务器<input id="test-environment-origin" required maxlength="253" placeholder="主机名或 IP"></label>
+            <input id="test-environment-name" type="hidden" value="production">
+          </div>
+          <div class="form-actions">
+            <button id="check-test-environment" type="button">检测可用性</button>
+            <button id="edit-test-environment" type="button" class="secondary">修改配置</button>
+            <button id="save-test-environment" type="submit" class="hidden">保存修改</button>
+            <button id="cancel-test-environment" type="button" class="secondary hidden">取消</button>
+            <button id="delete-test-environment" type="button" class="secondary hidden">停用配置</button>
+            <span id="test-environment-message" role="status"></span>
+          </div>
+        </form>
+      </details>
     </section>
     <section class="composer card">
       <label>生产线<input id="production-line" value="default" maxlength="80"></label>
@@ -200,36 +221,96 @@
     <section id="resource-page" class="resource-page hidden">
     <div class="resource-title page-head">
       <div class="page-head-copy">
-        <span class="eyebrow">RUNTIME READINESS</span><h1>系统配置</h1>
-        <p>模型、节点、运行环境与实施前置条件统一在此检测。</p>
+        <span class="eyebrow">CONTROL PLANE</span><h1>系统配置</h1>
+        <p>管理模型、物理主机、工作节点和平台运行条件。</p>
       </div>
     </div>
     <details id="system-disclosure" class="providers-section resource-disclosure">
-      <summary><span>系统检测</span><span id="system-summary" class="muted">正在检查</span></summary>
+      <summary><span>运行概览</span><span id="system-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
-        <span></span>
-        <button id="refresh-system" class="icon-button" title="刷新系统检测" aria-label="刷新系统检测">↻</button>
+        <span class="resource-caption">Seed 控制面、持久化和关键运行条件</span>
+        <button id="refresh-system" class="icon-button" title="刷新运行概览" aria-label="刷新运行概览">↻</button>
       </div>
       <div id="system-checks" class="resource-table"></div>
     </details>
     <details id="providers-disclosure" class="providers-section resource-disclosure">
-      <summary><span>模型资源</span><span id="provider-summary" class="muted">正在检查</span></summary>
+      <summary><span>模型服务</span><span id="provider-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
-        <span></span>
+        <span class="resource-caption">Provider、角色模型、路由、密钥状态与用量</span>
         <button id="refresh-providers" class="icon-button" title="刷新模型状态" aria-label="刷新模型状态">↻</button>
       </div>
       <div id="providers" class="resource-table"></div>
+      <div class="resource-subsection-head"><strong>模型管理配置</strong><span id="model-config-state">正在读取</span></div>
+      <form id="model-services-form" class="project-form resource-form configuration-form">
+        <p class="form-note">API Key 留空表示保留现有值。新密钥只发送到控制端并加密保存，页面不会回显原文。</p>
+        <div class="form-grid configuration-grid">
+          <label>运行模式<select id="model-provider-mode">
+            <option value="deterministic">内置确定性模型</option>
+            <option value="openai">单一 OpenAI API</option>
+            <option value="routed">多模型路由</option>
+          </select></label>
+          <label>OpenAI 网络代理<input id="model-openai-proxy" type="url" maxlength="500" placeholder="http://proxy.example:7893"></label>
+          <fieldset><legend>单一 OpenAI API</legend>
+            <label>API 地址<input id="model-openai-base" type="url" maxlength="500"></label>
+            <label>模型<input id="model-openai-name" maxlength="200"></label>
+            <label>替换 API Key<input id="model-openai-key" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空则不修改"></label>
+            <small id="model-openai-key-state" class="credential-state"></small>
+          </fieldset>
+          <fieldset><legend>GPT API 与角色模型</legend>
+            <label>API 地址<input id="model-gpt-base" type="url" maxlength="500"></label>
+            <label>默认模型<input id="model-gpt-name" maxlength="200"></label>
+            <label>规划模型<input id="model-gpt-planner" maxlength="200"></label>
+            <label>编码模型<input id="model-gpt-coder" maxlength="200"></label>
+            <label>监督模型<input id="model-gpt-supervisor" maxlength="200"></label>
+            <label>替换 API Key<input id="model-gpt-key" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空则不修改"></label>
+            <small id="model-gpt-key-state" class="credential-state"></small>
+          </fieldset>
+          <fieldset><legend>DeepSeek 审查</legend>
+            <label>API 地址<input id="model-deepseek-base" type="url" maxlength="500"></label>
+            <label>模型<input id="model-deepseek-name" maxlength="200"></label>
+            <label>替换 API Key<input id="model-deepseek-key" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空则不修改"></label>
+            <small id="model-deepseek-key-state" class="credential-state"></small>
+          </fieldset>
+          <fieldset><legend>MiniMax 风险分析</legend>
+            <label>API 地址<input id="model-minimax-base" type="url" maxlength="500"></label>
+            <label>模型<input id="model-minimax-name" maxlength="200"></label>
+            <label>替换 API Key<input id="model-minimax-key" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空则不修改"></label>
+            <small id="model-minimax-key-state" class="credential-state"></small>
+          </fieldset>
+        </div>
+        <div class="form-actions configuration-actions">
+          <button id="save-model-services" type="submit">保存模型配置</button>
+          <select id="model-test-provider" aria-label="选择要测试的模型服务">
+            <option value="deterministic">内置确定性模型</option>
+            <option value="openai_api">单一 OpenAI API</option>
+            <option value="gpt_api">GPT API</option>
+            <option value="deepseek_api">DeepSeek API</option>
+            <option value="minimax_api">MiniMax API</option>
+          </select>
+          <button id="test-model-service" type="button" class="secondary">测试连接</button>
+          <span id="model-config-message" role="status"></span>
+        </div>
+      </form>
+      <div class="resource-subsection-head"><strong>最近配置操作</strong><span>不记录密钥原文</span></div>
+      <div id="model-config-audit" class="resource-table"></div>
+    </details>
+    <details id="hosts-disclosure" class="providers-section resource-disclosure">
+      <summary><span>物理主机</span><span id="host-summary" class="muted">正在检查</span></summary>
+      <div class="section-head resource-actions">
+        <span class="resource-caption">承载工作节点的 Docker 主机</span>
+        <button id="refresh-hosts" class="icon-button" title="刷新物理主机" aria-label="刷新物理主机">↻</button>
+      </div>
+      <div id="physical-hosts" class="resource-table"></div>
     </details>
     <details id="nodes-disclosure" class="providers-section resource-disclosure">
-      <summary><span>执行节点</span><span id="node-summary" class="muted">正在检查</span></summary>
+      <summary><span>工作节点</span><span id="node-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
-        <span></span>
-        <button id="refresh-nodes" class="icon-button" title="刷新节点状态" aria-label="刷新节点状态">↻</button>
+        <span class="resource-caption">统一查看节点注册、容器生命周期、负载和能力</span>
+        <button id="refresh-nodes" class="icon-button" title="刷新工作节点" aria-label="刷新工作节点">↻</button>
       </div>
+      <div class="resource-subsection-head"><strong>调度与 Agent 状态</strong><span>容器运行不等于节点可调度</span></div>
       <div id="nodes" class="resource-table"></div>
-    </details>
-    <details id="containers-disclosure" class="providers-section resource-disclosure">
-      <summary><span>节点容器</span><span id="container-summary" class="muted">正在检查</span></summary>
+      <div class="resource-subsection-head"><strong>创建本机节点</strong><span id="container-summary" class="muted">正在检查</span></div>
       <form id="container-form" class="project-form resource-form">
         <div class="form-grid container-form-grid">
           <label>节点 ID<input id="container-node-id" required minlength="2" maxlength="32" pattern="[a-z0-9][a-z0-9_-]{1,31}" placeholder="worker-01"></label>
@@ -240,56 +321,55 @@
           </select></label>
           <label>并发任务数<input id="container-slots" type="number" min="1" max="16" value="1" required></label>
         </div>
-        <p class="form-help">容器仅连接 TaskHub 内部网络；预生产节点提供构建、测试和验收能力，项目访问地址仍在“预生产环境”配置。</p>
+        <p class="form-help">当前快速开发版本只在 Seed 本机 Docker 创建节点。远程主机选择、资源限额和统一 taskhub-node 镜像将在 SSH 编排阶段提供。</p>
         <div class="form-actions">
           <button id="create-container" type="submit">创建并启动</button>
-          <button id="refresh-containers" type="button" class="secondary">刷新</button>
           <span id="container-message" role="status"></span>
         </div>
       </form>
       <div id="managed-containers" class="resource-table"></div>
-    </details>
-    <details id="load-disclosure" class="providers-section resource-disclosure">
-      <summary><span>节点负载（近 5 分钟峰值）</span><span id="load-summary" class="muted">正在检查</span></summary>
-      <div class="section-head resource-actions">
-        <span></span>
-        <button id="refresh-load" class="icon-button" title="刷新节点负载" aria-label="刷新节点负载">↻</button>
-      </div>
+      <div class="resource-subsection-head"><strong>资源负载</strong><span id="load-summary" class="muted">正在检查</span></div>
       <div id="node-load" class="resource-table"></div>
-    </details>
-    <details id="acceptance-prerequisites-disclosure" class="providers-section resource-disclosure">
-      <summary><span>验收前置配置</span><span id="acceptance-prerequisites-summary" class="muted">正在检查</span></summary>
-      <div class="section-head resource-actions">
-        <span></span>
-        <button id="refresh-acceptance-prerequisites" class="icon-button" title="刷新验收前置配置" aria-label="刷新验收前置配置">↻</button>
-      </div>
+      <div class="resource-subsection-head"><strong>能力与前置条件</strong><span id="acceptance-prerequisites-summary" class="muted">正在检查</span></div>
       <div id="acceptance-prerequisites" class="resource-table"></div>
     </details>
-    <details id="test-environment-disclosure" class="providers-section resource-disclosure">
-      <summary><span>预生产环境</span><span id="test-environment-summary" class="muted">未读取</span></summary>
-      <form id="test-environment-form" class="project-form resource-form">
-        <div id="test-environment-fields" class="form-grid">
-          <label class="wide">项目<select id="test-environment-project" required></select></label>
-          <label class="wide">测试访问地址<input id="test-environment-url" type="url" required maxlength="500" placeholder="https://preprod.example.com"></label>
-          <label>对外入口服务器<input id="test-environment-edge" required maxlength="253" placeholder="主机名或 IP"></label>
-          <label>应用服务器<input id="test-environment-origin" required maxlength="253" placeholder="主机名或 IP"></label>
-          <input id="test-environment-name" type="hidden" value="production">
+    <details id="platform-disclosure" class="providers-section resource-disclosure">
+      <summary><span>平台设置</span><span id="platform-summary" class="muted">正在检查</span></summary>
+      <div class="section-head resource-actions">
+        <span class="resource-caption">镜像、内部网络与配置生效边界</span>
+        <button id="refresh-platform" class="icon-button" title="刷新平台设置" aria-label="刷新平台设置">↻</button>
+      </div>
+      <div id="platform-settings" class="resource-table"></div>
+      <div class="resource-subsection-head"><strong>可管理平台参数</strong><span id="platform-config-state">正在读取</span></div>
+      <form id="platform-settings-form" class="project-form resource-form configuration-form">
+        <p class="form-note">数据库连接、会话密钥、配置加密主密钥和节点令牌属于启动根配置，不能从 Web 读取或修改。</p>
+        <div class="form-grid configuration-grid">
+          <label>Seed 对外地址<input id="platform-seed-url" type="url" maxlength="500" placeholder="http://taskhub.example:8200"></label>
+          <label>Node Agent 回连地址<input id="platform-callback-url" type="url" maxlength="500" placeholder="http://taskhub.example:8200"></label>
+          <label class="wide">默认工作节点镜像<input id="platform-node-image" required maxlength="500" placeholder="registry.example/taskhub-node:1.0.0"></label>
+          <label>镜像仓库<input id="platform-registry" maxlength="500" placeholder="registry.example"></label>
+          <label>镜像代理<input id="platform-image-proxy" maxlength="500" placeholder="mirror.example"></label>
+          <label>默认并发任务数<input id="platform-default-slots" type="number" min="1" max="64" required></label>
+          <label>默认 CPU 限额<input id="platform-cpu-limit" maxlength="32" placeholder="2.0"></label>
+          <label>默认内存限额<input id="platform-memory-limit" maxlength="32" placeholder="4g"></label>
+          <label>心跳间隔（秒）<input id="platform-heartbeat" type="number" min="5" max="3600" required></label>
+          <label>离线阈值（秒）<input id="platform-offline" type="number" min="10" max="86400" required></label>
+          <label>日志保留（天）<input id="platform-log-retention" type="number" min="1" max="3650" required></label>
+          <label>制品保留（天）<input id="platform-artifact-retention" type="number" min="1" max="3650" required></label>
         </div>
         <div class="form-actions">
-          <button id="check-test-environment" type="button">检测可用性</button>
-          <button id="edit-test-environment" type="button" class="secondary">修改配置</button>
-          <button id="save-test-environment" type="submit" class="hidden">保存修改</button>
-          <button id="cancel-test-environment" type="button" class="secondary hidden">取消</button>
-          <button id="delete-test-environment" type="button" class="secondary hidden">停用配置</button>
-          <span id="test-environment-message" role="status"></span>
+          <button id="save-platform-settings" type="submit">保存平台设置</button>
+          <span id="platform-config-message" role="status"></span>
         </div>
       </form>
+      <div class="resource-subsection-head"><strong>最近配置操作</strong><span>单管理员审计轨迹</span></div>
+      <div id="platform-config-audit" class="resource-table"></div>
     </details>
     </section>
     </div>
   </main>
   <script src="/static/app.js?v=6"></script>
   <script src="/static/task-center.js?v=12"></script>
-  <script src="/static/resource-center.js?v=6"></script>
+  <script src="/static/resource-center.js?v=8"></script>
 </body>
 </html>

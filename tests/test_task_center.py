@@ -118,18 +118,31 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="confirm-admin-password"' in html
         assert 'id="nav-workflow"' in html and "开发流程" in html
         assert 'id="nav-resources"' in html and "系统配置" in html
-        assert html.count('class="providers-section resource-disclosure">') == 7
-        assert 'id="containers-disclosure"' in html
+        assert html.count('class="providers-section resource-disclosure">') == 5
+        assert 'id="hosts-disclosure"' in html
+        assert 'id="platform-disclosure"' in html
         assert 'id="container-form"' in html
+        assert 'id="model-services-form"' in html
+        assert 'id="test-model-service"' in html
+        assert 'id="model-config-audit"' in html
+        assert 'id="platform-settings-form"' in html
+        assert 'id="platform-config-audit"' in html
+        assert 'styles.css?v=16' in html
+        assert 'resource-center.js?v=8' in html
         assert all(
             f'id="{name}-disclosure"' in html
-            for name in ("system", "providers", "nodes", "load")
+            for name in ("system", "providers", "hosts", "nodes", "platform")
         )
-        assert '<summary><span>系统检测</span>' in html
-        assert '<summary><span>模型资源</span>' in html
-        assert '<summary><span>执行节点</span>' in html
-        assert '<summary><span>节点负载（近 5 分钟峰值）</span>' in html
-        assert '<summary><span>预生产环境</span>' in html
+        assert '<summary><span>运行概览</span>' in html
+        assert '<summary><span>模型服务</span>' in html
+        assert '<summary><span>物理主机</span>' in html
+        assert '<summary><span>工作节点</span>' in html
+        assert '<summary><span>平台设置</span>' in html
+        assert "项目设置 · 预生产与验收环境" in html
+        assert html.index('id="test-environment-disclosure"') < html.index('id="resource-page"')
+        assert 'id="load-disclosure"' not in html
+        assert 'id="containers-disclosure"' not in html
+        assert 'id="acceptance-prerequisites-disclosure"' not in html
         assert 'id="test-environment-form"' in html
         assert 'id="check-test-environment"' in html
         assert 'id="edit-test-environment"' in html

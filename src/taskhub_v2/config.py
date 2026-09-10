@@ -17,6 +17,7 @@ class Settings(BaseModel):
     admin_token: str = Field(default="", repr=False)
     admin_password_file: str = ""
     session_secret: str = Field(default="", repr=False)
+    config_encryption_key: str = Field(default="", repr=False)
     cookie_secure: bool = False
     projects_file: str = "/home/gryps/.config/taskhub-v2/projects.json"
     authority_git_host: str = "gryps@192.168.31.3"
@@ -43,6 +44,17 @@ class Settings(BaseModel):
     docker_socket: str = "/var/run/docker.sock"
     docker_network: str = "taskhub-seed_default"
     node_container_image: str = "taskhub-v2-seed:0.1.0-alpha"
+    seed_public_url: str = ""
+    node_callback_url: str = ""
+    node_image_registry: str = ""
+    node_image_proxy: str = ""
+    default_node_slots: int = 1
+    default_node_cpu_limit: str = ""
+    default_node_memory_limit: str = ""
+    node_heartbeat_seconds: int = 15
+    node_offline_seconds: int = 60
+    log_retention_days: int = 30
+    artifact_retention_days: int = 30
     openai_base_url: str = "https://api.openai.com/v1"
     openai_proxy_url: str = "http://192.168.31.200:7893"
     openai_api_key: str = Field(default="", repr=False)
@@ -83,6 +95,7 @@ def get_settings() -> Settings:
         admin_token=os.getenv("TASKHUB_ADMIN_TOKEN", ""),
         admin_password_file=os.getenv("TASKHUB_ADMIN_PASSWORD_FILE", ""),
         session_secret=os.getenv("TASKHUB_SESSION_SECRET", ""),
+        config_encryption_key=os.getenv("TASKHUB_CONFIG_ENCRYPTION_KEY", ""),
         cookie_secure=os.getenv("TASKHUB_COOKIE_SECURE", "false").lower()
         in {"1", "true", "yes", "on"},
         projects_file=os.getenv(
@@ -137,6 +150,17 @@ def get_settings() -> Settings:
         node_container_image=os.getenv(
             "TASKHUB_NODE_CONTAINER_IMAGE", "taskhub-v2-seed:0.1.0-alpha"
         ),
+        seed_public_url=os.getenv("TASKHUB_SEED_PUBLIC_URL", ""),
+        node_callback_url=os.getenv("TASKHUB_NODE_CALLBACK_URL", ""),
+        node_image_registry=os.getenv("TASKHUB_NODE_IMAGE_REGISTRY", ""),
+        node_image_proxy=os.getenv("TASKHUB_NODE_IMAGE_PROXY", ""),
+        default_node_slots=int(os.getenv("TASKHUB_DEFAULT_NODE_SLOTS", "1")),
+        default_node_cpu_limit=os.getenv("TASKHUB_DEFAULT_NODE_CPU_LIMIT", ""),
+        default_node_memory_limit=os.getenv("TASKHUB_DEFAULT_NODE_MEMORY_LIMIT", ""),
+        node_heartbeat_seconds=int(os.getenv("TASKHUB_NODE_HEARTBEAT_SECONDS", "15")),
+        node_offline_seconds=int(os.getenv("TASKHUB_NODE_OFFLINE_SECONDS", "60")),
+        log_retention_days=int(os.getenv("TASKHUB_LOG_RETENTION_DAYS", "30")),
+        artifact_retention_days=int(os.getenv("TASKHUB_ARTIFACT_RETENTION_DAYS", "30")),
         openai_base_url=os.getenv("TASKHUB_OPENAI_BASE_URL", "https://api.openai.com/v1"),
         openai_proxy_url=os.getenv("TASKHUB_OPENAI_PROXY_URL", "http://192.168.31.200:7893"),
         openai_api_key=os.getenv("TASKHUB_OPENAI_API_KEY", ""),

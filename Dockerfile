@@ -10,6 +10,8 @@ LABEL org.opencontainers.image.title="TaskHub V2 Seed Controller" \
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=8 \
     TASKHUB_HOST=0.0.0.0 \
     TASKHUB_PORT=8200
 

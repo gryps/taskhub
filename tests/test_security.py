@@ -1,11 +1,15 @@
 from pathlib import Path
 
+import pytest
+from cryptography.fernet import Fernet
+
 from taskhub_v2.providers.egress import (
     ProxyRequiredError,
     account_environment,
     direct_environment,
     provider_proxy,
 )
+from taskhub_v2.security.encryption import SecretCipher, SecretEncryptionError
 from taskhub_v2.security.secrets import mask_secret, parse_env_file, write_env_file
 
 
@@ -42,3 +46,13 @@ def test_secret_file_is_round_trippable_and_private(tmp_path: Path):
     assert parse_env_file(path) == {"KEY": "abc def", "TOKEN": "secret"}
     assert path.stat().st_mode & 0o777 == 0o600
     assert mask_secret("abcdefghijkl") == "abcd********ijkl"
+
+
+def test_managed_secret_ciphertext_is_authenticated_and_not_plaintext():
+    cipher = SecretCipher(Fernet.generate_key().decode())
+    encrypted = cipher.encrypt("provider-secret")
+    assert "provider-secret" not in encrypted
+    assert cipher.decrypt(encrypted) == "provider-secret"
+    tampered = encrypted[:-2] + ("AA" if encrypted[-2:] != "AA" else "BB")
+    with pytest.raises(SecretEncryptionError):
+        cipher.decrypt(tampered)
