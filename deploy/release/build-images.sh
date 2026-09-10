@@ -30,7 +30,7 @@ docker buildx version >/dev/null
 for specification in "Dockerfile|$seed_image" "deploy/node/Dockerfile|$node_image"; do
   dockerfile=${specification%%|*}
   image=${specification#*|}
-  docker buildx build --load --pull \
+  docker buildx build --load --pull --provenance=false \
     --platform "$platform" \
     --build-arg "TASKHUB_VERSION=$version" \
     --build-arg "TASKHUB_COMMIT=$commit" \

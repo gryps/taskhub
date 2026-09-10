@@ -6,10 +6,6 @@ ARG CODEX_VERSION=0.153.4
 ARG DEBIAN_MIRROR=http://deb.debian.org/debian
 ARG DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
 
-LABEL org.opencontainers.image.title="TaskHub Unified Worker Node" \
-      org.opencontainers.image.version="${TASKHUB_VERSION}" \
-      org.opencontainers.image.revision="${TASKHUB_COMMIT}"
-
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -45,6 +41,10 @@ COPY src ./src
 RUN python -m pip install '.[dev,browser]' \
     && mkdir -p /var/lib/taskhub-node/jobs \
     && chown -R taskhub:taskhub /var/lib/taskhub-node /opt/taskhub
+
+LABEL org.opencontainers.image.title="TaskHub Unified Worker Node" \
+      org.opencontainers.image.version="${TASKHUB_VERSION}" \
+      org.opencontainers.image.revision="${TASKHUB_COMMIT}"
 
 USER taskhub
 EXPOSE 8020

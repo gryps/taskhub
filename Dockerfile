@@ -6,10 +6,6 @@ ARG CODEX_VERSION=0.153.4
 ARG DEBIAN_MIRROR=http://deb.debian.org/debian
 ARG DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
 
-LABEL org.opencontainers.image.title="TaskHub V2 Seed Controller" \
-      org.opencontainers.image.version="${TASKHUB_VERSION}" \
-      org.opencontainers.image.revision="${TASKHUB_COMMIT}"
-
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -43,6 +39,10 @@ RUN mkdir -p /opt/codex-home \
 COPY pyproject.toml README.md ./
 COPY src ./src
 RUN python -m pip install .
+
+LABEL org.opencontainers.image.title="TaskHub V2 Seed Controller" \
+      org.opencontainers.image.version="${TASKHUB_VERSION}" \
+      org.opencontainers.image.revision="${TASKHUB_COMMIT}"
 
 COPY deploy/docker/entrypoint.sh /usr/local/bin/taskhub-entrypoint
 RUN chmod 0755 /usr/local/bin/taskhub-entrypoint \

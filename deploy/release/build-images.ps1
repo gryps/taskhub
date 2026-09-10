@@ -28,7 +28,7 @@ foreach ($Build in @(
     @{ File = "Dockerfile"; Image = $SeedImage },
     @{ File = "deploy/node/Dockerfile"; Image = $NodeImage }
 )) {
-    docker buildx build --load --pull --platform $Platform `
+    docker buildx build --load --pull --provenance=false --platform $Platform `
         --build-arg "TASKHUB_VERSION=$Version" `
         --build-arg "TASKHUB_COMMIT=$Commit" `
         --build-arg "CODEX_VERSION=$CodexVersion" `
