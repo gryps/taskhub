@@ -1,7 +1,9 @@
 """Real-browser regression checks for Seed onboarding and system configuration."""
 
+import json
 import os
 import socket
+from pathlib import Path
 
 import pytest
 
@@ -31,6 +33,17 @@ def test_onboarding_and_role_overview_layout(tmp_path):
     )
     (tmp_path / "workspaces").mkdir()
     (tmp_path / "artifacts").mkdir()
+    Path(settings.projects_file).write_text(
+        json.dumps(
+            {
+                "projects": [
+                    {"id": "alpha-project", "name": "Alpha 项目", "repository": "/tmp/alpha"},
+                    {"id": "beta-project", "name": "Beta 项目", "repository": "/tmp/beta"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -58,6 +71,22 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         ) == "12px"
 
         page.locator("#onboarding-later").click()
+        page.locator("#nav-workflow").click()
+        page.locator("#test-environment-disclosure > summary").click()
+        project_select = page.locator("#test-environment-project")
+        expect(project_select).to_be_enabled()
+        expect(project_select.locator("option")).to_have_count(2)
+        project_select.select_option("alpha-project")
+        expect(project_select).to_have_value("alpha-project")
+        project_select.select_option("beta-project")
+        expect(project_select).to_have_value("beta-project")
+        assert page.locator(".project-settings-heading strong").evaluate(
+            "element => getComputedStyle(element).fontSize"
+        ) == "14px"
+        assert page.locator(".project-settings-heading small").evaluate(
+            "element => getComputedStyle(element).fontSize"
+        ) == "12px"
+        expect(page.locator(".field-help")).to_have_count(3)
         page.locator("#nav-resources").click()
         expect(page.locator(".resource-disclosure-heading")).to_have_count(5)
         expect(page.locator(".resource-order")).to_have_count(5)
@@ -72,6 +101,15 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         page.locator("#nodes-disclosure summary").first.click()
         expect(page.locator("#nodes.management-card-grid")).to_be_visible()
         expect(page.locator("#managed-containers.management-card-grid")).to_be_visible()
+        upgrade = page.locator("#node-upgrade-disclosure")
+        upgrade.locator("summary").click()
+        expect(page.locator("#node-upgrade-form")).to_be_visible()
+        assert page.locator(".node-upgrade-card h3").evaluate(
+            "element => getComputedStyle(element).fontSize"
+        ) == "14px"
+        assert page.locator(".node-upgrade-card .form-help").evaluate(
+            "element => getComputedStyle(element).fontSize"
+        ) == "12px"
         diagnostics = page.locator("#node-diagnostics").locator("xpath=..")
         diagnostics.locator("summary").click()
         expect(page.locator("#load-node-diagnostics")).to_be_visible()
@@ -117,6 +155,13 @@ def test_onboarding_and_role_overview_layout(tmp_path):
                 "element => getComputedStyle(element).gridTemplateColumns"
             ).split())
             assert address_columns == (2 if width == 680 else 1)
+            page.locator("#nodes-disclosure").evaluate("element => { element.open = true; }")
+            page.locator("#node-upgrade-disclosure").evaluate(
+                "element => { element.open = true; }"
+            )
+            assert len(page.locator(".node-upgrade-card .configuration-card-fields").evaluate(
+                "element => getComputedStyle(element).gridTemplateColumns"
+            ).split()) == 1
             assert page.evaluate(
                 "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
             )

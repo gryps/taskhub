@@ -2,7 +2,11 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from taskhub_v2.domain.remote_nodes import RemoteNodeCreate, RemoteNodeRemove
+from taskhub_v2.domain.remote_nodes import (
+    RemoteNodeCreate,
+    RemoteNodeRemove,
+    RemoteNodeUpgrade,
+)
 from taskhub_v2.services.containers import DockerConflictError
 from taskhub_v2.services.hosts import HostAdmissionError
 from taskhub_v2.services.remote_nodes import RemoteNodeError, RemoteNodeService
@@ -32,6 +36,17 @@ async def create_remote_node(payload: RemoteNodeCreate, service: ServiceDep) -> 
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (HostAdmissionError, RemoteNodeError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+@router.post("/{node_id}/upgrade", status_code=202)
+async def upgrade_remote_node(
+    node_id: str, payload: RemoteNodeUpgrade, service: ServiceDep
+) -> dict:
+    try:
+        return await service.upgrade(node_id, payload.image)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="远程节点不存在") from exc
+    except (DockerConflictError, HostAdmissionError, RemoteNodeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/{node_id}/{action}")

@@ -754,8 +754,10 @@ function containerActions(item) {
     ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="${location}" data-action="rotate-credential">轮换凭据</button>` : "";
   const revoke = location === "remote" && item.credential?.status === "active"
     ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="remote" data-action="revoke-credential">吊销凭据</button>` : "";
+  const upgrade = location === "remote" && item.state === "running"
+    ? `<button type="button" class="secondary prepare-node-upgrade" data-node-id="${nodeId}" data-image="${escapeHtml(item.image || "")}">升级镜像</button>` : "";
   return `<div class="container-actions">${primary}
-    ${restart}${rotate}${revoke}
+    ${restart}${upgrade}${rotate}${revoke}
     <button type="button" class="secondary container-action remove-container"
       data-node-id="${nodeId}" data-location="${location}" data-action="remove">移除</button></div>`;
 }
@@ -801,6 +803,15 @@ async function loadContainers() {
       status: item.status_reason, name: `taskhub-node-${item.node_id}`,
     }));
     const containers = [...local, ...remote];
+    const upgradeSelect = byId("upgrade-node");
+    const selectedUpgrade = upgradeSelect.value;
+    upgradeSelect.innerHTML = '<option value="">请选择节点</option>' + remote
+      .filter((item) => item.actual_state === "running")
+      .map((item) => `<option value="${escapeHtml(item.node_id)}">${escapeHtml(item.node_id)} · ${escapeHtml(item.image || "未记录镜像")}</option>`)
+      .join("");
+    if ([...upgradeSelect.options].some((item) => item.value === selectedUpgrade)) {
+      upgradeSelect.value = selectedUpgrade;
+    }
     const diagnosticSelect = byId("diagnostic-node");
     const selectedDiagnostic = diagnosticSelect.value;
     diagnosticSelect.innerHTML = '<option value="">请选择节点</option>' + containers.map((item) =>
@@ -814,7 +825,9 @@ async function loadContainers() {
       `${running}/${containers.length} 运行 · 本机 ${status.available ? "可用" : "不可用"} · 远程 ${remote.length}`;
     const cards = containers.map((item) => {
       const distribution = item.distribution || {};
-      const progress = item.location === "remote" && distribution.phase && distribution.phase !== "complete"
+      const operation = item.operation || {};
+      const operationActive = ["queued", "running"].includes(operation.status);
+      const progress = item.location === "remote" && distribution.phase && operationActive
         ? `<progress class="distribution-progress" max="100" value="${Number(distribution.percent || 0)}">${Number(distribution.percent || 0)}%</progress>
           <small>${Number(distribution.percent || 0)}% · ${escapeHtml(distribution.detail || item.status || "")}</small>`
         : `<small>${escapeHtml(item.status)}</small>`;
@@ -829,12 +842,13 @@ async function loadContainers() {
         <dl class="management-card-facts">
           <div><dt>节点角色</dt><dd>${escapeHtml(containerRoleNames[item.role] || item.role)}</dd></div>
           <div><dt>部署位置</dt><dd>${item.location === "remote" ? "远程主机" : "Seed 本机"}</dd></div>
+          <div class="wide"><dt>当前镜像</dt><dd class="mono-value">${escapeHtml(item.image || "未记录")}</dd></div>
           <div class="wide"><dt>运行与分发</dt><dd>${progress}${escapeHtml(credential + reconciled)}</dd></div>
         </dl><footer>${containerActions(item)}</footer></article>`;
     }).join("");
     byId("managed-containers").innerHTML = cards || '<p class="management-empty">尚未创建节点容器，请展开“创建节点”进行配置。</p>';
     scheduleDistributionRefresh(remote.some((item) =>
-      ["distributing", "starting"].includes(item.actual_state)));
+      ["distributing", "starting", "upgrading"].includes(item.actual_state)));
   } catch (error) {
     byId("container-summary").textContent = error.message;
   }
@@ -922,6 +936,35 @@ async function createContainer(event) {
   } finally {
     button.disabled = false;
   }
+}
+
+function prepareNodeUpgrade(nodeId, image) {
+  const disclosure = byId("node-upgrade-disclosure");
+  disclosure.open = true;
+  byId("upgrade-node").value = nodeId;
+  byId("upgrade-image").value = image || "";
+  byId("upgrade-image").focus();
+  byId("upgrade-node-message").textContent = `请输入 ${nodeId} 的目标镜像版本`;
+  disclosure.scrollIntoView({behavior: "smooth", block: "nearest"});
+}
+
+async function upgradeRemoteNode(event) {
+  event.preventDefault();
+  const nodeId = byId("upgrade-node").value;
+  const image = byId("upgrade-image").value.trim();
+  if (!window.confirm(`确认将 ${nodeId} 升级到 ${image}？失败时系统会自动恢复原镜像。`)) return;
+  const button = byId("upgrade-node-submit");
+  button.disabled = true;
+  byId("upgrade-node-message").textContent = `正在提交 ${nodeId} 的升级操作`;
+  try {
+    await request(`/api/remote-nodes/${encodeURIComponent(nodeId)}/upgrade`, {
+      method: "POST", body: JSON.stringify({image}),
+    });
+    byId("upgrade-node-message").textContent = `${nodeId} 已进入后台升级队列`;
+    await Promise.all([loadContainers(), loadNodes()]);
+  } catch (error) {
+    byId("upgrade-node-message").textContent = error.message;
+  } finally { button.disabled = false; }
 }
 
 async function runContainerAction(nodeId, action, location) {
@@ -1045,10 +1088,10 @@ function selectedTestEnvironmentProject() {
   return registeredProjects.find((item) => item.id === byId("test-environment-project").value);
 }
 
-function setTestEnvironmentEditMode(editing, lockProject = editing) {
+function setTestEnvironmentEditMode(editing) {
   ["test-environment-url", "test-environment-edge", "test-environment-origin",
     "test-environment-name"].forEach((id) => { byId(id).disabled = !editing; });
-  byId("test-environment-project").disabled = lockProject;
+  byId("test-environment-project").disabled = registeredProjects.length === 0;
   byId("check-test-environment").classList.toggle("hidden", editing);
   byId("edit-test-environment").classList.toggle("hidden", editing);
   byId("save-test-environment").classList.toggle("hidden", !editing);
@@ -1068,7 +1111,7 @@ function fillTestEnvironmentForm(forceEditing = false) {
     : environment ? `${project.name} · 基础资源已配置` : `${project.name} · 未配置`;
   byId("test-environment-message").textContent = "";
   const editing = forceEditing || Boolean(project && !environment);
-  setTestEnvironmentEditMode(editing, Boolean(environment));
+  setTestEnvironmentEditMode(editing);
   byId("check-test-environment").disabled = !environment;
   byId("edit-test-environment").disabled = !project;
 }
@@ -1230,7 +1273,9 @@ refreshWhenExpanded("providers-disclosure", loadProviders);
 refreshWhenExpanded("hosts-disclosure", loadPhysicalHosts);
 refreshWhenExpanded("nodes-disclosure", loadWorkNodes);
 refreshWhenExpanded("platform-disclosure", loadPlatformSettings);
-refreshWhenExpanded("test-environment-disclosure", loadTestEnvironmentConfig);
+byId("test-environment-disclosure").addEventListener("toggle", (event) => {
+  if (event.currentTarget.open) loadTestEnvironmentConfig();
+});
 byId("collapse-current-resource").addEventListener("click", () => {
   const disclosure = openResourceDisclosure();
   if (!disclosure) return;
@@ -1315,8 +1360,14 @@ byId("physical-hosts").addEventListener("click", (event) => {
   }
 });
 byId("container-form").addEventListener("submit", createContainer);
+byId("node-upgrade-form").addEventListener("submit", upgradeRemoteNode);
 byId("container-target").addEventListener("change", updateRemoteNodeFields);
 byId("managed-containers").addEventListener("click", (event) => {
+  const upgrade = event.target.closest(".prepare-node-upgrade");
+  if (upgrade) {
+    prepareNodeUpgrade(upgrade.dataset.nodeId, upgrade.dataset.image);
+    return;
+  }
   const button = event.target.closest(".container-action");
   if (button) runContainerAction(button.dataset.nodeId, button.dataset.action, button.dataset.location);
 });

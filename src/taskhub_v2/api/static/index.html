@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=35">
+  <link rel="stylesheet" href="/static/styles.css?v=37">
 </head>
 <body>
   <header class="app-header">
@@ -148,14 +148,17 @@
         </div>
       </form>
       <details id="test-environment-disclosure" class="providers-section project-settings-disclosure resource-disclosure">
-        <summary><span>项目设置 · 预生产与验收环境</span><span id="test-environment-summary" class="muted">未读取</span></summary>
+        <summary>
+          <span class="project-settings-heading"><strong>项目设置</strong><small>预生产与验收环境</small></span>
+          <span id="test-environment-summary" class="muted">未读取</span>
+        </summary>
         <form id="test-environment-form" class="project-form resource-form">
-          <p class="form-note">这里配置当前项目的验收目标。预生产节点负责执行部署和验证，项目环境记录实际访问入口，两者相互关联但不是同一个资源。</p>
+          <p class="form-note">为每个项目记录独立的预生产访问路径。工作节点负责部署和执行验收，这里只描述验收应访问的项目环境。</p>
           <div id="test-environment-fields" class="form-grid">
             <label class="wide">项目<select id="test-environment-project" required></select></label>
-            <label class="wide">测试访问地址<input id="test-environment-url" type="url" required maxlength="500" placeholder="https://preprod.example.com"></label>
-            <label>对外入口服务器<input id="test-environment-edge" required maxlength="253" placeholder="主机名或 IP"></label>
-            <label>应用服务器<input id="test-environment-origin" required maxlength="253" placeholder="主机名或 IP"></label>
+            <label class="wide">验收访问地址（URL）<input id="test-environment-url" type="url" required maxlength="500" placeholder="https://preprod.example.com"><span class="field-help">TaskHub 健康检测和浏览器验收实际打开的完整预生产网址。</span></label>
+            <label>入口网关主机<input id="test-environment-edge" required maxlength="253" placeholder="例如：edge.example.com"><span class="field-help">接收外部访问的反向代理、负载均衡或 Web 网关主机名/IP。</span></label>
+            <label>应用服务主机<input id="test-environment-origin" required maxlength="253" placeholder="例如：app-preprod.internal"><span class="field-help">入口网关后方实际运行预生产应用的主机名/IP。</span></label>
             <input id="test-environment-name" type="hidden" value="production">
           </div>
           <div class="form-actions">
@@ -401,6 +404,23 @@
       </form>
       </details>
       <div id="managed-containers" class="management-card-grid"></div>
+      <details id="node-upgrade-disclosure" class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>节点镜像升级</strong><span>后台校验新镜像，失败时自动恢复原版本</span></summary>
+      <form id="node-upgrade-form" class="project-form resource-form compact-operation-form">
+        <section class="configuration-card node-upgrade-card">
+          <header><div><h3>升级工作节点</h3><p>保留节点数据卷和独立凭据，仅替换目标容器</p></div></header>
+          <div class="configuration-card-fields">
+            <label>远程节点<select id="upgrade-node" required><option value="">请选择节点</option></select></label>
+            <label>目标镜像<input id="upgrade-image" required maxlength="512" placeholder="ghcr.io/gryps/taskhub-node:新版本"></label>
+          </div>
+          <p class="form-help node-upgrade-help">系统依次执行镜像获取、摘要与架构校验、容器替换和 Agent 健康检查。新版本失败时使用原镜像和原数据卷自动回滚。</p>
+          <div class="form-actions">
+            <button id="upgrade-node-submit" type="submit">开始升级</button>
+            <span id="upgrade-node-message" role="status"></span>
+          </div>
+        </section>
+      </form>
+      </details>
       <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>资源负载</strong><span id="load-summary" class="muted">正在检查</span></summary>
       <div id="node-load" class="resource-table"></div>
@@ -502,7 +522,7 @@
   </main>
   <script src="/static/app.js?v=11"></script>
   <script src="/static/task-center.js?v=13"></script>
-  <script src="/static/resource-center.js?v=22"></script>
+  <script src="/static/resource-center.js?v=24"></script>
   <script src="/static/onboarding.js?v=2"></script>
 </body>
 </html>

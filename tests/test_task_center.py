@@ -131,11 +131,11 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert 'styles.css?v=35' in html
+        assert 'styles.css?v=37' in html
         assert html.count('class="resource-disclosure-heading"') == 5
         assert html.count('class="resource-order"') == 5
         assert 'app.js?v=11' in html
-        assert 'resource-center.js?v=22' in html
+        assert 'resource-center.js?v=24' in html
         assert html.count('class="configuration-card"') >= 9
         assert html.count('class="management-card-grid"') >= 4
         assert 'id="login-username"' in html
@@ -144,6 +144,10 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="host-rebuild-form"' in html
         assert 'id="diagnostic-node"' in html
         assert 'id="export-diagnostics"' in html
+        assert 'id="node-upgrade-form"' in html
+        assert 'id="upgrade-node"' in html
+        assert 'id="upgrade-image"' in html
+        assert "失败时自动恢复原版本" in html
         assert "Seed 备份与恢复" in html
         assert 'onboarding.js?v=2' in html
         assert 'id="collapse-current-resource"' in html
@@ -160,8 +164,10 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert '<strong>物理主机</strong><small>SSH 准入、承载能力与维护状态</small>' in html
         assert '<strong>工作节点</strong><small>调度、容器、负载与诊断</small>' in html
         assert '<strong>平台设置</strong><small>镜像、网络、备份与访问安全</small>' in html
-        assert "项目设置 · 预生产与验收环境" in html
+        assert '<strong>项目设置</strong><small>预生产与验收环境</small>' in html
         resource_script = client.get("/static/resource-center.js").text
+        assert "/upgrade`" in resource_script
+        assert "prepare-node-upgrade" in resource_script
         assert 'title: "执行节点"' in resource_script
         assert 'title: "测试节点"' in resource_script
         assert 'title: "预生产节点"' in resource_script
@@ -174,7 +180,9 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="test-environment-form"' in html
         assert 'id="check-test-environment"' in html
         assert 'id="edit-test-environment"' in html
-        assert "测试访问地址" in html
+        assert "验收访问地址（URL）" in html
+        assert "入口网关主机" in html
+        assert "应用服务主机" in html
         assert 'id="revise"' in html and "退回实施" in html
         assert 'id="manual"' in html and "平台处置" in html
         assert 'id="configure-resources"' in html and "更换节点/模型" in html
@@ -187,6 +195,10 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert "localStorage.setItem(\"taskhub_run_id\"" not in script
         assert 'decision === "revise" ? "revise"' in script
         assert 'decision === "manual" ? "manual"' in script
+        assert (
+            'byId("test-environment-project").disabled = registeredProjects.length === 0'
+            in resource_script
+        )
         assert '["completed", "rejected", "failed"].includes(run.status)' in script
         for stage in (
             "intake", "planning", "plan_approval", "implementation", "acceptance",

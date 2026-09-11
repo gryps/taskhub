@@ -321,7 +321,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-def _required_permission(path: str, method: str) -> str:
+def _required_permission(path: str, method: str) -> str | None:
+    # Every authenticated session must be able to log out, including an
+    # obsolete or otherwise unrecognized role. CSRF validation still applies.
+    if path == "/api/auth/logout":
+        return None
     if path.startswith("/api/auth/users") or path == "/api/auth/signing-key/rotate":
         return "users:manage" if "users" in path else "security:manage"
     if method in {"GET", "HEAD", "OPTIONS"}:

@@ -21,9 +21,10 @@ from taskhub_v2.services.hosts import PhysicalHostService
 from taskhub_v2.services.remote_node_admin import RemoteNodeAdminMixin
 from taskhub_v2.services.remote_node_errors import RemoteNodeError
 from taskhub_v2.services.remote_node_lifecycle import RemoteNodeLifecycleMixin
+from taskhub_v2.services.remote_node_upgrades import RemoteNodeUpgradeMixin
 
 
-class RemoteNodeService(RemoteNodeAdminMixin, RemoteNodeLifecycleMixin):
+class RemoteNodeService(RemoteNodeAdminMixin, RemoteNodeUpgradeMixin, RemoteNodeLifecycleMixin):
     def __init__(
         self,
         store,
@@ -105,6 +106,16 @@ class RemoteNodeService(RemoteNodeAdminMixin, RemoteNodeLifecycleMixin):
                             "source": "",
                             "detail": "等待开始镜像分发",
                         },
+                        "operation": {
+                            "id": self._new_operation_id(),
+                            "kind": "create",
+                            "attempt": 1,
+                            "status": "queued",
+                            "phase": "queued",
+                            "percent": 0,
+                            "target_image": self.image,
+                            "detail": "等待开始镜像分发",
+                        },
                     },
                     container_id="",
                     image_digest="",
@@ -125,9 +136,7 @@ class RemoteNodeService(RemoteNodeAdminMixin, RemoteNodeLifecycleMixin):
             record, self._credential_metadata(request.node_id)
         )
 
-    async def _provision(
-        self, request, host, cpu: str, memory: str, token: str
-    ) -> None:
+    async def _provision(self, request, host, cpu: str, memory: str, token: str) -> None:
         lock = self._node_locks.setdefault(request.node_id, asyncio.Lock())
         async with lock:
             await self._provision_locked(request, host, cpu, memory, token)
@@ -179,7 +188,7 @@ class RemoteNodeService(RemoteNodeAdminMixin, RemoteNodeLifecycleMixin):
                     f"远程拉取未成功，准备从 Seed 传输：{image_ops.safe_detail(detail)}",
                     source="ssh-transfer",
                 )
-                digest = await self._transfer_image(request, host)
+                digest = await self._transfer_image(request, host, self.image)
                 source = "ssh-transfer"
             await self._progress(
                 request.node_id,
@@ -239,11 +248,11 @@ class RemoteNodeService(RemoteNodeAdminMixin, RemoteNodeLifecycleMixin):
             )
             await self._audit("create", request.node_id, request.host_id, "failed")
 
-    async def _transfer_image(self, request: RemoteNodeCreate, host) -> str:
+    async def _transfer_image(self, request: RemoteNodeCreate, host, image: str) -> str:
         with tempfile.NamedTemporaryFile(prefix="taskhub-node-", suffix=".tar") as archive:
             try:
                 local = await asyncio.to_thread(
-                    self.registry.export_image, self.image, archive
+                    self.registry.export_image, image, archive
                 )
             except DockerUnavailableError as exc:
                 raise RemoteNodeError(
@@ -272,12 +281,12 @@ class RemoteNodeService(RemoteNodeAdminMixin, RemoteNodeLifecycleMixin):
         output = await self.hosts.run_remote_script(
             request.host_id,
             image_ops.apply_host_docker_access(
-                image_ops.inspect_script(self.image), host.payload["docker_access"]
+                image_ops.inspect_script(image), host.payload["docker_access"]
             ),
             timeout=60,
         )
         values = image_ops.values(output)
-        digest = image_ops.validate_remote_image(self.image, host.facts, values)
+        digest = image_ops.validate_remote_image(image, host.facts, values)
         if local.get("id") and values.get("IMAGE_ID") != local["id"]:
             raise RemoteNodeError("SSH 传输后的镜像摘要与 Seed 本机镜像不一致")
         return digest
@@ -306,6 +315,17 @@ class RemoteNodeService(RemoteNodeAdminMixin, RemoteNodeLifecycleMixin):
         if not record:
             return None
         previous = dict(record.payload.get("distribution") or {})
+        operation = dict(record.payload.get("operation") or {})
+        operation.update({
+            "status": "complete" if phase == "complete" else (
+                "failed" if phase in {"failed", "rollback-failed"} else (
+                    "rolled-back" if phase == "rollback-complete" else "running"
+                )
+            ),
+            "phase": phase,
+            "percent": percent,
+            "detail": detail,
+        })
         payload = {
             **record.payload,
             "distribution": {
@@ -315,6 +335,7 @@ class RemoteNodeService(RemoteNodeAdminMixin, RemoteNodeLifecycleMixin):
                 "detail": detail,
                 "digest": digest or previous.get("digest", ""),
             },
+            "operation": operation,
         }
         return await self.store.save(
             replace(

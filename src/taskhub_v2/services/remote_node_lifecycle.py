@@ -246,6 +246,7 @@ class RemoteNodeLifecycleMixin:
             )
 
     async def _reconcile_loop(self) -> None:
+        await self.resume_pending_operations()
         while True:
             try:
                 await self.reconcile_once()

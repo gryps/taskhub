@@ -658,6 +658,20 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .onboarding-restart { align-items: flex-start; flex-direction: column; }
 }
 .project-settings-disclosure { margin-top: 0; }
+.project-settings-disclosure > summary { min-height: 58px; padding: 10px 14px; border-left: 0; }
+.project-settings-disclosure[open] > summary {
+  position: static;
+  border-left: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--surface-subtle);
+  box-shadow: 0 1px 0 var(--border);
+  backdrop-filter: none;
+}
+.project-settings-heading { display: grid; gap: 2px; margin-right: auto; color: var(--text); }
+.project-settings-heading strong { font-size: 14px; line-height: 1.35; }
+.project-settings-heading small { color: var(--text-secondary); font-size: 12px; font-weight: 500; line-height: 1.4; }
+.project-settings-disclosure .form-note { line-height: 1.55; }
+.field-help { color: var(--text-secondary); font-size: 12px; font-weight: 500; line-height: 1.45; }
 .resource-form { margin: 0; border-width: 1px 0 0; border-radius: 0; box-shadow: none; }
 .container-form-grid { grid-template-columns: minmax(180px, 1.4fr) minmax(160px, 1fr) minmax(130px, .7fr); }
 .configuration-form { padding: 18px 16px; }
@@ -814,8 +828,12 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .resource-row .bad, .usage-unavailable { color: var(--danger); }
 .container-row { grid-template-columns: 1.2fr .8fr 1fr 1.6fr; }
 .container-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.container-actions button { min-height: 32px; padding: 5px 10px; font-size: 11px; }
+.container-actions button { min-height: 32px; padding: 5px 10px; font-size: 12px; }
 .container-actions .remove-container { color: var(--danger); border-color: #dda99e; }
+.node-upgrade-card { max-width: 760px; }
+.node-upgrade-card .form-help { margin: 0; padding: 0 15px 14px; }
+.node-upgrade-card .form-actions { padding: 0 15px 15px; }
+#upgrade-node-message { color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
 .host-action { min-height: 30px; margin-top: 8px; padding: 4px 9px; font-size: 11px; }
 .prerequisite-action { display: flex; gap: 8px; align-items: start; }
 .prerequisite-action code { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -170,6 +170,12 @@ class AuthService:
             return None
         session_id = str(payload.get("session_id") or "")
         if not session_id:  # Backward-compatible stateless session during upgrade.
+            # Sessions issued before RBAC was introduced represented the only
+            # available identity: the built-in administrator. Preserve that
+            # meaning during an upgrade so a valid legacy cookie does not turn
+            # into an authenticated user with no permissions.
+            payload.setdefault("actor", "admin")
+            payload.setdefault("role", "administrator")
             return payload
         if not self.session_state_file:
             return payload

@@ -1,6 +1,8 @@
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 
+from taskhub_v2.api.remote_node_routes import router as remote_node_router
 from taskhub_v2.domain.remote_nodes import RemoteNodeCreate
 from taskhub_v2.persistence.configuration import MemoryConfigurationStore
 from taskhub_v2.persistence.hosts import MemoryHostStore, new_host_record
@@ -8,6 +10,13 @@ from taskhub_v2.persistence.remote_nodes import MemoryRemoteNodeStore, new_remot
 from taskhub_v2.services import remote_node_helpers as node_helpers
 from taskhub_v2.services.image_distribution import image_sources
 from taskhub_v2.services.remote_nodes import RemoteNodeError, RemoteNodeService
+
+
+def test_upgrade_route_precedes_generic_action_route():
+    paths = [route.path for route in remote_node_router.routes]
+    assert paths.index("/api/remote-nodes/{node_id}/upgrade") < paths.index(
+        "/api/remote-nodes/{node_id}/{action}"
+    )
 
 
 class FakeRegistry:
@@ -379,5 +388,133 @@ def test_reconciliation_removes_unreachable_agent_from_scheduling_then_recovers(
         )
         assert (await store.get("worker-04")).actual_state == "running"
         assert [node.id for node in registry.nodes] == ["worker-04"]
+
+    asyncio.run(scenario())
+
+
+def test_seed_restart_resumes_persisted_create_operation():
+    async def scenario():
+        service, store, _hosts, registry = await make_service(
+            "FOUND=1\nSOURCE=configured-registry\nIMAGE_ID=sha256:resumed\n"
+            "ARCH=amd64\nOS=linux\nDIGESTS=repo@sha256:resumed\n"
+        )
+        request = RemoteNodeCreate(
+            node_id="worker-resume", host_id="worker-host", role="execution",
+            slots=1, host_port=8030,
+        )
+        await store.save(new_remote_node_record(
+            node_id=request.node_id, host_id=request.host_id,
+            payload={
+                **request.model_dump(mode="json"), "image": service.image,
+                "cpu_limit": "", "memory_limit": "",
+                "distribution": {"phase": "pulling", "percent": 15},
+                "operation": {
+                    "kind": "create", "status": "running", "phase": "pulling",
+                    "percent": 15, "target_image": service.image,
+                },
+            },
+            container_id="", image_digest="", desired_state="running",
+            actual_state="distributing", status_reason="Seed restarted",
+        ))
+        await service.resume_pending_operations()
+        await asyncio.gather(*service._tasks.values())
+
+        record = await store.get(request.node_id)
+        assert record.actual_state == "running"
+        assert record.payload["operation"]["status"] == "complete"
+        assert record.image_digest.endswith("@sha256:resumed")
+        assert [item.id for item in registry.nodes] == [request.node_id]
+
+    asyncio.run(scenario())
+
+
+def test_remote_node_upgrade_commits_only_after_health_check():
+    async def scenario():
+        service, store, _hosts, _registry = await make_service(
+            "FOUND=1\nSOURCE=private-registry\nIMAGE_ID=sha256:upgrade\n"
+            "ARCH=amd64\nOS=linux\nDIGESTS=repo@sha256:upgrade\n"
+        )
+        await service.create(RemoteNodeCreate(
+            node_id="worker-upgrade", host_id="worker-host", role="execution",
+            slots=1, host_port=8031,
+        ))
+        await asyncio.gather(*service._tasks.values())
+        queued = await service.upgrade("worker-upgrade", "taskhub-node:0.2.0")
+        assert queued["operation"]["status"] == "queued"
+        await asyncio.gather(*service._tasks.values())
+
+        record = await store.get("worker-upgrade")
+        assert record.actual_state == "running"
+        assert record.payload["image"] == "taskhub-node:0.2.0"
+        assert record.payload["operation"]["status"] == "complete"
+        assert record.image_digest.endswith("@sha256:upgrade")
+
+    asyncio.run(scenario())
+
+
+def test_remote_node_upgrade_health_failure_rolls_back_old_image():
+    async def scenario():
+        service, store, _hosts, registry = await make_service(
+            "FOUND=1\nSOURCE=private-registry\nIMAGE_ID=sha256:upgrade\n"
+            "ARCH=amd64\nOS=linux\nDIGESTS=repo@sha256:upgrade\n"
+        )
+        await service.create(RemoteNodeCreate(
+            node_id="worker-rollback", host_id="worker-host", role="execution",
+            slots=1, host_port=8032,
+        ))
+        await asyncio.gather(*service._tasks.values())
+        checks = 0
+
+        async def fail_new_then_accept_old(_address, _request, _token):
+            nonlocal checks
+            checks += 1
+            if checks == 1:
+                raise RemoteNodeError("new agent unhealthy")
+
+        service._wait_healthy = fail_new_then_accept_old
+        await service.upgrade("worker-rollback", "taskhub-node:bad")
+        await asyncio.gather(*service._tasks.values())
+
+        record = await store.get("worker-rollback")
+        assert record.actual_state == "running"
+        assert record.payload["image"] == "taskhub-node:0.1.0-alpha"
+        assert record.payload["operation"]["status"] == "rolled-back"
+        assert "已自动恢复原镜像" in record.status_reason
+        assert [item.id for item in registry.nodes] == ["worker-rollback"]
+
+    asyncio.run(scenario())
+
+
+def test_seed_restart_retries_persisted_upgrade_operation():
+    async def scenario():
+        service, store, _hosts, _registry = await make_service(
+            "FOUND=1\nSOURCE=proxy\nIMAGE_ID=sha256:retry\n"
+            "ARCH=amd64\nOS=linux\nDIGESTS=repo@sha256:retry\n"
+        )
+        await service.create(RemoteNodeCreate(
+            node_id="worker-upgrade-resume", host_id="worker-host", role="execution",
+            slots=1, host_port=8033,
+        ))
+        await asyncio.gather(*service._tasks.values())
+        record = await store.get("worker-upgrade-resume")
+        operation = {
+            "id": "persisted-operation", "kind": "upgrade", "attempt": 1,
+            "status": "running", "phase": "pulling", "percent": 15,
+            "target_image": "taskhub-node:0.3.0",
+            "previous_image": record.payload["image"],
+            "previous_digest": record.image_digest,
+        }
+        await store.save(replace(
+            record, payload={**record.payload, "operation": operation},
+            actual_state="upgrading",
+        ))
+
+        await service.resume_pending_operations()
+        await asyncio.gather(*service._tasks.values())
+        resumed = await store.get("worker-upgrade-resume")
+        assert resumed.payload["image"] == "taskhub-node:0.3.0"
+        assert resumed.payload["operation"]["id"] == "persisted-operation"
+        assert resumed.payload["operation"]["attempt"] == 2
+        assert resumed.payload["operation"]["status"] == "complete"
 
     asyncio.run(scenario())

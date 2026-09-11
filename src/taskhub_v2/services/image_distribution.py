@@ -170,12 +170,14 @@ def runtime_script(node_id: str, docker_access: str) -> str:
     name = shlex.quote(f"taskhub-node-{node_id}")
     return f"""set -eu
 if ! {docker} container inspect {name} >/dev/null 2>&1; then
-  printf 'EXISTS=0\nSTATE=missing\nCONTAINER=\n'
+  printf 'EXISTS=0\nSTATE=missing\nCONTAINER=\nIMAGE=\n'
   exit 0
 fi
 container=$({docker} container inspect {name} --format '{{{{.Id}}}}')
 state=$({docker} container inspect {name} --format '{{{{.State.Status}}}}')
-printf 'EXISTS=1\nSTATE=%s\nCONTAINER=%s\n' "$state" "$container"
+image=$({docker} container inspect {name} --format '{{{{.Config.Image}}}}')
+printf 'EXISTS=1\nSTATE=%s\nCONTAINER=%s\nIMAGE=%s\n' \
+  "$state" "$container" "$image"
 """
 
 

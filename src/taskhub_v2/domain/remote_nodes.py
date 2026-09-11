@@ -40,3 +40,13 @@ class RemoteNodeCreate(BaseModel):
 class RemoteNodeRemove(BaseModel):
     model_config = ConfigDict(extra="forbid")
     remove_volume: bool = False
+
+
+class RemoteNodeUpgrade(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    image: str = Field(
+        min_length=3,
+        max_length=512,
+        pattern=r"^[A-Za-z0-9._:/@-]+$",
+    )

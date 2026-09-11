@@ -1,4 +1,5 @@
 import json
+import time
 
 from fastapi.testclient import TestClient
 
@@ -64,6 +65,45 @@ def test_logout_revokes_server_side_session(tmp_path):
         assert client.post("/api/auth/logout", headers=headers).status_code == 200
         client.cookies.set("taskhub_v2_session", cookie)
         assert client.get("/api/projects").status_code == 401
+
+
+def test_legacy_session_keeps_administrator_permissions_during_upgrade(tmp_path):
+    app = create_app(secure_settings(tmp_path))
+    auth = app.state.auth
+    payload = {
+        "csrf": "legacy-csrf",
+        "issued": int(time.time()) - 60,
+        "expires": int(time.time()) + 600,
+    }
+    encoded = auth._encode(json.dumps(payload, separators=(",", ":")).encode())
+    cookie = f"{encoded}.{auth._sign(encoded)}"
+
+    with TestClient(app) as client:
+        client.cookies.set("taskhub_v2_session", cookie)
+        client.cookies.set("taskhub_v2_csrf", "legacy-csrf")
+        status = client.get("/api/auth/status")
+        assert status.json()["role"] == "administrator"
+        assert client.get("/api/projects").status_code == 200
+        assert (
+            client.post(
+                "/api/auth/logout", headers={"X-CSRF-Token": "legacy-csrf"}
+            ).status_code
+            == 200
+        )
+
+
+def test_unknown_role_can_still_log_out(tmp_path):
+    app = create_app(secure_settings(tmp_path))
+    auth = app.state.auth
+    cookie, csrf = auth.create_session("retired-user", "retired-role")
+
+    with TestClient(app) as client:
+        client.cookies.set("taskhub_v2_session", cookie)
+        client.cookies.set("taskhub_v2_csrf", csrf)
+        assert client.get("/api/projects").status_code == 403
+        assert client.post(
+            "/api/auth/logout", headers={"X-CSRF-Token": csrf}
+        ).status_code == 200
 
 
 def test_login_failure_limit_and_security_headers(tmp_path):
