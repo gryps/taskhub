@@ -494,6 +494,11 @@ async function loadProjects(preferredProjectId = currentProjectId) {
     : "请先创建或接入项目";
   renderProjectRepository(active);
   await Promise.all([loadCurrentProjectContract(), loadCurrentProductSpec()]);
+  await window.loadCapabilityCenter?.(
+    productizationEnabled ? currentProjectId : null,
+    currentProductSpecDetail?.product_spec,
+    currentProjectContract,
+  );
   window.loadRevisionCenter?.(currentProjectId, currentRun);
   refreshStartAction();
   window.dispatchEvent(new CustomEvent("taskhub:projects", {detail: data.projects}));
@@ -504,6 +509,7 @@ async function loadProductizationStatus() {
   productizationEnabled = Boolean(state.enabled);
   byId("product-spec-disclosure").classList.toggle("hidden", !productizationEnabled);
   byId("project-contract-disclosure").classList.toggle("hidden", !productizationEnabled);
+  byId("capability-disclosure").classList.toggle("hidden", !productizationEnabled);
 }
 
 function refreshStartAction() {
@@ -599,6 +605,9 @@ async function createProjectContract(forceRevision = false) {
   });
   byId("project-contract-disclosure").open = true;
   await loadCurrentProjectContract();
+  await window.loadCapabilityCenter?.(
+    currentProjectId, currentProductSpecDetail?.product_spec, currentProjectContract,
+  );
   byId("project-contract-message").textContent = "契约草稿已生成，请核对后提交评审";
 }
 
@@ -607,6 +616,9 @@ async function transitionProjectContract(action) {
   if (!contract) return;
   await request(`/api/projects/${encodeURIComponent(currentProjectId)}/project-contracts/${encodeURIComponent(contract.contract_id)}/versions/${contract.version}/${action}`, {method: "POST"});
   await loadCurrentProjectContract();
+  await window.loadCapabilityCenter?.(
+    currentProjectId, currentProductSpecDetail?.product_spec, currentProjectContract,
+  );
 }
 
 async function runProjectContractGate() {
@@ -716,6 +728,9 @@ async function createProductSpecDraft() {
   })});
   byId("product-spec-disclosure").open = true;
   await loadCurrentProductSpec();
+  await window.loadCapabilityCenter?.(
+    currentProjectId, currentProductSpecDetail?.product_spec, currentProjectContract,
+  );
   byId("product-spec-message").textContent = detail.decision
     ? "规格草稿已生成，请集中完成待决策事项" : "规格草稿已生成，可以提交评审";
 }
@@ -725,6 +740,9 @@ async function transitionProductSpec(action) {
   if (!spec) return;
   await request(`/api/product-specs/${encodeURIComponent(spec.spec_id)}/versions/${spec.version}/${action}?project_id=${encodeURIComponent(currentProjectId)}`, {method: "POST"});
   await loadCurrentProductSpec();
+  await window.loadCapabilityCenter?.(
+    currentProjectId, currentProductSpecDetail?.product_spec, currentProjectContract,
+  );
 }
 
 async function resolveProductDecision(event) {
@@ -748,6 +766,9 @@ async function createProductSpecRevision() {
   await request(`/api/product-specs/${encodeURIComponent(spec.spec_id)}/versions/${spec.version}/revisions?project_id=${encodeURIComponent(currentProjectId)}`, {method: "POST", body: JSON.stringify({reason})});
   byId("product-spec-revision-reason").value = "";
   await loadCurrentProductSpec();
+  await window.loadCapabilityCenter?.(
+    currentProjectId, currentProductSpecDetail?.product_spec, currentProjectContract,
+  );
   byId("product-spec-message").textContent = "修订草稿已创建，原批准版本保持不变";
 }
 

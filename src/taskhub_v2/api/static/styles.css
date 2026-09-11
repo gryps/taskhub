@@ -167,7 +167,7 @@ button {
 
 .revision-surface { display: grid; gap: 14px; }
 .revision-create-card { display: grid; gap: 14px; }
-.revision-task-picker { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.revision-task-picker { margin: 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
 .revision-task-picker legend { color: var(--text-secondary); font-size: 12px; font-weight: 700; }
 .revision-task-picker > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .revision-task-picker label { display: flex; align-items: flex-start; gap: 7px; padding: 8px; border-radius: 7px; background: var(--surface-muted); }
@@ -179,13 +179,44 @@ button {
 .revision-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin: 0; }
 .revision-facts div { padding: 8px; border-radius: 7px; background: var(--surface-muted); }
 .revision-facts dt { color: var(--text-tertiary); font-size: 12px; }
-.revision-facts dd { margin: 3px 0 0; color: var(--text-primary); font-size: 13px; font-weight: 700; }
-.revision-impact { border-top: 1px solid var(--line); padding-top: 9px; }
+.revision-facts dd { margin: 3px 0 0; color: var(--text); font-size: 13px; font-weight: 700; }
+.revision-impact { border-top: 1px solid var(--border); padding-top: 9px; }
 .revision-impact summary { cursor: pointer; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
 .revision-impact p { margin: 4px 0 9px; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.capability-surface, .capability-current-card, .capability-inventory-surface { display: grid; gap: 14px; }
+.capability-card-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.capability-option-card { display: grid; align-content: start; gap: 12px; min-width: 0; }
+.capability-option-card > details { border-top: 1px solid var(--border); padding-top: 9px; }
+.capability-option-card > details summary { cursor: pointer; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.capability-option-card > details ul, .capability-migrations ul { margin: 8px 0; padding-left: 20px; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.capability-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.capability-facts > div { display: grid; gap: 3px; padding: 8px; border-radius: 7px; background: var(--surface-muted); min-width: 0; }
+.capability-facts span { color: var(--text-tertiary); font-size: 12px; }
+.capability-facts strong { color: var(--text); font-size: 13px; overflow-wrap: anywhere; }
+.capability-previews { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.capability-preview { padding: 8px; border: 1px solid var(--border); border-radius: var(--pack-radius); background: var(--surface); }
+.capability-preview > strong { display: block; margin-bottom: 6px; color: var(--text-secondary); font-size: 12px; }
+.capability-preview > div { display: grid; grid-template-columns: 28% 1fr; grid-template-rows: repeat(3, 7px); gap: 4px; }
+.capability-preview i { grid-row: 1 / 4; border-radius: 3px; background: var(--pack-accent); opacity: .85; }
+.capability-preview span { border-radius: 3px; background: var(--surface-muted); }
+.capability-migrations { padding: 10px; border: 1px solid #efd49e; border-radius: 8px; background: var(--warning-soft); }
+.capability-migrations h4 { margin: 0; font-size: 13px; }
+.capability-inventory-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.capability-inventory-card { display: grid; gap: 10px; min-width: 0; }
+.capability-inventory-card dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.capability-inventory-card dl div { min-width: 0; }
+.capability-inventory-card dt { color: var(--text-tertiary); font-size: 12px; }
+.capability-inventory-card dd { margin: 2px 0 0; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+.capability-inventory-card > p { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.capability-executable-confirm { display: flex; align-items: flex-start; gap: 7px; color: var(--warning); font-size: 12px; }
 @media (max-width: 680px) {
   .revision-card-list, .revision-task-picker > div { grid-template-columns: 1fr; }
   .revision-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .capability-card-list, .capability-inventory-list { grid-template-columns: 1fr; }
+  .capability-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 681px) and (max-width: 1100px) {
+  .capability-card-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 button:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
 button:active:not(:disabled) { transform: translateY(1px); }

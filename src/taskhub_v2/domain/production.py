@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
+from taskhub_v2.domain.capability import CapabilityPack, CapabilityPackLock, ProjectDesignContract
 from taskhub_v2.domain.change_request import ChangeRequest
 from taskhub_v2.domain.dag import DagExecutionSnapshot, ExecutionBatch
 from taskhub_v2.domain.production_base import ProductionRecord, utc_now
@@ -125,6 +126,11 @@ STATE_TRANSITIONS: dict[str, dict[str, set[str]]] = {
         "trusted": {"disabled"},
         "disabled": {"trusted"},
     },
+    "capability_pack_lock": {
+        "draft": {"active", "rejected"},
+        "active": {"superseded"},
+    },
+    "project_design_contract": {"active": {"superseded"}},
 }
 
 
@@ -235,6 +241,10 @@ class ExecutionPlan(ProductionRecord):
     product_spec_version: int = Field(ge=1)
     project_contract_id: str = ""
     project_contract_version: int = Field(default=1, ge=1)
+    capability_lock_id: str = ""
+    capability_lock_version: int | None = Field(default=None, ge=1)
+    design_contract_id: str = ""
+    design_contract_version: int | None = Field(default=None, ge=1)
     run_id: str = ""
     task_ids: list[str] = Field(default_factory=list)
     milestones: list[dict[str, Any]] = Field(default_factory=list)
@@ -249,6 +259,16 @@ class ExecutionPlan(ProductionRecord):
             self.previous_plan_version != self.version - 1 or not self.change_request_id
         ):
             raise ValueError("revised execution plan requires predecessor and ChangeRequest")
+        lock_bound = bool(self.capability_lock_id)
+        design_bound = bool(self.design_contract_id)
+        if (
+            lock_bound != bool(self.capability_lock_version)
+            or design_bound != bool(self.design_contract_version)
+            or lock_bound != design_bound
+        ):
+            raise ValueError(
+                "execution plan capability and design contract bindings are incomplete"
+            )
         return self
 
 
@@ -268,6 +288,7 @@ class ProductionTask(ProductionRecord):
     required_capabilities: list[str] = Field(default_factory=list)
     contracts: list[str] = Field(default_factory=list)
     acceptance_commands: list[list[str]] = Field(default_factory=list)
+    required_evidence: list[str] = Field(default_factory=list)
     expected_artifacts: list[str] = Field(default_factory=list)
     estimated_size: Literal["small", "medium", "large"] = "small"
     risk_level: Literal["low", "medium", "high"] = "medium"
@@ -313,31 +334,6 @@ class TaskAttempt(ProductionRecord):
     reused_from_attempt_id: str = ""
 
 
-class CapabilityPack(ProductionRecord):
-    object_type: Literal["capability_pack"] = "capability_pack"
-    pack_id: str = Field(pattern=r"^pack_[A-Za-z0-9_-]{3,100}$")
-    version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?$")
-    status: Literal["draft", "trusted", "disabled", "rejected"] = "draft"
-    pack_type: Literal[
-        "frontend-style",
-        "frontend-components",
-        "frontend-layout",
-        "brand",
-        "project-architecture",
-        "testing",
-        "security",
-        "delivery",
-    ]
-    source: str
-    summary: str
-    compatibility: dict[str, Any] = Field(default_factory=dict)
-    files: list[str] = Field(default_factory=list)
-    validators: list[str] = Field(default_factory=list)
-    license: str = ""
-    contains_executable: bool = False
-    required_permissions: list[str] = Field(default_factory=list)
-
-
 ProductionObject = Annotated[
     Requirement
     | ProductDecision
@@ -349,7 +345,9 @@ ProductionObject = Annotated[
     | ProductionTask
     | TaskAttempt
     | ChangeRequest
-    | CapabilityPack,
+    | CapabilityPack
+    | CapabilityPackLock
+    | ProjectDesignContract,
     Field(discriminator="object_type"),
 ]
 production_object_adapter = TypeAdapter(ProductionObject)
@@ -379,6 +377,10 @@ def object_identity(record: ProductionObject) -> tuple[str, str, str]:
             identity = record.change_request_id, str(record.version)
         case CapabilityPack():
             identity = record.pack_id, record.version
+        case CapabilityPackLock():
+            identity = record.lock_id, str(record.version)
+        case ProjectDesignContract():
+            identity = record.contract_id, str(record.version)
     return record.object_type, *identity
 
 

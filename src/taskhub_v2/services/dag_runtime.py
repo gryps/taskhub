@@ -51,7 +51,12 @@ class ProductizedExecutionRuntime:
 
 
 def build_dag_runtime(
-    store, projects, worker, node_scheduler, topology_resolver=None
+    store,
+    projects,
+    worker,
+    node_scheduler,
+    topology_resolver=None,
+    design_contract_resolver=None,
 ) -> ProductizedExecutionRuntime:
     async def capability_inventory():
         statuses = await node_scheduler.status()
@@ -82,7 +87,7 @@ def build_dag_runtime(
                 return True
         return False
 
-    planner = DagPlanService(store, capability_inventory)
+    planner = DagPlanService(store, capability_inventory, design_contract_resolver)
     executor = WorkerDagExecutor(
         worker,
         store,

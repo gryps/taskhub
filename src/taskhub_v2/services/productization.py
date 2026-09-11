@@ -36,9 +36,10 @@ class ProductizationConflictError(RuntimeError):
 
 
 class ProductizationService:
-    def __init__(self, store: ProductionStore, provider: ModelProvider):
+    def __init__(self, store: ProductionStore, provider: ModelProvider, capabilities=None):
         self.store = store
         self.provider = provider
+        self.capabilities = capabilities
 
     async def submit_requirement(
         self,
@@ -250,6 +251,11 @@ class ProductizationService:
         spec = await self._spec(project_id, spec_id, version)
         if spec.status != ProductSpecStatus.IN_REVIEW:
             raise ProductizationConflictError("only an in-review ProductSpec can be approved")
+        if self.capabilities:
+            try:
+                await self.capabilities.validate_spec_lock(spec)
+            except RuntimeError as error:
+                raise ProductizationConflictError(str(error)) from error
         for current in await self.list_specs(project_id):
             if current.status == ProductSpecStatus.APPROVED:
                 await self.store.save(self._replace(current, status=ProductSpecStatus.SUPERSEDED))

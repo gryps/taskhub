@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from taskhub_v2.config import Settings
+from taskhub_v2.domain.capability import CapabilityPack, CapabilityPackLock
 from taskhub_v2.domain.dag import ExecutionBatch
 from taskhub_v2.domain.production import (
     ProductDecision,
@@ -112,6 +113,23 @@ def _validate_replacement(previous: ProductionObject, record: ProductionObject) 
         if any(getattr(previous, field) != getattr(record, field) for field in fixed_fields):
             raise ProductionObjectConflictError("execution batch definition is immutable")
         return
+    if isinstance(previous, CapabilityPack) and isinstance(record, CapabilityPack):
+        lifecycle = {
+            "status",
+            "trusted_by",
+            "trusted_at",
+            "disabled_reason",
+            "updated_at",
+            "content_digest",
+        }
+        if previous.model_dump(exclude=lifecycle) != record.model_dump(exclude=lifecycle):
+            raise ProductionObjectConflictError("trusted capability pack content is immutable")
+        return
+    if isinstance(previous, CapabilityPackLock) and isinstance(record, CapabilityPackLock):
+        lifecycle = {"status", "activated_by", "activated_at", "updated_at", "content_digest"}
+        if previous.model_dump(exclude=lifecycle) != record.model_dump(exclude=lifecycle):
+            raise ProductionObjectConflictError("capability lock content is immutable")
+        return
     mutable_states = {
         "product_spec": {"draft", "in_review"},
         "project_contract": {"draft", "in_review"},
@@ -119,6 +137,7 @@ def _validate_replacement(previous: ProductionObject, record: ProductionObject) 
         "task": {"pending"},
         "change_request": {"proposed"},
         "capability_pack": {"draft"},
+        "capability_pack_lock": {"draft"},
     }.get(record.object_type, set())
     changes_allowed = record.object_type in {"task_attempt", "change_request"} or (
         _state(previous) in mutable_states and _state(record) in mutable_states

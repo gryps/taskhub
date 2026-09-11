@@ -315,3 +315,13 @@ Updated: 2026-09-11
 - Development Workflow now contains a compact ChangeRequest configuration/presentation card. Its impact, reuse and regression facts come from the server, with responsive coverage at 1440, 680 and 390 pixels.
 - Verification: full Python suite `254 passed, 16 skipped`; TypeScript/Vite production build, changed-file Ruff, JavaScript syntax, architecture limits, diff checks and real Chrome at 1440, 680 and 390 pixels passed.
 - Phase 4 is source-only: push `.3 Git` and GitHub. Do not deploy, build Docker or publish registry images. Continue strictly from Phase 5.
+
+## Productized Delivery Phase 5
+
+- On 2026-09-12, Phase 5 added trusted, versioned CapabilityPack inventory for frontend style, components, layout and brand, plus the broader architecture/testing/security/delivery type contract.
+- Built-in packs provide three compatible frontend combinations. Admin imports remain drafts until explicitly trusted; traversal, credentials, missing licensing, undeclared executable permissions and oversized manifests are rejected. Packs are data and declared validators, not an arbitrary controller-side execution path.
+- Each frontend ProductSpec version requires an exact CapabilityPackLock and compiled ProjectDesignContract. The execution plan and every generated task retain the exact lock/design versions; worker context receives tokens, component/layout/brand, responsive/accessibility rules, viewports and required validation evidence.
+- A revised ProductSpec requires a new lock even when package versions are unchanged. Design-pack changes create a draft and migration tasks; stale drafts, disabled packs and newly incompatible combinations cannot activate, and old lock/design versions remain historical.
+- Development Workflow owns recommendation, preview, lock and migration cards. Platform Settings owns global inventory/import/trust/availability. Static assets are `styles.css?v=45`, `app.js?v=18` and `capability-center.js?v=1`.
+- Verification: full Python suite `263 passed, 19 skipped`; TypeScript/Vite production build, changed-file Ruff, JavaScript syntax, architecture limits, diff checks and real Chrome at 1440, 680 and 390 pixels passed.
+- Phase 5 is source-only: push `.3 Git` and GitHub. Do not deploy, build Docker or publish registry images. Continue strictly from Phase 6.

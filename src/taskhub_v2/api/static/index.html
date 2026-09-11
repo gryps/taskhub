@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=44">
+  <link rel="stylesheet" href="/static/styles.css?v=45">
 </head>
 <body>
   <header class="app-header">
@@ -251,6 +251,25 @@
               <span id="product-spec-message" role="status"></span>
             </footer>
           </section>
+        </div>
+      </details>
+      <details id="capability-disclosure" class="providers-section project-settings-disclosure resource-disclosure hidden">
+        <summary>
+          <span class="project-settings-heading"><strong>设计与能力包</strong><small>兼容方案、精确版本锁与项目设计合同</small></span>
+          <span id="capability-summary" class="muted">尚未选择</span>
+        </summary>
+        <div class="project-form resource-form capability-surface">
+          <p class="form-note">系统只推荐与当前项目契约兼容的受信组合。选择后先生成版本锁；升级必须查看迁移任务并再次激活。</p>
+          <section id="active-design-contract" class="management-card capability-current-card">
+            <header><div><h3>当前项目设计合同</h3><p id="active-design-detail">先生成产品规格并激活项目契约。</p></div><span id="active-design-state" class="card-state warn">未锁定</span></header>
+            <div id="active-design-facts" class="capability-facts"></div>
+            <div id="capability-migrations" class="capability-migrations hidden"></div>
+          </section>
+          <section aria-labelledby="capability-options-title">
+            <div class="section-head"><h3 id="capability-options-title">推荐方案</h3><span>最多 3 个兼容组合</span></div>
+            <div id="capability-recommendations" class="capability-card-list"><p class="empty-state">等待项目上下文</p></div>
+          </section>
+          <span id="capability-message" role="status"></span>
         </div>
       </details>
       <details id="execution-plan-disclosure" class="providers-section project-settings-disclosure resource-disclosure hidden">
@@ -604,6 +623,17 @@
         <button id="refresh-platform" class="secondary resource-refresh" title="刷新平台设置">↻ 刷新</button>
       </div>
       <div id="platform-settings" class="management-card-grid"></div>
+      <details id="capability-inventory-disclosure" class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>能力包库存</strong><span id="capability-inventory-summary">正在读取</span></summary>
+      <div class="capability-inventory-surface">
+        <div id="capability-inventory" class="capability-inventory-list"><p class="muted">正在读取受信能力包。</p></div>
+        <form id="capability-import-form" class="project-form resource-form compact-operation-form" data-permission="infrastructure:manage">
+          <div class="section-head"><h3>导入清单</h3><span>导入后需单独审查并信任</span></div>
+          <label class="wide">Manifest JSON<textarea id="capability-import-manifest" rows="6" required spellcheck="false" placeholder='{"pack_id":"pack_custom_style","version":"1.0.0","name":"自定义风格","pack_type":"frontend-style","summary":"...","license":"Apache-2.0"}'></textarea></label>
+          <div class="form-actions"><button type="submit">导入草稿</button><span id="capability-inventory-message" role="status"></span></div>
+        </form>
+      </div>
+      </details>
       <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>Seed 备份与恢复</strong><span>整库、主密钥、配置、凭据、节点与项目数据</span></summary>
       <div class="backup-contract">
@@ -678,7 +708,8 @@
     </div>
   </main>
   <script src="/static/revision-center.js?v=1"></script>
-  <script src="/static/app.js?v=17"></script>
+  <script src="/static/capability-center.js?v=1"></script>
+  <script src="/static/app.js?v=18"></script>
   <script src="/static/task-center.js?v=13"></script>
   <script src="/static/resource-center.js?v=25"></script>
   <script src="/static/onboarding.js?v=2"></script>

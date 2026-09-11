@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict, deque
-from pathlib import PurePosixPath
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -16,12 +15,13 @@ from taskhub_v2.domain.production import (
 )
 from taskhub_v2.domain.project_contract import ProjectContract
 from taskhub_v2.persistence.production import ProductionStore
-
-
-class DagValidationFinding(BaseModel):
-    code: str
-    task_id: str = ""
-    detail: str
+from taskhub_v2.services.dag_validation import (
+    DagValidationFinding,
+    contract_findings,
+    dataflow_findings,
+    interface_findings,
+    lock_path,
+)
 
 
 class DagPlanValidationError(ValueError):
@@ -38,9 +38,12 @@ class DagPlanBundle(BaseModel):
 
 
 class DagPlanService:
-    def __init__(self, store: ProductionStore, capability_inventory=None):
+    def __init__(
+        self, store: ProductionStore, capability_inventory=None, design_contract_resolver=None
+    ):
         self.store = store
         self.capability_inventory = capability_inventory
+        self.design_contract_resolver = design_contract_resolver
 
     async def compile_from_run(
         self,
@@ -80,7 +83,34 @@ class DagPlanService:
     ) -> DagPlanBundle:
         suffix = re.sub(r"[^A-Za-z0-9]", "", run_id)[-20:] or "run"
         plan_id = f"plan_{suffix}"
-        tasks = self._tasks(project_id, plan_id, spec, contract, model_plan, actor)
+        if contract.profile_id in {"fullstack-web", "frontend-spa"} and not (
+            spec.capability_pack_lock
+        ):
+            raise DagPlanValidationError(
+                [
+                    DagValidationFinding(
+                        code="capability_lock_missing",
+                        detail="前端项目必须先锁定兼容的设计能力包版本",
+                    )
+                ]
+            )
+        design_source = (
+            await self.design_contract_resolver(
+                project_id, spec.capability_pack_lock, spec.spec_id, spec.version
+            )
+            if self.design_contract_resolver and spec.capability_pack_lock
+            else None
+        )
+        if spec.capability_pack_lock and not design_source:
+            raise DagPlanValidationError(
+                [
+                    DagValidationFinding(
+                        code="design_contract_missing",
+                        detail="规格锁定的能力包没有对应项目设计合同",
+                    )
+                ]
+            )
+        tasks = self._tasks(project_id, plan_id, spec, contract, model_plan, actor, design_source)
         findings, order = await self.validate(tasks, contract)
         if findings:
             raise DagPlanValidationError(findings)
@@ -93,6 +123,10 @@ class DagPlanService:
             product_spec_version=spec.version,
             project_contract_id=contract.contract_id,
             project_contract_version=contract.version,
+            capability_lock_id=design_source[0].lock_id if design_source else "",
+            capability_lock_version=design_source[0].version if design_source else None,
+            design_contract_id=design_source[1].contract_id if design_source else "",
+            design_contract_version=design_source[1].version if design_source else None,
             run_id=run_id,
             task_ids=[item.task_id for item in tasks],
             milestones=[{"id": "delivery", "task_ids": order}],
@@ -150,12 +184,12 @@ class DagPlanService:
                         detail=f"{task.task_id} 过大且不能独立验证",
                     )
                 )
-            findings.extend(self._contract_findings(task, contract))
+            findings.extend(contract_findings(task, contract))
         order = self._topological_order(tasks)
         if len(order) != len(tasks):
             findings.append(DagValidationFinding(code="dependency_cycle", detail="任务依赖存在环"))
-        findings.extend(self._interface_findings(tasks))
-        findings.extend(self._dataflow_findings(tasks))
+        findings.extend(interface_findings(tasks))
+        findings.extend(dataflow_findings(tasks))
         findings.extend(
             await self._capability_findings(
                 tasks, install_available=bool(contract.commands.install)
@@ -192,6 +226,7 @@ class DagPlanService:
         contract: ProjectContract,
         model_plan: Plan,
         actor: str,
+        design_source=None,
     ) -> list[ProductionTask]:
         steps = model_plan.steps or [model_plan.summary]
         task_ids = [
@@ -216,9 +251,7 @@ class DagPlanService:
             paths = [] if verification else module.paths
             dependencies = implementation_ids if verification else []
             dependencies = [item for item in dependencies if item != task_id]
-            locks = sorted(
-                {f"path:{self._lock_path(path)}" for path in paths if self._lock_path(path)}
-            )
+            locks = sorted({f"path:{lock_path(path)}" for path in paths if lock_path(path)})
             if any(word in step.lower() for word in ("migration", "schema", "迁移", "数据库")):
                 locks.append("database:migrations")
             tasks.append(
@@ -246,8 +279,18 @@ class DagPlanService:
                     allowed_paths=paths,
                     forbidden_paths=contract.repository_policy.forbidden_globs,
                     required_capabilities=self._capabilities(contract, verification),
-                    contracts=[f"{contract.contract_id}:v{contract.version}"],
+                    contracts=[
+                        f"{contract.contract_id}:v{contract.version}",
+                        *(
+                            [f"{design_source[1].contract_id}:v{design_source[1].version}"]
+                            if design_source
+                            else []
+                        ),
+                    ],
                     acceptance_commands=commands,
+                    required_evidence=(
+                        design_source[1].validation_evidence if design_source else []
+                    ),
                     expected_artifacts=contract.artifacts.required_artifacts,
                     resource_locks=locks,
                     priority=100 + index,
@@ -277,85 +320,6 @@ class DagPlanService:
                     queue.append(child)
         return order
 
-    @staticmethod
-    def _contract_findings(
-        task: ProductionTask, contract: ProjectContract
-    ) -> list[DagValidationFinding]:
-        allowed_roots = [
-            DagPlanService._lock_path(path) for module in contract.modules for path in module.paths
-        ]
-        return [
-            DagValidationFinding(
-                code="contract_path_violation",
-                task_id=task.task_id,
-                detail=f"{task.task_id} 的修改范围 {path} 不属于已批准项目契约",
-            )
-            for path in task.allowed_paths
-            if not any(DagPlanService._paths_overlap(path, root) for root in allowed_roots)
-        ]
-
-    @staticmethod
-    def _interface_findings(tasks: list[ProductionTask]) -> list[DagValidationFinding]:
-        findings = []
-        for index, left in enumerate(tasks):
-            for right in tasks[index + 1 :]:
-                if left.task_id in right.depends_on or right.task_id in left.depends_on:
-                    continue
-                overlaps = [
-                    path
-                    for path in left.allowed_paths
-                    if any(
-                        DagPlanService._paths_overlap(path, other) for other in right.allowed_paths
-                    )
-                ]
-                if overlaps and not set(left.resource_locks) & set(right.resource_locks):
-                    findings.append(
-                        DagValidationFinding(
-                            code="unsafe_parallel_overlap",
-                            task_id=right.task_id,
-                            detail=f"{left.task_id} 与 {right.task_id} 修改范围重叠却没有共享锁",
-                        )
-                    )
-        return findings
-
-    @staticmethod
-    def _dataflow_findings(tasks: list[ProductionTask]) -> list[DagValidationFinding]:
-        by_id = {item.task_id: item for item in tasks}
-        consumed = {
-            item.get("source_output", "")
-            for task in tasks
-            for item in task.inputs
-            if item.get("source_output")
-        }
-        findings = []
-        for task in tasks:
-            for item in task.inputs:
-                source_id = item.get("source_task_id", "")
-                source_output = item.get("source_output", "")
-                source = by_id.get(source_id)
-                available = {output.get("id", "") for output in source.outputs} if source else set()
-                if source_id not in task.depends_on or source_output not in available:
-                    findings.append(
-                        DagValidationFinding(
-                            code="input_source_missing",
-                            task_id=task.task_id,
-                            detail=(
-                                f"{task.task_id} 的输入 {source_output or source_id} 没有有效来源"
-                            ),
-                        )
-                    )
-            for output in task.outputs:
-                output_id = output.get("id", "")
-                if output.get("kind") != "deliverable" and output_id not in consumed:
-                    findings.append(
-                        DagValidationFinding(
-                            code="output_unconsumed",
-                            task_id=task.task_id,
-                            detail=f"{task.task_id} 的输出 {output_id} 没有消费者",
-                        )
-                    )
-        return findings
-
     async def _capability_findings(
         self, tasks: list[ProductionTask], *, install_available: bool
     ) -> list[DagValidationFinding]:
@@ -382,17 +346,3 @@ class DagPlanService:
         if verification and contract.commands.test:
             capabilities.append("pytest" if "python" in contract.languages else "npm")
         return sorted(set(capabilities))
-
-    @staticmethod
-    def _lock_path(path: str) -> str:
-        return path.split("*")[0].rstrip("/")
-
-    @staticmethod
-    def _paths_overlap(left: str, right: str) -> bool:
-        left_path = PurePosixPath(DagPlanService._lock_path(left))
-        right_path = PurePosixPath(DagPlanService._lock_path(right))
-        return (
-            left_path == right_path
-            or left_path in right_path.parents
-            or right_path in left_path.parents
-        )

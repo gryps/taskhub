@@ -5,6 +5,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from taskhub_v2.domain.capability import ProjectDesignContract
 from taskhub_v2.domain.models import ExecutionResult, Plan
 from taskhub_v2.domain.production import ExecutionPlan, ProductSpec, TaskAttempt
 from taskhub_v2.domain.project_contract import ProjectContract
@@ -66,6 +67,15 @@ class WorkerDagExecutor:
         )
         if not isinstance(spec, ProductSpec) or not isinstance(contract, ProjectContract):
             raise DagIntegrationError("任务的规格或项目契约快照不存在")
+        design = None
+        if plan.design_contract_id:
+            design = await self.store.get(
+                "project_design_contract",
+                plan.design_contract_id,
+                str(plan.design_contract_version),
+            )
+            if not isinstance(design, ProjectDesignContract):
+                raise DagIntegrationError("任务绑定的项目设计合同不存在")
         context = {
             "project_id": task.project_id,
             "task_id": task.task_id,
@@ -79,6 +89,7 @@ class WorkerDagExecutor:
             "required_capabilities": task.required_capabilities,
             "contracts": task.contracts,
             "acceptance_commands": task.acceptance_commands,
+            "required_evidence": task.required_evidence,
             "expected_artifacts": task.expected_artifacts,
             "product_spec": {
                 "id": spec.spec_id,
@@ -92,6 +103,23 @@ class WorkerDagExecutor:
                 "version": contract.version,
                 "profile": contract.profile_id,
             },
+            "project_design_contract": (
+                {
+                    "id": design.contract_id,
+                    "version": design.version,
+                    "pack_refs": design.pack_refs,
+                    "design_tokens": design.design_tokens,
+                    "component_rules": design.component_rules,
+                    "layout_rules": design.layout_rules,
+                    "responsive_rules": design.responsive_rules,
+                    "accessibility_rules": design.accessibility_rules,
+                    "brand_rules": design.brand_rules,
+                    "viewports": design.viewports,
+                    "validation_evidence": design.validation_evidence,
+                }
+                if design
+                else None
+            ),
         }
         requirement = (
             "Complete only this DAG task. Respect all path and contract boundaries. "

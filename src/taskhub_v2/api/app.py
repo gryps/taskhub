@@ -11,6 +11,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from taskhub_v2.api.auth_routes import router as auth_router
 from taskhub_v2.api.canvas import mount_canvas
+from taskhub_v2.api.capability_routes import router as capability_router
 from taskhub_v2.api.configuration_routes import router as configuration_router
 from taskhub_v2.api.container_routes import router as container_router
 from taskhub_v2.api.dag_routes import router as dag_router
@@ -47,6 +48,7 @@ from taskhub_v2.security.http import required_permission as _required_permission
 from taskhub_v2.security.http import secure_response as _secure_response
 from taskhub_v2.security.node_credentials import NodeCredentialVault
 from taskhub_v2.services import RunService
+from taskhub_v2.services.capabilities import CapabilityService
 from taskhub_v2.services.configuration import ManagedConfigurationService
 from taskhub_v2.services.containers import ContainerManager
 from taskhub_v2.services.dag_runtime import build_dag_runtime
@@ -197,7 +199,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 reconcile_interval_seconds=effective_settings.node_heartbeat_seconds,
             )
             provider = build_provider(effective_settings, provider_health)
-            app.state.productization = ProductizationService(production_objects, provider)
+            app.state.capability_packs = CapabilityService(production_objects, projects)
+            await app.state.capability_packs.ensure_builtins()
+            app.state.productization = ProductizationService(
+                production_objects, provider, app.state.capability_packs
+            )
             local_coder = build_coder(effective_settings, provider_health)
             test_scheduler = build_test_scheduler(
                 effective_settings,
@@ -221,6 +227,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     worker,
                     test_scheduler,
                     app.state.topologies.eligible_node_ids,
+                    app.state.capability_packs.design_for_refs,
                 )
                 if effective_settings.production_orchestration_enabled
                 else None
@@ -302,6 +309,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(host_router)
     app.include_router(remote_node_router)
     app.include_router(revision_router)
+    app.include_router(capability_router)
     app.include_router(project_router)
     app.include_router(project_contract_router)
     app.include_router(dag_router)

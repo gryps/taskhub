@@ -92,6 +92,7 @@ def test_memory_store_persists_all_phase_zero_objects():
                 pack_type="frontend-style",
                 source="builtin",
                 summary="Default style",
+                license="Apache-2.0",
             ),
             ProjectContract(
                 project_id="project-a",
