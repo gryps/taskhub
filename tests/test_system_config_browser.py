@@ -72,17 +72,17 @@ def test_onboarding_and_role_overview_layout(tmp_path):
 
         page.locator("#onboarding-later").click()
         page.locator("#nav-workflow").click()
-        page.locator("#test-environment-disclosure > summary").click()
-        project_select = page.locator("#test-environment-project")
+        project_select = page.locator("#workflow-project")
         expect(project_select).to_be_enabled()
         expect(project_select.locator("option")).to_have_count(2)
         project_select.select_option("alpha-project")
         expect(project_select).to_have_value("alpha-project")
         project_select.select_option("beta-project")
         expect(project_select).to_have_value("beta-project")
+        page.locator("#test-environment-disclosure > summary").click()
         assert page.locator(".project-settings-heading strong").evaluate(
             "element => getComputedStyle(element).fontSize"
-        ) == "14px"
+        ) == "15px"
         assert page.locator(".project-settings-heading small").evaluate(
             "element => getComputedStyle(element).fontSize"
         ) == "12px"

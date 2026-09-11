@@ -425,8 +425,15 @@ async function loadProjects(preferredProjectId = currentProjectId) {
   currentProjectId = active?.id || null;
   if (currentProjectId) localStorage.setItem("taskhub_project_id", currentProjectId);
   else localStorage.removeItem("taskhub_project_id");
+  const projectSelect = byId("workflow-project");
+  projectSelect.innerHTML = data.projects.length
+    ? data.projects.map((project) =>
+      `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`).join("")
+    : '<option value="">暂无项目</option>';
+  projectSelect.value = currentProjectId || "";
+  projectSelect.disabled = data.projects.length === 0;
   byId("active-project").textContent = active
-    ? `当前项目：${active.name}`
+    ? `当前运行和预生产配置均使用“${active.name}”`
     : "请先创建或接入项目";
   byId("start").disabled = !active;
   window.dispatchEvent(new CustomEvent("taskhub:projects", {detail: data.projects}));
@@ -746,6 +753,11 @@ byId("project-name").addEventListener("input", () => {
 byId("project-type").addEventListener("change", applyProjectPreset);
 byId("attach-project-form").addEventListener("submit", attachProject);
 byId("attach-project-repository").addEventListener("change", applySelectedRepository);
+byId("workflow-project").addEventListener("change", (event) => {
+  loadProjects(event.target.value).catch((error) => {
+    byId("active-project").textContent = error.message;
+  });
+});
 renderFlow();
 renderPublicImageDownloads();
 bootstrap().catch((error) => { byId("login-message").textContent = error.message; });

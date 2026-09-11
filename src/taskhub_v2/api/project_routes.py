@@ -30,8 +30,8 @@ class ProjectAttachRequest(BaseModel):
 
 class TestEnvironmentRequest(BaseModel):
     target_url: str = Field(max_length=500)
-    edge_host: str = Field(max_length=253)
-    origin_host: str = Field(max_length=253)
+    edge_host: str = Field(default="", max_length=253)
+    origin_host: str = Field(default="", max_length=253)
     expected_environment: str = Field(default="production", max_length=40)
 
 

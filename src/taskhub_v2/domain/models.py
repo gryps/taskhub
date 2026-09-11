@@ -85,8 +85,8 @@ class TestEnvironmentDefinition(BaseModel):
 
     profile: Literal["dedicated"] = "dedicated"
     target_url: str = Field(max_length=500)
-    edge_host: str = Field(max_length=253)
-    origin_host: str = Field(max_length=253)
+    edge_host: str = Field(default="", max_length=253)
+    origin_host: str = Field(default="", max_length=253)
     expected_environment: str = Field(default="production", pattern=r"^[A-Za-z0-9._-]{1,40}$")
 
     @field_validator("target_url")
@@ -102,10 +102,23 @@ class TestEnvironmentDefinition(BaseModel):
     @field_validator("edge_host", "origin_host")
     @classmethod
     def valid_host(cls, value: str) -> str:
+        if not value:
+            return ""
         allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:"
-        if not value or any(character not in allowed for character in value):
+        if any(character not in allowed for character in value):
             raise ValueError("test environment host is invalid")
         return value
+
+    @model_validator(mode="after")
+    def default_edge_host_from_target(self) -> TestEnvironmentDefinition:
+        if self.edge_host:
+            return self
+        parsed = urlsplit(self.target_url)
+        edge_host = parsed.hostname or ""
+        if parsed.port:
+            edge_host = f"{edge_host}:{parsed.port}"
+        object.__setattr__(self, "edge_host", edge_host)
+        return self
 
     def execution_environment(self) -> dict[str, str]:
         return {

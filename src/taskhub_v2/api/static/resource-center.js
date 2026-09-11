@@ -1089,9 +1089,9 @@ function selectedTestEnvironmentProject() {
 }
 
 function setTestEnvironmentEditMode(editing) {
-  ["test-environment-url", "test-environment-edge", "test-environment-origin",
-    "test-environment-name"].forEach((id) => { byId(id).disabled = !editing; });
-  byId("test-environment-project").disabled = registeredProjects.length === 0;
+  byId("test-environment-form").dataset.editing = String(editing);
+  byId("test-environment-enabled").disabled = !editing;
+  syncTestEnvironmentFields();
   byId("check-test-environment").classList.toggle("hidden", editing);
   byId("edit-test-environment").classList.toggle("hidden", editing);
   byId("save-test-environment").classList.toggle("hidden", !editing);
@@ -1099,16 +1099,27 @@ function setTestEnvironmentEditMode(editing) {
   byId("delete-test-environment").classList.toggle("hidden", !editing);
 }
 
+function syncTestEnvironmentFields() {
+  const enabled = byId("test-environment-enabled").checked;
+  const editing = byId("test-environment-form").dataset.editing === "true";
+  byId("test-environment-enabled-fields").classList.toggle("hidden", !enabled);
+  ["test-environment-url", "test-environment-edge", "test-environment-origin"].forEach(
+    (id) => { byId(id).disabled = !enabled || !editing; }
+  );
+  byId("test-environment-name").disabled = !enabled || !editing;
+}
+
 function fillTestEnvironmentForm(forceEditing = false) {
   const project = selectedTestEnvironmentProject();
   const environment = project?.test_environment;
+  byId("test-environment-enabled").checked = Boolean(environment);
   byId("test-environment-url").value = environment?.target_url || "";
   byId("test-environment-edge").value = environment?.edge_host || "";
   byId("test-environment-origin").value = environment?.origin_host || "";
   byId("test-environment-name").value = environment?.expected_environment || "production";
   byId("delete-test-environment").disabled = !environment;
   byId("test-environment-summary").textContent = !project ? "没有已接入项目"
-    : environment ? `${project.name} · 基础资源已配置` : `${project.name} · 未配置`;
+    : environment ? `${project.name} · 已启用` : `${project.name} · 未启用`;
   byId("test-environment-message").textContent = "";
   const editing = forceEditing || Boolean(project && !environment);
   setTestEnvironmentEditMode(editing);
@@ -1118,11 +1129,10 @@ function fillTestEnvironmentForm(forceEditing = false) {
 
 function loadTestEnvironmentConfig() {
   const select = byId("test-environment-project");
-  const previous = select.value || currentProjectId;
   select.innerHTML = registeredProjects.map((project) =>
     `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`).join("");
-  select.value = registeredProjects.some((item) => item.id === previous)
-    ? previous : registeredProjects[0]?.id || "";
+  select.value = registeredProjects.some((item) => item.id === currentProjectId)
+    ? currentProjectId : registeredProjects[0]?.id || "";
   byId("save-test-environment").disabled = registeredProjects.length === 0;
   fillTestEnvironmentForm();
 }
@@ -1134,6 +1144,17 @@ async function saveTestEnvironment(event) {
   button.disabled = true;
   byId("test-environment-message").textContent = "正在保存";
   try {
+    if (!byId("test-environment-enabled").checked) {
+      if (selectedTestEnvironmentProject()?.test_environment) {
+        await request(`/api/projects/${encodeURIComponent(projectId)}/test-environment`, {
+          method: "DELETE",
+        });
+      }
+      await loadProjects(projectId);
+      loadTestEnvironmentConfig();
+      byId("test-environment-message").textContent = "预生产环境验收未启用";
+      return;
+    }
     await request(`/api/projects/${encodeURIComponent(projectId)}/test-environment`, {
       method: "PUT",
       body: JSON.stringify({
@@ -1287,6 +1308,7 @@ byId("collapse-current-resource").addEventListener("click", () => {
 window.addEventListener("scroll", updateResourceCollapseShortcut, {passive: true});
 window.addEventListener("resize", updateResourceCollapseShortcut);
 byId("test-environment-project").addEventListener("change", fillTestEnvironmentForm);
+byId("test-environment-enabled").addEventListener("change", syncTestEnvironmentFields);
 byId("test-environment-form").addEventListener("submit", saveTestEnvironment);
 byId("delete-test-environment").addEventListener("click", deleteTestEnvironment);
 byId("check-test-environment").addEventListener("click", checkTestEnvironment);

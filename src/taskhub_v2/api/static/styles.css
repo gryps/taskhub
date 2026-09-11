@@ -346,6 +346,21 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .project-tools { display: grid; gap: 12px; }
 .project-actions { display: flex; gap: 8px; }
 .project-actions button { padding: 0 13px; }
+.workflow-project-picker {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 280px);
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 8px;
+}
+.workflow-project-picker label { color: var(--text-secondary); }
+.workflow-project-picker select { min-height: 36px; }
+.workflow-project-picker p {
+  grid-column: 2;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
 .project-form { padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
 .project-form h2 { margin: 0; }
 .form-note { color: var(--text-secondary); font-size: 12px; margin: 8px 0 18px; }
@@ -668,9 +683,30 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   backdrop-filter: none;
 }
 .project-settings-heading { display: grid; gap: 2px; margin-right: auto; color: var(--text); }
-.project-settings-heading strong { font-size: 14px; line-height: 1.35; }
+.project-settings-heading strong { font-size: 15px; line-height: 1.35; }
 .project-settings-heading small { color: var(--text-secondary); font-size: 12px; font-weight: 500; line-height: 1.4; }
 .project-settings-disclosure .form-note { line-height: 1.55; }
+.environment-enable { display: flex; align-items: center; gap: 9px; }
+.environment-enable input { flex: 0 0 auto; }
+.environment-fields { display: grid; gap: 12px; }
+.environment-advanced {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+.environment-advanced > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+.environment-advanced > summary strong { font-size: 13px; }
+.environment-advanced > summary span { color: var(--text-secondary); font-size: 12px; font-weight: 500; }
+.environment-advanced > .form-grid { padding: 12px; border-top: 1px solid var(--border); }
 .field-help { color: var(--text-secondary); font-size: 12px; font-weight: 500; line-height: 1.45; }
 .resource-form { margin: 0; border-width: 1px 0 0; border-radius: 0; box-shadow: none; }
 .container-form-grid { grid-template-columns: minmax(180px, 1.4fr) minmax(160px, 1fr) minmax(130px, .7fr); }
@@ -1009,6 +1045,8 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .table-toolbar { align-items: flex-start; flex-direction: column; margin-bottom: 8px; }
   .project-actions { width: 100%; }
   .project-actions button { flex: 1; }
+  .workflow-project-picker { grid-template-columns: 1fr; }
+  .workflow-project-picker p { grid-column: 1; }
   .composer, .process-overview, .project-form { padding: 15px; }
   .composer-actions { align-items: stretch; flex-direction: column; }
   .composer-actions #start { width: 100%; }

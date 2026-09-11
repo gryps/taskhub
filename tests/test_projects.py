@@ -206,6 +206,28 @@ def test_project_test_environment_can_be_configured(tmp_path: Path):
     assert ProjectRegistry(str(projects_file)).get("shop").test_environment is not None
 
 
+def test_project_test_environment_only_requires_the_access_url(tmp_path: Path):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    app = create_app(Settings(admin_token="admin-secret", session_secret="session-secret",
+                              projects_file=str(projects_file)))
+    app.state.projects.add(ProjectDefinition(id="shop", repository=str(repo)))
+
+    with TestClient(app) as client:
+        login = client.post("/api/auth/login", json={"token": "admin-secret"})
+        response = client.put(
+            "/api/projects/shop/test-environment",
+            headers={"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]},
+            json={"target_url": "https://preprod.example.com:8443/"},
+        )
+
+    assert response.status_code == 200
+    environment = response.json()["test_environment"]
+    assert environment["target_url"] == "https://preprod.example.com:8443"
+    assert environment["edge_host"] == "preprod.example.com:8443"
+    assert environment["origin_host"] == ""
+
+
 def test_project_test_environment_can_be_disabled(tmp_path: Path):
     projects_file = tmp_path / "projects.json"
     repo = repository(tmp_path / "shop")
