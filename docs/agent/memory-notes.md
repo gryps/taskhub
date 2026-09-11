@@ -187,3 +187,25 @@ Updated: 2026-09-11
 - Formal `deploy/release` installations default to direct Uvicorn TLS with Secure/SameSite cookies. Initializers create a replaceable self-signed bootstrap certificate; deployment guides require an enterprise/public CA certificate before broader exposure.
 - The formal controller no longer mounts `/var/run/docker.sock`. It connects to an internal `ghcr.io/tecnativa/docker-socket-proxy:v0.5.0` that exposes only required Docker API groups and publishes no host port. Existing rapid `.31` Compose remains on the legacy direct-socket layout until an explicit formal-stack migration.
 - Candidate static assets are `styles.css?v=31`, `app.js?v=11` and `resource-center.js?v=21`. The platform security disclosure owns user inventory/editing and signing-key rotation; public image downloads remain only in authenticated system configuration.
+
+## Card-Based Resource Configuration (Rapid Preview)
+
+- On 2026-09-11, physical hosts, schedulable Agents, managed node containers and platform status were changed from wide daily-status tables to compact two-column object cards. Card headers carry identity and state, card bodies carry operational facts, and card footers carry object actions.
+- Remote-host admission, node creation and managed platform parameters are grouped into business-topic configuration cards. Migration, diagnostics, backup and audit remain secondary disclosures. The development-run production-line input is hidden while the internal `default` compatibility value remains unchanged.
+- The runtime-only preview is deployed to `192.168.31.31:8200` with `styles.css?v=32` and `resource-center.js?v=22`. Per operator direction, no additional functional test or visual acceptance was run; only HTTP health and served asset markers were checked.
+- Rollback files are at `C:\taskhub-seed\backups\cards-pre-20260911T144147`. The preview modifies files inside the current container and will be lost if that container is recreated before the changes are included in a rebuilt image.
+- The development composer follow-up places the requirement textarea on a full-width row and moves status plus the start action into a dedicated footer; the desktop action is right-aligned and the phone action is full-width. It is deployed as `styles.css?v=33`; rollback files are at `C:\taskhub-seed\backups\composer-layout-pre-20260911T144509`.
+
+## System Configuration Disclosure Hierarchy (Rapid Preview)
+
+- On 2026-09-11, the five primary system-configuration disclosures were strengthened as navigation rows with stable order numbers, responsibility text, health-summary pills, bounded expand controls and an accent marker on the open row. Secondary disclosures now render as fully bordered rounded function cards rather than table-like separators.
+- Object, configuration, model and role-readiness cards now share a 14px title, 13px fact-value and 12px description/label/metadata hierarchy. The phone layout keeps the primary identity and expand control on the first row and moves long health summaries to a second row.
+- The runtime-only preview is deployed to `192.168.31.31:8200` as `styles.css?v=34`. Per operator direction, no additional test or visual acceptance was run during deployment; only the LAN health response, served asset marker and container health were checked.
+- Rollback files are at `C:\taskhub-seed\backups\system-config-folds-pre-20260911T150233`. The preview modifies files inside the current container and will be lost if that container is recreated before the changes are included in a rebuilt image.
+
+## System Configuration Detail Alignment (Rapid Preview)
+
+- On 2026-09-11, the diagnostic ZIP download link was normalized to the same 12px compact secondary-action typography as its neighboring diagnostic button. Seed backup/recovery content now follows the 13px body, 12px supporting/monospace hierarchy.
+- The Seed external URL and Node Agent callback URL remain side by side through medium-width layouts and stack only below 560px, removing the empty area created by an unnecessarily tall configuration row.
+- The runtime-only update is deployed to `192.168.31.31:8200` as `styles.css?v=35`. Per operator direction, no automated or visual acceptance suite was run; LAN health, served asset markers, relevant CSS selectors, container health and `git diff --check` passed.
+- Rollback files are at `C:\taskhub-seed\backups\ui-fix-pre-20260911T151209`. The preview modifies files inside the current container and will be lost if that container is recreated before the changes are included in a rebuilt image.

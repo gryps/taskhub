@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=31">
+  <link rel="stylesheet" href="/static/styles.css?v=35">
 </head>
 <body>
   <header class="app-header">
@@ -170,10 +170,12 @@
       </details>
     </section>
     <section class="composer card">
-      <label>生产线<input id="production-line" value="default" maxlength="80"></label>
-      <label>开发需求<textarea id="requirement" rows="4" placeholder="输入需要实现的功能"></textarea></label>
-      <button id="start">开始流程</button>
-      <p id="message" role="status"></p>
+      <input id="production-line" type="hidden" value="default">
+      <label class="composer-requirement">开发需求<textarea id="requirement" rows="4" placeholder="输入需要实现的功能"></textarea></label>
+      <div class="composer-actions">
+        <p id="message" role="status"></p>
+        <button id="start">开始流程</button>
+      </div>
     </section>
     <section class="process-overview card" aria-labelledby="process-title">
       <div class="section-head">
@@ -266,7 +268,7 @@
     </div>
     <div data-public-image-downloads></div>
     <details id="system-disclosure" class="providers-section resource-disclosure" open>
-      <summary><span>运行概览</span><span id="system-summary" class="muted">正在检查</span></summary>
+      <summary><span class="resource-disclosure-heading"><span class="resource-order">01</span><span><strong>运行概览</strong><small>角色环境与系统就绪状态</small></span></span><span id="system-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span class="resource-caption">Seed 控制面、持久化和关键运行条件</span>
         <button id="refresh-system" class="secondary resource-refresh" title="刷新运行概览">↻ 刷新</button>
@@ -275,7 +277,7 @@
       <div id="system-checks" class="resource-table"></div>
     </details>
     <details id="providers-disclosure" class="providers-section resource-disclosure">
-      <summary><span>模型服务</span><span id="provider-summary" class="muted">正在检查</span></summary>
+      <summary><span class="resource-disclosure-heading"><span class="resource-order">02</span><span><strong>模型服务</strong><small>认证、角色路由与主备切换</small></span></span><span id="provider-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span class="resource-caption">模型卡片同时呈现状态并管理认证、角色与主备路由</span>
         <button id="refresh-providers" class="secondary resource-refresh" title="刷新模型状态">↻ 刷新</button>
@@ -300,7 +302,7 @@
       </details>
     </details>
     <details id="hosts-disclosure" class="providers-section resource-disclosure">
-      <summary><span>物理主机</span><span id="host-summary" class="muted">正在检查</span></summary>
+      <summary><span class="resource-disclosure-heading"><span class="resource-order">03</span><span><strong>物理主机</strong><small>SSH 准入、承载能力与维护状态</small></span></span><span id="host-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span class="resource-caption">承载工作节点的 Docker 主机</span>
         <button id="refresh-hosts" class="secondary resource-refresh" title="刷新物理主机">↻ 刷新</button>
@@ -309,24 +311,30 @@
       <summary class="resource-subsection-head"><strong>登记远程 SSH 主机</strong><span>先检测并确认指纹，再加密保存凭据</span></summary>
       <form id="host-form" class="project-form resource-form configuration-form">
         <p class="form-note">使用专用 SSH 私钥。私钥只用于本次请求，保存时由 Seed 加密；API 和页面不会回显。当前支持 Linux Docker 主机。</p>
-        <div class="form-grid host-form-grid">
-          <label>主机 ID<input id="host-id" required minlength="2" maxlength="32" pattern="[a-z0-9][a-z0-9_-]{1,31}" placeholder="worker-host-01"></label>
-          <label>显示名称<input id="host-name" required maxlength="100" placeholder="测试服务器"></label>
-          <label>IP 或主机名<input id="host-address" required maxlength="253" placeholder="192.168.31.60"></label>
-          <label>SSH 端口<input id="host-port" type="number" min="1" max="65535" value="22" required></label>
-          <label>SSH 用户<input id="host-user" required maxlength="32" pattern="[a-z_][a-z0-9_-]{0,31}" placeholder="taskhub"></label>
-          <label>Docker 权限<select id="host-docker-access">
-            <option value="direct">用户直接执行 Docker</option>
-            <option value="sudo">免密 sudo 执行 Docker</option>
-          </select></label>
-          <fieldset class="wide role-selector"><legend>允许承载的节点角色</legend>
-            <label><input type="checkbox" name="host-role" value="execution" checked>执行节点</label>
-            <label><input type="checkbox" name="host-role" value="test" checked>测试节点</label>
-            <label><input type="checkbox" name="host-role" value="preproduction" checked>预生产节点</label>
-          </fieldset>
-          <label>标签<input id="host-labels" maxlength="300" placeholder="linux,ssd,internal"></label>
-          <label class="wide">SSH 私钥<textarea id="host-private-key" required maxlength="32768" rows="5" autocomplete="off" spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></label>
-          <label class="wide">备注<textarea id="host-notes" maxlength="1000" rows="2"></textarea></label>
+        <div class="management-form-grid">
+          <section class="configuration-card"><header><div><h3>主机标识</h3><p>节点库存中的唯一身份</p></div></header><div class="configuration-card-fields">
+            <label>主机 ID<input id="host-id" required minlength="2" maxlength="32" pattern="[a-z0-9][a-z0-9_-]{1,31}" placeholder="worker-host-01"></label>
+            <label>显示名称<input id="host-name" required maxlength="100" placeholder="测试服务器"></label>
+            <label class="wide">标签<input id="host-labels" maxlength="300" placeholder="linux,ssd,internal"></label>
+            <label class="wide">备注<textarea id="host-notes" maxlength="1000" rows="2"></textarea></label>
+          </div></section>
+          <section class="configuration-card"><header><div><h3>SSH 与 Docker</h3><p>Seed 连接和执行容器操作的方式</p></div></header><div class="configuration-card-fields">
+            <label>IP 或主机名<input id="host-address" required maxlength="253" placeholder="192.168.31.60"></label>
+            <label>SSH 端口<input id="host-port" type="number" min="1" max="65535" value="22" required></label>
+            <label>SSH 用户<input id="host-user" required maxlength="32" pattern="[a-z_][a-z0-9_-]{0,31}" placeholder="taskhub"></label>
+            <label>Docker 权限<select id="host-docker-access">
+              <option value="direct">用户直接执行 Docker</option>
+              <option value="sudo">免密 sudo 执行 Docker</option>
+            </select></label>
+            <label class="wide">SSH 私钥<textarea id="host-private-key" required maxlength="32768" rows="5" autocomplete="off" spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></label>
+          </div></section>
+          <section class="configuration-card"><header><div><h3>承载角色</h3><p>限制该主机允许创建的节点类型</p></div></header><div class="configuration-card-fields">
+            <fieldset class="wide role-selector"><legend>允许承载的节点角色</legend>
+              <label><input type="checkbox" name="host-role" value="execution" checked>执行节点</label>
+              <label><input type="checkbox" name="host-role" value="test" checked>测试节点</label>
+              <label><input type="checkbox" name="host-role" value="preproduction" checked>预生产节点</label>
+            </fieldset>
+          </div></section>
         </div>
         <div id="host-fingerprint-panel" class="host-fingerprint hidden">
           <span>检测到的 SSH 主机指纹</span><code id="host-fingerprint">—</code>
@@ -339,7 +347,7 @@
         </div>
       </form>
       </details>
-      <div id="physical-hosts" class="resource-table"></div>
+      <div id="physical-hosts" class="management-card-grid"></div>
       <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>批量迁移与重建</strong><span>源主机卷保留，目标主机按期望状态重建</span></summary>
       <form id="host-rebuild-form" class="project-form resource-form compact-operation-form">
@@ -358,28 +366,32 @@
       </details>
     </details>
     <details id="nodes-disclosure" class="providers-section resource-disclosure">
-      <summary><span>工作节点</span><span id="node-summary" class="muted">正在检查</span></summary>
+      <summary><span class="resource-disclosure-heading"><span class="resource-order">04</span><span><strong>工作节点</strong><small>调度、容器、负载与诊断</small></span></span><span id="node-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span class="resource-caption">统一查看节点注册、容器生命周期、负载和能力</span>
         <button id="refresh-nodes" class="secondary resource-refresh" title="刷新工作节点">↻ 刷新</button>
       </div>
       <div class="resource-subsection-head"><strong>调度与 Agent 状态</strong><span>容器运行不等于节点可调度</span></div>
-      <div id="nodes" class="resource-table"></div>
+      <div id="nodes" class="management-card-grid"></div>
       <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>创建节点</strong><span id="container-summary" class="muted">正在检查</span></summary>
       <form id="container-form" class="project-form resource-form">
-        <div class="form-grid container-form-grid">
-          <label>目标主机<select id="container-target" required><option value="local">Seed 本机</option></select></label>
-          <label>节点 ID<input id="container-node-id" required minlength="2" maxlength="32" pattern="[a-z0-9][a-z0-9_-]{1,31}" placeholder="worker-01"></label>
-          <label>节点角色<select id="container-role" required>
-            <option value="execution">执行节点</option>
-            <option value="test">测试节点</option>
-            <option value="preproduction">预生产节点</option>
-          </select></label>
-          <label>并发任务数<input id="container-slots" type="number" min="1" max="16" value="1" required></label>
-          <label class="remote-node-field hidden">Agent 访问端口<input id="container-host-port" type="number" min="1024" max="65535" value="8020"></label>
-          <label class="remote-node-field hidden">CPU 限额<input id="container-cpu-limit" maxlength="32" placeholder="留空使用平台默认值"></label>
-          <label class="remote-node-field hidden">内存限额<input id="container-memory-limit" maxlength="32" placeholder="例如 4g"></label>
+        <div class="management-form-grid node-configuration-grid">
+          <section class="configuration-card"><header><div><h3>节点身份</h3><p>指定部署位置和运行角色</p></div></header><div class="configuration-card-fields">
+            <label>目标主机<select id="container-target" required><option value="local">Seed 本机</option></select></label>
+            <label>节点 ID<input id="container-node-id" required minlength="2" maxlength="32" pattern="[a-z0-9][a-z0-9_-]{1,31}" placeholder="worker-01"></label>
+            <label>节点角色<select id="container-role" required>
+              <option value="execution">执行节点</option>
+              <option value="test">测试节点</option>
+              <option value="preproduction">预生产节点</option>
+            </select></label>
+          </div></section>
+          <section class="configuration-card"><header><div><h3>运行配额</h3><p>控制并发能力和容器资源上限</p></div></header><div class="configuration-card-fields">
+            <label>并发任务数<input id="container-slots" type="number" min="1" max="16" value="1" required></label>
+            <label class="remote-node-field hidden">Agent 访问端口<input id="container-host-port" type="number" min="1024" max="65535" value="8020"></label>
+            <label class="remote-node-field hidden">CPU 限额<input id="container-cpu-limit" maxlength="32" placeholder="留空使用平台默认值"></label>
+            <label class="remote-node-field hidden">内存限额<input id="container-memory-limit" maxlength="32" placeholder="例如 4g"></label>
+          </div></section>
         </div>
         <p class="form-help">远程节点将使用平台设置中的统一工作镜像；目标主机必须已通过 SSH 准入，并允许承载所选角色。</p>
         <div class="form-actions">
@@ -388,7 +400,7 @@
         </div>
       </form>
       </details>
-      <div id="managed-containers" class="resource-table"></div>
+      <div id="managed-containers" class="management-card-grid"></div>
       <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>资源负载</strong><span id="load-summary" class="muted">正在检查</span></summary>
       <div id="node-load" class="resource-table"></div>
@@ -409,12 +421,12 @@
       </details>
     </details>
     <details id="platform-disclosure" class="providers-section resource-disclosure">
-      <summary><span>平台设置</span><span id="platform-summary" class="muted">正在检查</span></summary>
+      <summary><span class="resource-disclosure-heading"><span class="resource-order">05</span><span><strong>平台设置</strong><small>镜像、网络、备份与访问安全</small></span></span><span id="platform-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span class="resource-caption">镜像、内部网络与配置生效边界</span>
         <button id="refresh-platform" class="secondary resource-refresh" title="刷新平台设置">↻ 刷新</button>
       </div>
-      <div id="platform-settings" class="resource-table"></div>
+      <div id="platform-settings" class="management-card-grid"></div>
       <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>Seed 备份与恢复</strong><span>整库、主密钥、配置、凭据、节点与项目数据</span></summary>
       <div class="backup-contract">
@@ -427,25 +439,33 @@
       <summary class="resource-subsection-head"><strong>可管理平台参数</strong><span id="platform-config-state">正在读取</span></summary>
       <form id="platform-settings-form" class="project-form resource-form configuration-form">
         <p class="form-note">数据库连接、会话密钥、配置加密主密钥和节点令牌属于启动根配置，不能从 Web 读取或修改。</p>
-        <div class="form-grid configuration-grid platform-configuration-grid">
-          <label>Seed 对外地址<input id="platform-seed-url" type="url" maxlength="500" placeholder="http://taskhub.example:8200"></label>
-          <label>Node Agent 回连地址<input id="platform-callback-url" type="url" maxlength="500" placeholder="http://taskhub.example:8200"></label>
-          <label class="wide">默认工作节点镜像<input id="platform-node-image" required maxlength="500" placeholder="registry.example/taskhub-node:1.0.0"></label>
-          <label>私有镜像仓库前缀<input id="platform-registry" maxlength="500" placeholder="registry.example/team"></label>
-          <label>国内镜像代理前缀<input id="platform-image-proxy" maxlength="500" placeholder="mirror.example/docker.io"></label>
-          <label>私有仓库用户名<input id="platform-registry-username" maxlength="200" autocomplete="username" placeholder="留空表示匿名拉取"></label>
-          <label>私有仓库密码<input id="platform-registry-password" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空保留现有密码"><small id="platform-registry-password-state" class="credential-state">未配置</small></label>
-          <label>默认并发任务数<input id="platform-default-slots" type="number" min="1" max="64" required></label>
-          <label>默认 CPU 限额<input id="platform-cpu-limit" maxlength="32" placeholder="2.0"></label>
-          <label>默认内存限额<input id="platform-memory-limit" maxlength="32" placeholder="4g"></label>
-          <label>心跳间隔（秒）<input id="platform-heartbeat" type="number" min="5" max="3600" required></label>
-          <label>离线阈值（秒）<input id="platform-offline" type="number" min="10" max="86400" required></label>
-          <label>日志保留（天）<input id="platform-log-retention" type="number" min="1" max="3650" required></label>
-          <label>制品保留（天）<input id="platform-artifact-retention" type="number" min="1" max="3650" required></label>
-          <label>故障连续次数<input id="platform-failure-threshold" type="number" min="1" max="20" required></label>
-          <label>恢复连续次数<input id="platform-recovery-threshold" type="number" min="1" max="20" required></label>
-          <label>健康探测间隔（秒）<input id="platform-probe-interval" type="number" min="10" max="3600" required></label>
-          <label>切换保护期（秒）<input id="platform-switch-lock" type="number" min="30" max="86400" required></label>
+        <div class="management-form-grid platform-configuration-grid">
+          <section class="configuration-card"><header><div><h3>访问地址</h3><p>浏览器入口与 Agent 回连目标</p></div></header><div class="configuration-card-fields platform-address-fields">
+            <label>Seed 对外地址<input id="platform-seed-url" type="url" maxlength="500" placeholder="http://taskhub.example:8200"></label>
+            <label>Node Agent 回连地址<input id="platform-callback-url" type="url" maxlength="500" placeholder="http://taskhub.example:8200"></label>
+          </div></section>
+          <section class="configuration-card"><header><div><h3>镜像分发</h3><p>统一节点镜像、仓库和网络加速</p></div></header><div class="configuration-card-fields">
+            <label class="wide">默认工作节点镜像<input id="platform-node-image" required maxlength="500" placeholder="registry.example/taskhub-node:1.0.0"></label>
+            <label>私有镜像仓库前缀<input id="platform-registry" maxlength="500" placeholder="registry.example/team"></label>
+            <label>国内镜像代理前缀<input id="platform-image-proxy" maxlength="500" placeholder="mirror.example/docker.io"></label>
+            <label>私有仓库用户名<input id="platform-registry-username" maxlength="200" autocomplete="username" placeholder="留空表示匿名拉取"></label>
+            <label>私有仓库密码<input id="platform-registry-password" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空保留现有密码"><small id="platform-registry-password-state" class="credential-state">未配置</small></label>
+          </div></section>
+          <section class="configuration-card"><header><div><h3>节点与心跳</h3><p>新节点默认配额和失联判断</p></div></header><div class="configuration-card-fields">
+            <label>默认并发任务数<input id="platform-default-slots" type="number" min="1" max="64" required></label>
+            <label>默认 CPU 限额<input id="platform-cpu-limit" maxlength="32" placeholder="2.0"></label>
+            <label>默认内存限额<input id="platform-memory-limit" maxlength="32" placeholder="4g"></label>
+            <label>心跳间隔（秒）<input id="platform-heartbeat" type="number" min="5" max="3600" required></label>
+            <label>离线阈值（秒）<input id="platform-offline" type="number" min="10" max="86400" required></label>
+          </div></section>
+          <section class="configuration-card"><header><div><h3>保留与故障切换</h3><p>数据保留和模型主备稳定阈值</p></div></header><div class="configuration-card-fields">
+            <label>日志保留（天）<input id="platform-log-retention" type="number" min="1" max="3650" required></label>
+            <label>制品保留（天）<input id="platform-artifact-retention" type="number" min="1" max="3650" required></label>
+            <label>故障连续次数<input id="platform-failure-threshold" type="number" min="1" max="20" required></label>
+            <label>恢复连续次数<input id="platform-recovery-threshold" type="number" min="1" max="20" required></label>
+            <label>健康探测间隔（秒）<input id="platform-probe-interval" type="number" min="10" max="3600" required></label>
+            <label>切换保护期（秒）<input id="platform-switch-lock" type="number" min="30" max="86400" required></label>
+          </div></section>
         </div>
         <div class="form-actions">
           <button id="save-platform-settings" type="submit">保存平台设置</button>
@@ -482,7 +502,7 @@
   </main>
   <script src="/static/app.js?v=11"></script>
   <script src="/static/task-center.js?v=13"></script>
-  <script src="/static/resource-center.js?v=21"></script>
+  <script src="/static/resource-center.js?v=22"></script>
   <script src="/static/onboarding.js?v=2"></script>
 </body>
 </html>

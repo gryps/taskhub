@@ -118,6 +118,10 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="confirm-admin-password"' in html
         assert 'id="nav-workflow"' in html and "开发流程" in html
         assert 'id="nav-resources"' in html and "系统配置" in html
+        assert '<input id="production-line" type="hidden" value="default">' in html
+        assert '<label>生产线' not in html
+        assert 'class="composer-requirement"' in html
+        assert 'class="composer-actions"' in html
         assert html.count('class="providers-section resource-disclosure') == 5
         assert 'id="hosts-disclosure"' in html
         assert 'id="platform-disclosure"' in html
@@ -127,9 +131,13 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert 'styles.css?v=31' in html
+        assert 'styles.css?v=35' in html
+        assert html.count('class="resource-disclosure-heading"') == 5
+        assert html.count('class="resource-order"') == 5
         assert 'app.js?v=11' in html
-        assert 'resource-center.js?v=21' in html
+        assert 'resource-center.js?v=22' in html
+        assert html.count('class="configuration-card"') >= 9
+        assert html.count('class="management-card-grid"') >= 4
         assert 'id="login-username"' in html
         assert 'id="access-security-disclosure"' in html
         assert 'id="user-form"' in html
@@ -147,11 +155,11 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
             f'id="{name}-disclosure"' in html
             for name in ("system", "providers", "hosts", "nodes", "platform")
         )
-        assert '<summary><span>运行概览</span>' in html
-        assert '<summary><span>模型服务</span>' in html
-        assert '<summary><span>物理主机</span>' in html
-        assert '<summary><span>工作节点</span>' in html
-        assert '<summary><span>平台设置</span>' in html
+        assert '<strong>运行概览</strong><small>角色环境与系统就绪状态</small>' in html
+        assert '<strong>模型服务</strong><small>认证、角色路由与主备切换</small>' in html
+        assert '<strong>物理主机</strong><small>SSH 准入、承载能力与维护状态</small>' in html
+        assert '<strong>工作节点</strong><small>调度、容器、负载与诊断</small>' in html
+        assert '<strong>平台设置</strong><small>镜像、网络、备份与访问安全</small>' in html
         assert "项目设置 · 预生产与验收环境" in html
         resource_script = client.get("/static/resource-center.js").text
         assert 'title: "执行节点"' in resource_script

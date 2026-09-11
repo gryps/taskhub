@@ -59,18 +59,41 @@ def test_onboarding_and_role_overview_layout(tmp_path):
 
         page.locator("#onboarding-later").click()
         page.locator("#nav-resources").click()
+        expect(page.locator(".resource-disclosure-heading")).to_have_count(5)
+        expect(page.locator(".resource-order")).to_have_count(5)
+        assert page.locator("#system-disclosure > summary").evaluate(
+            "element => getComputedStyle(element).minHeight"
+        ) == "68px"
         expect(page.locator("#resource-page .public-image-downloads")).to_be_visible()
         expect(page.locator("#resource-page .image-download-row")).to_have_count(4)
         expect(page.locator(".runtime-role-card")).to_have_count(4)
         expect(page.locator("#system-summary")).to_contain_text("角色环境")
         expect(page.locator("#nodes-disclosure summary").first).to_contain_text("工作节点")
         page.locator("#nodes-disclosure summary").first.click()
+        expect(page.locator("#nodes.management-card-grid")).to_be_visible()
+        expect(page.locator("#managed-containers.management-card-grid")).to_be_visible()
         diagnostics = page.locator("#node-diagnostics").locator("xpath=..")
         diagnostics.locator("summary").click()
         expect(page.locator("#load-node-diagnostics")).to_be_visible()
         expect(page.locator("#export-diagnostics")).to_be_visible()
+        assert page.locator("#export-diagnostics").evaluate(
+            "element => getComputedStyle(element).fontSize"
+        ) == "12px"
+        assert page.locator("#export-diagnostics").evaluate(
+            "element => getComputedStyle(element).textDecorationLine"
+        ) == "none"
         page.locator("#platform-disclosure summary").first.click()
+        expect(page.locator("#platform-settings .management-card")).to_have_count(4)
+        expect(page.locator("#platform-settings-form .configuration-card")).to_have_count(4)
         expect(page.locator(".backup-contract")).to_be_attached()
+        platform_form = page.locator("#platform-settings-form").locator("xpath=..")
+        platform_form.locator("summary").click()
+        assert page.locator(".backup-contract").evaluate(
+            "element => getComputedStyle(element).fontSize"
+        ) == "13px"
+        assert len(page.locator(".platform-address-fields").evaluate(
+            "element => getComputedStyle(element).gridTemplateColumns"
+        ).split()) == 2
         page.locator("#access-security-disclosure summary").click()
         expect(page.locator("#user-inventory")).to_contain_text("admin")
         expect(page.locator("#user-form")).to_be_visible()
@@ -86,9 +109,14 @@ def test_onboarding_and_role_overview_layout(tmp_path):
             assert page.evaluate("window.innerWidth") == width
             assert page.evaluate("window.matchMedia('(max-width: 680px)').matches")
             page.locator("#system-disclosure").evaluate("element => { element.open = true; }")
+            page.locator("#platform-disclosure").evaluate("element => { element.open = true; }")
             assert len(page.locator(".runtime-role-grid").evaluate(
                 "element => getComputedStyle(element).gridTemplateColumns"
             ).split()) == 1
+            address_columns = len(page.locator(".platform-address-fields").evaluate(
+                "element => getComputedStyle(element).gridTemplateColumns"
+            ).split())
+            assert address_columns == (2 if width == 680 else 1)
             assert page.evaluate(
                 "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
             )

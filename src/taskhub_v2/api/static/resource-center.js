@@ -368,17 +368,21 @@ async function loadNodes() {
     const data = await request("/api/nodes");
     const ready = data.nodes.filter((item) => item.status === "ok").length;
     byId("node-summary").textContent = `${ready}/${data.nodes.length} 在线`;
-    byId("nodes").innerHTML = `<div class="resource-row node-row resource-header">
-      <span>工作节点</span><span>状态</span><span>负载</span><span>能力</span>
-    </div>${data.nodes.map((item) => `
-      <div class="resource-row node-row">
-        <strong>${escapeHtml(item.node_id)}</strong>
-        <span class="${item.status === "ok" ? "ok" : "bad"}">${escapeHtml(item.status)}</span>
-        <span>${escapeHtml(item.kind)} · ${item.active}/${item.slots}<small>${(item.workloads || []).map(escapeHtml).join(" · ")}</small></span>
-        <span>${item.status === "ok"
-          ? Object.entries(item.capabilities || {}).filter(([, value]) => value).map(([name]) => escapeHtml(name)).join(" · ")
-          : escapeHtml(item.detail || "节点不可达")}</span>
-      </div>`).join("")}`;
+    const cards = data.nodes.map((item) => {
+      const healthy = item.status === "ok";
+      const capabilities = healthy
+        ? Object.entries(item.capabilities || {}).filter(([, value]) => value).map(([name]) => escapeHtml(name)).join(" · ") || "未上报"
+        : escapeHtml(item.detail || "节点不可达");
+      return `<article class="management-card ${healthy ? "ready" : "blocked"}">
+        <header><div><h3>${escapeHtml(item.node_id)}</h3><p>${escapeHtml(item.kind)} · ${(item.workloads || []).map(escapeHtml).join(" · ") || "未声明工作负载"}</p></div>
+          <span class="card-state ${healthy ? "ok" : "bad"}">${healthy ? "可调度" : "不可用"}</span></header>
+        <dl class="management-card-facts">
+          <div><dt>Agent 状态</dt><dd>${escapeHtml(item.status)}</dd></div>
+          <div><dt>槽位占用</dt><dd>${Number(item.active || 0)} / ${Number(item.slots || 0)}</dd></div>
+          <div class="wide"><dt>已具备能力</dt><dd>${capabilities}</dd></div>
+        </dl></article>`;
+    }).join("");
+    byId("nodes").innerHTML = cards || '<p class="management-empty">尚无已注册且可调度的 Agent。</p>';
   } catch (error) {
     byId("node-summary").textContent = error.message;
   }
@@ -458,22 +462,26 @@ async function loadPhysicalHosts() {
     const available = inventory.hosts.filter((item) => item.status === "available").length;
     byId("host-summary").textContent =
       `Seed 本机 ${stateLabel} · 远程主机 ${available}/${inventory.hosts.length} 可用`;
-    const remoteRows = inventory.hosts.map((item) => `
-      <div class="resource-row host-row">
-        <strong>${escapeHtml(item.display_name)}<small>${escapeHtml(item.host_id)} · ${escapeHtml(item.address)}:${item.port}</small></strong>
-        <span class="${hostStatusClass(item.status)}">${escapeHtml(item.status_label)}<small>${escapeHtml(item.status_reason)}</small></span>
-        <span>Docker ${escapeHtml(item.facts?.docker_version || "—")}<small>${escapeHtml(item.facts?.os || "尚未检测")}</small></span>
-        <span>${escapeHtml(hostFacts(item.facts))}<small>角色：${(item.allowed_roles || []).map((role) => escapeHtml(containerRoleNames[role] || role)).join(" · ")}</small><small>${(item.alerts || []).map(escapeHtml).join("；") || "资源阈值正常"} · SSH 指纹 ${escapeHtml(item.fingerprint)}</small>
-          ${hostMaintenanceActions(item)}</span>
-      </div>`).join("");
-    byId("physical-hosts").innerHTML = `<div class="resource-row resource-header">
-      <span>物理主机</span><span>状态</span><span>Docker</span><span>说明</span>
-    </div><div class="resource-row">
-      <strong>Seed 本机<small>local-docker</small></strong>
-      <span class="${stateClass}">${stateLabel}</span>
-      <span>${escapeHtml(status.detail || "未检测")}</span>
-      <span>控制节点本机 Docker；无需 SSH 准入。</span>
-    </div>${remoteRows}`;
+    const seedCard = `<article class="management-card ${status.available ? "ready" : "blocked"}">
+      <header><div><h3>Seed 本机</h3><p>local-docker · 控制节点内置主机</p></div>
+        <span class="card-state ${stateClass}">${stateLabel}</span></header>
+      <dl class="management-card-facts">
+        <div><dt>连接方式</dt><dd>本机 Docker</dd></div>
+        <div><dt>SSH 准入</dt><dd>无需配置</dd></div>
+        <div class="wide"><dt>检测结果</dt><dd>${escapeHtml(status.detail || "未检测")}</dd></div>
+      </dl></article>`;
+    const remoteCards = inventory.hosts.map((item) => `<article class="management-card ${item.status === "available" ? "ready" : "blocked"}">
+      <header><div><h3>${escapeHtml(item.display_name)}</h3><p>${escapeHtml(item.host_id)} · ${escapeHtml(item.address)}:${item.port}</p></div>
+        <span class="card-state ${hostStatusClass(item.status)}">${escapeHtml(item.status_label)}</span></header>
+      <dl class="management-card-facts">
+        <div><dt>Docker</dt><dd>${escapeHtml(item.facts?.docker_version || "—")}</dd></div>
+        <div><dt>操作系统</dt><dd>${escapeHtml(item.facts?.os || "尚未检测")}</dd></div>
+        <div class="wide"><dt>主机资源</dt><dd>${escapeHtml(hostFacts(item.facts))}</dd></div>
+        <div class="wide"><dt>允许角色</dt><dd>${(item.allowed_roles || []).map((role) => escapeHtml(containerRoleNames[role] || role)).join(" · ") || "未指定"}</dd></div>
+        <div class="wide"><dt>运行判断</dt><dd>${escapeHtml(item.status_reason)} · ${(item.alerts || []).map(escapeHtml).join("；") || "资源阈值正常"}</dd></div>
+        <div class="wide"><dt>SSH 指纹</dt><dd class="mono-value">${escapeHtml(item.fingerprint)}</dd></div>
+      </dl><footer>${hostMaintenanceActions(item)}</footer></article>`).join("");
+    byId("physical-hosts").innerHTML = seedCard + remoteCards;
     renderConfigurationAudit("host-config-audit", audit.events);
   } catch (error) {
     byId("host-summary").textContent = error.message;
@@ -607,19 +615,23 @@ async function loadPlatformSettings() {
     byId("platform-summary").textContent = configuration.restart_required
       ? `平台配置 v${configuration.version} 等待重启`
       : `工作镜像 ${desired.node_container_image || "未指定"}`;
-    byId("platform-settings").innerHTML = `<div class="resource-row resource-header">
-      <span>设置</span><span>当前状态</span><span>当前值</span><span>生效方式</span>
-    </div>
-    <div class="resource-row"><strong>工作节点镜像</strong>
-      <span class="${configuration.restart_required ? "warn" : "ok"}">${configuration.restart_required ? "等待生效" : "已生效"}</span>
-      <code>${escapeHtml(desired.node_container_image || "—")}</code><span>保存后重启 Seed 控制器，使后续新节点使用此镜像。</span></div>
-    <div class="resource-row"><strong>节点内部网络</strong>
-      <span class="${status.network ? "ok" : "warn"}">${status.network ? "已配置" : "未提供"}</span>
-      <code>${escapeHtml(status.network || "—")}</code><span>启动根配置；工作节点默认不发布宿主机端口。</span></div>
-    <div class="resource-row"><strong>敏感启动配置</strong><span class="ok">受保护</span>
-      <span>数据库、会话密钥、加密主密钥、节点令牌</span><span>继续由 Docker Secret 或环境变量提供，Web 不回读原文。</span></div>
-    <div class="resource-row"><strong>Web 管理配置</strong><span class="ok">已开放</span>
-      <span>地址、镜像策略、默认限额、心跳和保留策略</span><span>所有保存与启动生效动作均写入审计记录。</span></div>`;
+    byId("platform-settings").innerHTML = `
+      <article class="management-card ${configuration.restart_required ? "blocked" : "ready"}">
+        <header><div><h3>工作节点镜像</h3><p>新建节点使用的统一基础镜像</p></div>
+          <span class="card-state ${configuration.restart_required ? "warn" : "ok"}">${configuration.restart_required ? "等待生效" : "已生效"}</span></header>
+        <dl class="management-card-facts"><div class="wide"><dt>镜像地址</dt><dd class="mono-value">${escapeHtml(desired.node_container_image || "—")}</dd></div>
+          <div class="wide"><dt>生效方式</dt><dd>保存后重启 Seed，后续新节点使用新镜像。</dd></div></dl></article>
+      <article class="management-card ${status.network ? "ready" : "blocked"}">
+        <header><div><h3>节点内部网络</h3><p>Seed 与本机工作节点通信边界</p></div>
+          <span class="card-state ${status.network ? "ok" : "warn"}">${status.network ? "已配置" : "未提供"}</span></header>
+        <dl class="management-card-facts"><div class="wide"><dt>网络名称</dt><dd class="mono-value">${escapeHtml(status.network || "—")}</dd></div>
+          <div class="wide"><dt>端口策略</dt><dd>工作节点默认不发布宿主机端口。</dd></div></dl></article>
+      <article class="management-card ready"><header><div><h3>敏感启动配置</h3><p>仅由部署环境提供的根配置</p></div><span class="card-state ok">受保护</span></header>
+        <dl class="management-card-facts"><div class="wide"><dt>保护内容</dt><dd>数据库、会话密钥、加密主密钥、节点令牌</dd></div>
+          <div class="wide"><dt>读取边界</dt><dd>通过 Docker Secret 或环境变量提供，Web 不回读原文。</dd></div></dl></article>
+      <article class="management-card ready"><header><div><h3>Web 管理配置</h3><p>可审计、可版本化的平台参数</p></div><span class="card-state ok">已开放</span></header>
+        <dl class="management-card-facts"><div class="wide"><dt>配置范围</dt><dd>地址、镜像策略、默认限额、心跳和保留策略</dd></div>
+          <div class="wide"><dt>变更证据</dt><dd>保存与启动生效动作均写入审计记录。</dd></div></dl></article>`;
     fillPlatformConfiguration(configuration);
     renderConfigurationAudit("platform-config-audit", audit.events);
   } catch (error) {
@@ -800,8 +812,7 @@ async function loadContainers() {
     const running = containers.filter((item) => item.state === "running").length;
     byId("container-summary").textContent =
       `${running}/${containers.length} 运行 · 本机 ${status.available ? "可用" : "不可用"} · 远程 ${remote.length}`;
-    const empty = `<div class="resource-row container-row"><span>尚未创建节点容器</span><span>—</span><span>—</span><span>使用上方表单创建</span></div>`;
-    const rows = containers.map((item) => {
+    const cards = containers.map((item) => {
       const distribution = item.distribution || {};
       const progress = item.location === "remote" && distribution.phase && distribution.phase !== "complete"
         ? `<progress class="distribution-progress" max="100" value="${Number(distribution.percent || 0)}">${Number(distribution.percent || 0)}%</progress>
@@ -812,17 +823,16 @@ async function loadContainers() {
         ? ` · 凭据 v${Number(item.credential.version || 0)} ${item.credential.status === "active" ? "有效" : "已吊销"}` : "";
       const reconciled = item.reconciliation?.checked_at
         ? ` · 协调 ${new Date(item.reconciliation.checked_at).toLocaleTimeString()}` : "";
-      return `
-      <div class="resource-row container-row">
-        <strong>${escapeHtml(item.node_id)}<small>${escapeHtml(item.name)} · ${escapeHtml(item.host_id)}</small></strong>
-        <span>${escapeHtml(containerRoleNames[item.role] || item.role)}</span>
-        <span class="${stateClass}">${escapeHtml(item.state)}${progress}<small>${escapeHtml(credential + reconciled)}</small></span>
-        ${containerActions(item)}
-      </div>`;
+      return `<article class="management-card ${item.state === "running" ? "ready" : "blocked"}">
+        <header><div><h3>${escapeHtml(item.node_id)}</h3><p>${escapeHtml(item.name)} · ${escapeHtml(item.host_id)}</p></div>
+          <span class="card-state ${stateClass}">${escapeHtml(item.state)}</span></header>
+        <dl class="management-card-facts">
+          <div><dt>节点角色</dt><dd>${escapeHtml(containerRoleNames[item.role] || item.role)}</dd></div>
+          <div><dt>部署位置</dt><dd>${item.location === "remote" ? "远程主机" : "Seed 本机"}</dd></div>
+          <div class="wide"><dt>运行与分发</dt><dd>${progress}${escapeHtml(credential + reconciled)}</dd></div>
+        </dl><footer>${containerActions(item)}</footer></article>`;
     }).join("");
-    byId("managed-containers").innerHTML = `<div class="resource-row container-row resource-header">
-      <span>节点容器</span><span>角色</span><span>状态</span><span>操作</span>
-    </div>${rows || empty}`;
+    byId("managed-containers").innerHTML = cards || '<p class="management-empty">尚未创建节点容器，请展开“创建节点”进行配置。</p>';
     scheduleDistributionRefresh(remote.some((item) =>
       ["distributing", "starting"].includes(item.actual_state)));
   } catch (error) {
