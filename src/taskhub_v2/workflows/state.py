@@ -6,6 +6,8 @@ class BaseState(TypedDict, total=False):
     run_id: str
     project_id: str
     production_line: str
+    product_spec_id: str | None
+    product_spec_version: int | None
     requirement: str
     requirement_version: int
     current_stage: str

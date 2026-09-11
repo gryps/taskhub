@@ -18,6 +18,9 @@ let registeredProjects = [];
 let passwordSetupRequired = false;
 let currentAuth = null;
 let permissionObserver = null;
+let productizationEnabled = false;
+let currentProductSpecDetail = null;
+let activeProject = null;
 
 const publicImageRegistries = [
   {
@@ -423,6 +426,7 @@ async function loadProjects(preferredProjectId = currentProjectId) {
   let active = data.projects.find((project) => project.id === preferredProjectId);
   if (!active && data.projects.length > 0) active = data.projects[data.projects.length - 1];
   currentProjectId = active?.id || null;
+  activeProject = active || null;
   if (currentProjectId) localStorage.setItem("taskhub_project_id", currentProjectId);
   else localStorage.removeItem("taskhub_project_id");
   const projectSelect = byId("workflow-project");
@@ -435,9 +439,169 @@ async function loadProjects(preferredProjectId = currentProjectId) {
   byId("active-project").textContent = active
     ? `当前运行、代码仓库和预生产配置均使用“${active.name}”`
     : "请先创建或接入项目";
-  byId("start").disabled = !active || !active.repository_ready;
   renderProjectRepository(active);
+  await loadCurrentProductSpec();
+  refreshStartAction();
   window.dispatchEvent(new CustomEvent("taskhub:projects", {detail: data.projects}));
+}
+
+async function loadProductizationStatus() {
+  const state = await request("/api/productization/status");
+  productizationEnabled = Boolean(state.enabled);
+  byId("product-spec-disclosure").classList.toggle("hidden", !productizationEnabled);
+}
+
+function refreshStartAction() {
+  const button = byId("start");
+  const repositoryReady = Boolean(activeProject?.repository_ready);
+  if (!productizationEnabled) {
+    button.textContent = "开始流程";
+    button.disabled = !repositoryReady;
+    return;
+  }
+  const spec = currentProductSpecDetail?.product_spec;
+  button.textContent = !spec ? (canPermission("projects:manage") ? "生成产品规格" : "等待项目负责人生成规格")
+    : spec.status === "approved" ? "按批准规格开始流程" : "等待规格批准";
+  button.disabled = !repositoryReady || (!spec && !canPermission("projects:manage"))
+    || Boolean(spec && spec.status !== "approved");
+}
+
+function productSpecList(title, values) {
+  const items = (values || []).filter(Boolean);
+  return `<section class="product-spec-section"><h4>${escapeHtml(title)}</h4>${items.length
+    ? `<ul>${items.map((item) => `<li>${escapeHtml(typeof item === "string" ? item : JSON.stringify(item))}</li>`).join("")}</ul>`
+    : "<p>未声明</p>"}</section>`;
+}
+
+function renderProductSpec(detail, versions = []) {
+  currentProductSpecDetail = detail?.product_spec ? detail : null;
+  const spec = currentProductSpecDetail?.product_spec;
+  const disclosure = byId("product-spec-disclosure");
+  const versionSelect = byId("product-spec-version");
+  const labels = {draft: "草稿", in_review: "待批准", approved: "已批准",
+    superseded: "已废弃", rejected: "已拒绝"};
+  if (!spec) {
+    byId("product-spec-summary").textContent = "尚未生成";
+    byId("product-spec-title").textContent = "当前项目产品规格";
+    byId("product-spec-detail").textContent = "输入开发需求后先生成产品规格。";
+    byId("product-spec-state").textContent = "未生成";
+    byId("product-spec-state").className = "card-state warn";
+    byId("product-spec-source").textContent = "未绑定需求";
+    byId("product-spec-sections").innerHTML = "";
+    versionSelect.innerHTML = '<option value="">暂无版本</option>';
+    versionSelect.disabled = true;
+    byId("product-decision-form").classList.add("hidden");
+    for (const id of ["review-product-spec", "approve-product-spec", "revise-product-spec",
+      "product-spec-revision-field", "show-product-spec-diff"]) byId(id).classList.add("hidden");
+    refreshStartAction();
+    return;
+  }
+  disclosure.classList.remove("hidden");
+  byId("product-spec-summary").textContent = `v${spec.version} · ${labels[spec.status] || spec.status}`;
+  byId("product-spec-title").textContent = `${activeProject?.name || spec.project_id} · 产品规格`;
+  byId("product-spec-detail").textContent = spec.summary || spec.goals?.[0] || "产品规格草稿";
+  const state = byId("product-spec-state");
+  state.textContent = labels[spec.status] || spec.status;
+  state.className = `card-state ${spec.status === "approved" ? "ok" : spec.status === "rejected" ? "bad" : "warn"}`;
+  byId("product-spec-source").textContent = `规格 ${spec.spec_id} · 来源需求 ${(spec.source_requirement_ids || []).join("、")}`;
+  versionSelect.innerHTML = versions.map((item) =>
+    `<option value="${item.version}">v${item.version} · ${escapeHtml(labels[item.status] || item.status)}</option>`).join("");
+  versionSelect.value = String(spec.version);
+  versionSelect.disabled = versions.length < 2;
+  byId("product-spec-sections").innerHTML = [
+    productSpecList("规格需求快照", Object.values(spec.source_requirement_snapshots || {})),
+    productSpecList("产品目标", spec.goals), productSpecList("目标用户", spec.personas),
+    productSpecList("本次范围", spec.in_scope), productSpecList("排除范围", spec.out_of_scope),
+    productSpecList("功能要求", spec.functional_requirements),
+    productSpecList("非功能要求", spec.non_functional_requirements),
+    productSpecList("交付要求", spec.delivery_requirements),
+    productSpecList("验收标准", spec.acceptance_criteria),
+    productSpecList("风险", spec.risks), productSpecList("假设", spec.assumptions),
+  ].join("");
+  const decision = (detail.decisions || []).find((item) => item.status === "pending");
+  const decisionForm = byId("product-decision-form");
+  decisionForm.classList.toggle("hidden", !decision);
+  decisionForm.dataset.decisionId = decision?.decision_id || "";
+  byId("product-decision-questions").innerHTML = decision ? decision.questions.map((question) =>
+    `<label>${escapeHtml(question.prompt)}<small>${escapeHtml(question.reason)}</small><textarea required maxlength="4000" data-question-key="${escapeHtml(question.key)}"></textarea></label>`).join("") : "";
+  const mayManage = canPermission("projects:manage");
+  byId("review-product-spec").classList.toggle("hidden", spec.status !== "draft" || Boolean(decision));
+  byId("approve-product-spec").classList.toggle("hidden", spec.status !== "in_review");
+  byId("revise-product-spec").classList.toggle("hidden", spec.status !== "approved");
+  byId("product-spec-revision-field").classList.toggle("hidden", spec.status !== "approved" || !mayManage);
+  byId("show-product-spec-diff").classList.toggle("hidden", spec.version <= 1);
+  byId("product-spec-diff").classList.add("hidden");
+  byId("product-spec-message").textContent = decision ? "请先完成产品级待决策事项" : "";
+  applyPermissions();
+  refreshStartAction();
+}
+
+async function loadCurrentProductSpec() {
+  if (!productizationEnabled || !currentProjectId) {
+    renderProductSpec(null);
+    return;
+  }
+  const detail = await request(`/api/product-specs/current?project_id=${encodeURIComponent(currentProjectId)}`);
+  const spec = detail.product_spec;
+  if (!spec) {
+    renderProductSpec(null);
+    return;
+  }
+  const versions = await request(`/api/product-specs/${encodeURIComponent(spec.spec_id)}/versions?project_id=${encodeURIComponent(currentProjectId)}`);
+  renderProductSpec(detail, versions.product_specs);
+}
+
+async function createProductSpecDraft() {
+  const originalText = byId("requirement").value.trim();
+  if (originalText.length < 3) throw new Error("请先填写至少 3 个字符的开发需求");
+  const detail = await request("/api/requirements", {method: "POST", body: JSON.stringify({
+    project_id: currentProjectId, original_text: originalText, attachments: [],
+  })});
+  byId("product-spec-disclosure").open = true;
+  await loadCurrentProductSpec();
+  byId("product-spec-message").textContent = detail.decision
+    ? "规格草稿已生成，请集中完成待决策事项" : "规格草稿已生成，可以提交评审";
+}
+
+async function transitionProductSpec(action) {
+  const spec = currentProductSpecDetail?.product_spec;
+  if (!spec) return;
+  await request(`/api/product-specs/${encodeURIComponent(spec.spec_id)}/versions/${spec.version}/${action}?project_id=${encodeURIComponent(currentProjectId)}`, {method: "POST"});
+  await loadCurrentProductSpec();
+}
+
+async function resolveProductDecision(event) {
+  event.preventDefault();
+  const form = byId("product-decision-form");
+  if (!form.reportValidity()) return;
+  const answers = {};
+  form.querySelectorAll("[data-question-key]").forEach((item) => { answers[item.dataset.questionKey] = item.value.trim(); });
+  await request(`/api/projects/${encodeURIComponent(currentProjectId)}/product-decisions/${encodeURIComponent(form.dataset.decisionId)}/resolve`, {method: "POST", body: JSON.stringify({answers})});
+  await loadCurrentProductSpec();
+  byId("product-spec-message").textContent = "待决策事项已保存，可以提交评审";
+}
+
+async function createProductSpecRevision() {
+  const spec = currentProductSpecDetail?.product_spec;
+  const reason = byId("product-spec-revision-reason").value.trim();
+  if (!spec || reason.length < 3) {
+    byId("product-spec-message").textContent = "请填写至少 3 个字符的修订原因";
+    return;
+  }
+  await request(`/api/product-specs/${encodeURIComponent(spec.spec_id)}/versions/${spec.version}/revisions?project_id=${encodeURIComponent(currentProjectId)}`, {method: "POST", body: JSON.stringify({reason})});
+  byId("product-spec-revision-reason").value = "";
+  await loadCurrentProductSpec();
+  byId("product-spec-message").textContent = "修订草稿已创建，原批准版本保持不变";
+}
+
+async function showProductSpecDiff() {
+  const spec = currentProductSpecDetail?.product_spec;
+  if (!spec || spec.version <= 1) return;
+  const result = await request(`/api/product-specs/${encodeURIComponent(spec.spec_id)}/diff?project_id=${encodeURIComponent(currentProjectId)}&from_version=${spec.version - 1}&to_version=${spec.version}`);
+  const host = byId("product-spec-diff");
+  host.innerHTML = `<h4>v${spec.version - 1} → v${spec.version} 字段差异</h4><dl>${result.changes.map((item) =>
+    `<div><dt>${escapeHtml(item.field)}</dt><dd>${escapeHtml(JSON.stringify(item.before))} → ${escapeHtml(JSON.stringify(item.after))}</dd></div>`).join("") || "<div><dd>没有内容变化</dd></div>"}</dl>`;
+  host.classList.remove("hidden");
 }
 
 function renderProjectRepository(project) {
@@ -683,6 +847,7 @@ async function bootstrap() {
   permissionObserver?.disconnect();
   permissionObserver = new MutationObserver(applyPermissions);
   permissionObserver.observe(byId("workspace"), {childList: true, subtree: true});
+  await loadProductizationStatus();
   await loadProjects();
   const onboardingOpened = await window.loadOnboarding?.();
   if (!onboardingOpened) window.loadTaskCenter?.();
@@ -693,10 +858,21 @@ byId("start").addEventListener("click", async () => {
   button.disabled = true;
   byId("message").textContent = "";
   try {
+    if (productizationEnabled && !currentProductSpecDetail?.product_spec) {
+      await createProductSpecDraft();
+      byId("message").textContent = "产品规格草稿已生成；批准后才能开始实施";
+      return;
+    }
+    const spec = currentProductSpecDetail?.product_spec;
+    if (productizationEnabled && spec?.status !== "approved") {
+      throw new Error("产品规格尚未批准，不能开始实施");
+    }
     const run = await request("/api/runs", {method: "POST", body: JSON.stringify({
       project_id: currentProjectId,
       requirement: byId("requirement").value,
       production_line: byId("production-line").value || "default",
+      product_spec_id: spec?.spec_id || null,
+      product_spec_version: spec?.version || null,
     })});
     currentRun = run.run_id;
     render(run);
@@ -705,7 +881,7 @@ byId("start").addEventListener("click", async () => {
   } catch (error) {
     byId("message").textContent = error.message;
   } finally {
-    button.disabled = false;
+    refreshStartAction();
   }
 });
 
@@ -825,6 +1001,32 @@ byId("attach-project-form").addEventListener("submit", attachProject);
 byId("attach-project-repository").addEventListener("change", applySelectedRepository);
 byId("project-repository-form").addEventListener("submit", saveProjectRepository);
 byId("check-project-repository").addEventListener("click", checkProjectRepository);
+byId("product-decision-form").addEventListener("submit", (event) => {
+  resolveProductDecision(event).catch((error) => { byId("product-spec-message").textContent = error.message; });
+});
+byId("review-product-spec").addEventListener("click", () => {
+  transitionProductSpec("review").catch((error) => { byId("product-spec-message").textContent = error.message; });
+});
+byId("approve-product-spec").addEventListener("click", () => {
+  transitionProductSpec("approve").catch((error) => { byId("product-spec-message").textContent = error.message; });
+});
+byId("revise-product-spec").addEventListener("click", () => {
+  createProductSpecRevision().catch((error) => { byId("product-spec-message").textContent = error.message; });
+});
+byId("show-product-spec-diff").addEventListener("click", () => {
+  showProductSpecDiff().catch((error) => { byId("product-spec-message").textContent = error.message; });
+});
+byId("product-spec-version").addEventListener("change", async (event) => {
+  const spec = currentProductSpecDetail?.product_spec;
+  if (!spec) return;
+  try {
+    const detail = await request(`/api/product-specs/${encodeURIComponent(spec.spec_id)}/versions/${event.target.value}?project_id=${encodeURIComponent(currentProjectId)}`);
+    const versions = await request(`/api/product-specs/${encodeURIComponent(spec.spec_id)}/versions?project_id=${encodeURIComponent(currentProjectId)}`);
+    renderProductSpec(detail, versions.product_specs);
+  } catch (error) {
+    byId("product-spec-message").textContent = error.message;
+  }
+});
 byId("workflow-project").addEventListener("change", (event) => {
   loadProjects(event.target.value).catch((error) => {
     byId("active-project").textContent = error.message;

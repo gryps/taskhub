@@ -17,6 +17,7 @@ from taskhub_v2.api.diagnostic_routes import router as diagnostic_router
 from taskhub_v2.api.host_routes import router as host_router
 from taskhub_v2.api.node_routes import router as node_router
 from taskhub_v2.api.onboarding_routes import router as onboarding_router
+from taskhub_v2.api.productization_routes import router as productization_router
 from taskhub_v2.api.project_routes import router as project_router
 from taskhub_v2.api.provider_routes import router as provider_router
 from taskhub_v2.api.remote_node_routes import router as remote_node_router
@@ -43,6 +44,7 @@ from taskhub_v2.services.containers import ContainerManager
 from taskhub_v2.services.device_auth import CodexDeviceAuthService
 from taskhub_v2.services.hosts import PhysicalHostService
 from taskhub_v2.services.operational_log import OperationalLog
+from taskhub_v2.services.productization import ProductizationService
 from taskhub_v2.services.providers import ProviderCatalog
 from taskhub_v2.services.remote_nodes import RemoteNodeService
 from taskhub_v2.services.system_diagnostics import SystemDiagnosticsService
@@ -182,6 +184,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 reconcile_interval_seconds=effective_settings.node_heartbeat_seconds,
             )
             provider = build_provider(effective_settings, provider_health)
+            app.state.productization = ProductizationService(production_objects, provider)
             local_coder = build_coder(effective_settings, provider_health)
             test_scheduler = build_test_scheduler(
                 effective_settings,
@@ -254,6 +257,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(host_router)
     app.include_router(remote_node_router)
     app.include_router(project_router)
+    app.include_router(productization_router)
     app.include_router(node_router)
     app.include_router(onboarding_router)
     app.include_router(deployment_router)
@@ -343,6 +347,8 @@ def _required_permission(path: str, method: str) -> str | None:
     if path.startswith("/api/deployment"):
         return "release:manage"
     if path.startswith("/api/projects"):
+        return "projects:manage"
+    if path.startswith(("/api/requirements", "/api/product-specs")):
         return "projects:manage"
     if path.startswith("/api/runs"):
         return "delivery:execute"

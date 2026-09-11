@@ -247,9 +247,9 @@ class SupervisionDecision(BaseModel):
     decision: Literal["approve", "reject"]
     summary: str
     reasons: list[str]
-    missing_evidence: list[
-        Literal["browser", "database", "openapi", "test", "manual"]
-    ] = Field(default_factory=list)
+    missing_evidence: list[Literal["browser", "database", "openapi", "test", "manual"]] = Field(
+        default_factory=list
+    )
 
     @classmethod
     def response_json_schema(cls) -> dict[str, Any]:
@@ -263,6 +263,8 @@ class StartRunRequest(BaseModel):
     project_id: str = Field(min_length=1, max_length=80)
     requirement: str = Field(min_length=3, max_length=20_000)
     production_line: str = Field(default="default", min_length=1, max_length=80)
+    product_spec_id: str | None = Field(default=None, max_length=120)
+    product_spec_version: int | None = Field(default=None, ge=1)
 
 
 class LiteralDecision(StrEnum):
@@ -289,6 +291,8 @@ class RunView(BaseModel):
     project_id: str
     requirement: str
     production_line: str = "default"
+    product_spec_id: str | None = None
+    product_spec_version: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     stage: Stage

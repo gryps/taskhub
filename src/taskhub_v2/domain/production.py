@@ -61,7 +61,28 @@ class ChangeRequestStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class RequirementStatus(StrEnum):
+    SUBMITTED = "submitted"
+    CLARIFICATION_REQUIRED = "clarification_required"
+    PRODUCTIZED = "productized"
+    SUPERSEDED = "superseded"
+
+
+class ProductDecisionStatus(StrEnum):
+    PENDING = "pending"
+    RESOLVED = "resolved"
+    CANCELLED = "cancelled"
+
+
 STATE_TRANSITIONS: dict[str, dict[str, set[str]]] = {
+    "requirement": {
+        "submitted": {"clarification_required", "productized", "superseded"},
+        "clarification_required": {"productized", "superseded"},
+        "productized": {"superseded"},
+    },
+    "product_decision": {
+        "pending": {"resolved", "cancelled"},
+    },
     "product_spec": {
         "draft": {"in_review", "rejected"},
         "in_review": {"approved", "rejected", "draft"},
@@ -117,6 +138,58 @@ class ProductionRecord(BaseModel):
     content_digest: str = Field(default="", max_length=128)
 
 
+class RequirementAttachment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(default="application/octet-stream", max_length=120)
+    size_bytes: int = Field(default=0, ge=0)
+    sha256: str = Field(default="", pattern=r"^(?:[a-f0-9]{64})?$")
+    summary: str = Field(default="", max_length=2_000)
+
+
+class RequirementSupplement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    supplement_id: str = Field(pattern=r"^supplement_[A-Za-z0-9_-]{3,100}$")
+    text: str = Field(min_length=1, max_length=20_000)
+    created_by: str = Field(min_length=1, max_length=100)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class Requirement(ProductionRecord):
+    object_type: Literal["requirement"] = "requirement"
+    requirement_id: str = Field(pattern=r"^req_[A-Za-z0-9_-]{3,100}$")
+    status: RequirementStatus = RequirementStatus.SUBMITTED
+    original_text: str = Field(min_length=3, max_length=20_000)
+    attachments: list[RequirementAttachment] = Field(default_factory=list)
+    supplements: list[RequirementSupplement] = Field(default_factory=list)
+    submitted_at: datetime = Field(default_factory=utc_now)
+    productization: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProductQuestion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(pattern=r"^[a-z][a-z0-9_]{1,63}$")
+    prompt: str = Field(min_length=1, max_length=1_000)
+    reason: str = Field(default="", max_length=1_000)
+
+
+class ProductDecision(ProductionRecord):
+    object_type: Literal["product_decision"] = "product_decision"
+    decision_id: str = Field(pattern=r"^decision_[A-Za-z0-9_-]{3,100}$")
+    requirement_id: str
+    spec_id: str
+    spec_version: int = Field(ge=1)
+    status: ProductDecisionStatus = ProductDecisionStatus.PENDING
+    title: str = Field(min_length=1, max_length=200)
+    questions: list[ProductQuestion] = Field(min_length=1, max_length=10)
+    answers: dict[str, str] = Field(default_factory=dict)
+    resolved_by: str = ""
+    resolved_at: datetime | None = None
+
+
 class ProductSpec(ProductionRecord):
     object_type: Literal["product_spec"] = "product_spec"
     spec_id: str = Field(pattern=r"^ps_[A-Za-z0-9_-]{3,100}$")
@@ -124,6 +197,11 @@ class ProductSpec(ProductionRecord):
     status: ProductSpecStatus = ProductSpecStatus.DRAFT
     previous_version: int | None = Field(default=None, ge=1)
     change_request_id: str | None = None
+    summary: str = Field(default="", max_length=4_000)
+    source_requirement_ids: list[str] = Field(default_factory=list)
+    source_requirement_snapshots: dict[str, str] = Field(default_factory=dict)
+    pending_decision_ids: list[str] = Field(default_factory=list)
+    decision_resolutions: dict[str, str] = Field(default_factory=dict)
     goals: list[str] = Field(default_factory=list)
     personas: list[str] = Field(default_factory=list)
     in_scope: list[str] = Field(default_factory=list)
@@ -244,7 +322,14 @@ class CapabilityPack(ProductionRecord):
 
 
 ProductionObject = Annotated[
-    ProductSpec | ExecutionPlan | ProductionTask | TaskAttempt | ChangeRequest | CapabilityPack,
+    Requirement
+    | ProductDecision
+    | ProductSpec
+    | ExecutionPlan
+    | ProductionTask
+    | TaskAttempt
+    | ChangeRequest
+    | CapabilityPack,
     Field(discriminator="object_type"),
 ]
 production_object_adapter = TypeAdapter(ProductionObject)
@@ -252,6 +337,10 @@ production_object_adapter = TypeAdapter(ProductionObject)
 
 def object_identity(record: ProductionObject) -> tuple[str, str, str]:
     match record:
+        case Requirement():
+            identity = record.requirement_id, "1"
+        case ProductDecision():
+            identity = record.decision_id, "1"
         case ProductSpec():
             identity = record.spec_id, str(record.version)
         case ExecutionPlan():

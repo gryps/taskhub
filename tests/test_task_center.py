@@ -30,34 +30,49 @@ def login(client):
 def test_memory_task_index_filters_and_preserves_created_time():
     async def exercise():
         index = MemoryTaskIndex()
-        first = await index.upsert({
-            "run_id": "one", "requirement": "First task", "project_id": "demo",
-            "current_stage": "planning", "status": "running",
-        }, "A")
-        await index.upsert({
-            "run_id": "one", "requirement": "First task", "project_id": "demo",
-            "current_stage": "plan_approval", "status": "waiting",
-            "pending_action": {"type": "plan_approval", "choices": ["approve", "reject"]},
-        })
+        first = await index.upsert(
+            {
+                "run_id": "one",
+                "requirement": "First task",
+                "project_id": "demo",
+                "current_stage": "planning",
+                "status": "running",
+            },
+            "A",
+        )
+        await index.upsert(
+            {
+                "run_id": "one",
+                "requirement": "First task",
+                "project_id": "demo",
+                "current_stage": "plan_approval",
+                "status": "waiting",
+                "pending_action": {"type": "plan_approval", "choices": ["approve", "reject"]},
+            }
+        )
         page = await index.list(production_line="A", status="waiting")
         assert page.total == 1
         assert page.items[0].created_at == first.created_at
         assert page.items[0].updated_at >= first.updated_at
+
     asyncio.run(exercise())
 
 
 def test_memory_task_index_filters_by_effective_rebound_project():
     async def exercise():
         index = MemoryTaskIndex()
-        await index.upsert({
-            "run_id": "rebound", "requirement": "Move task", "project_id": "old",
-            "current_stage": "merge_blocked", "status": "blocked",
-        })
+        await index.upsert(
+            {
+                "run_id": "rebound",
+                "requirement": "Move task",
+                "project_id": "old",
+                "current_stage": "merge_blocked",
+                "status": "blocked",
+            }
+        )
         await index.rebind("rebound", "new")
         assert (await index.list(project_id="old")).total == 0
-        assert [item.run_id for item in (await index.list(project_id="new")).items] == [
-            "rebound"
-        ]
+        assert [item.run_id for item in (await index.list(project_id="new")).items] == ["rebound"]
 
     asyncio.run(exercise())
 
@@ -66,8 +81,11 @@ def test_archived_tasks_are_hidden_and_upsert_does_not_revive_them():
     async def exercise():
         index = MemoryTaskIndex()
         values = {
-            "run_id": "archived", "requirement": "Old task", "project_id": "gone",
-            "current_stage": "implementation_blocked", "status": "blocked",
+            "run_id": "archived",
+            "requirement": "Old task",
+            "project_id": "gone",
+            "current_stage": "implementation_blocked",
+            "status": "blocked",
         }
         await index.upsert(values)
         archived = await index.archive("archived")
@@ -86,10 +104,15 @@ def test_task_center_lists_three_tasks_and_filters_production_lines():
     with TestClient(create_app(settings())) as client:
         headers = login(client)
         for number, line in enumerate(("A", "B", "A"), 1):
-            response = client.post("/api/runs", headers=headers, json={
-                "project_id": "demo", "requirement": f"Build feature {number}",
-                "production_line": line,
-            })
+            response = client.post(
+                "/api/runs",
+                headers=headers,
+                json={
+                    "project_id": "demo",
+                    "requirement": f"Build feature {number}",
+                    "production_line": line,
+                },
+            )
             assert response.status_code == 201
         page = client.get("/api/runs").json()
         assert page["total"] == 3
@@ -102,9 +125,11 @@ def test_task_center_lists_three_tasks_and_filters_production_lines():
 def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
     with TestClient(create_app(settings())) as client:
         headers = login(client)
-        run = client.post("/api/runs", headers=headers, json={
-            "project_id": "demo", "requirement": "Build task details"
-        }).json()
+        run = client.post(
+            "/api/runs",
+            headers=headers,
+            json={"project_id": "demo", "requirement": "Build task details"},
+        ).json()
         detail = client.get(f"/api/runs/{run['run_id']}").json()
         assert detail["pending_action"]["choices"] == ["approve", "reject"]
         assert len(detail["workflow_steps"]) == 11
@@ -119,7 +144,7 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="nav-workflow"' in html and "开发流程" in html
         assert 'id="nav-resources"' in html and "系统配置" in html
         assert '<input id="production-line" type="hidden" value="default">' in html
-        assert '<label>生产线' not in html
+        assert "<label>生产线" not in html
         assert 'class="composer-requirement"' in html
         assert 'class="composer-actions"' in html
         assert html.count('class="providers-section resource-disclosure') == 5
@@ -131,11 +156,11 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert 'styles.css?v=39' in html
+        assert "styles.css?v=40" in html
         assert html.count('class="resource-disclosure-heading"') == 5
         assert html.count('class="resource-order"') == 5
-        assert 'app.js?v=13' in html
-        assert 'resource-center.js?v=25' in html
+        assert "app.js?v=14" in html
+        assert "resource-center.js?v=25" in html
         assert html.count('class="configuration-card"') >= 9
         assert html.count('class="management-card-grid"') >= 4
         assert 'id="login-username"' in html
@@ -149,23 +174,26 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="upgrade-image"' in html
         assert "失败时自动恢复原版本" in html
         assert "Seed 备份与恢复" in html
-        assert 'onboarding.js?v=2' in html
+        assert "onboarding.js?v=2" in html
         assert 'id="collapse-current-resource"' in html
         assert 'class="resource-subdisclosure"' in html
         assert 'id="platform-registry-username"' in html
         assert 'id="platform-registry-password"' in html
-        assert html.count('data-public-image-downloads') == 1
+        assert html.count("data-public-image-downloads") == 1
         assert all(
             f'id="{name}-disclosure"' in html
             for name in ("system", "providers", "hosts", "nodes", "platform")
         )
-        assert '<strong>运行概览</strong><small>角色环境与系统就绪状态</small>' in html
-        assert '<strong>模型服务</strong><small>认证、角色路由与主备切换</small>' in html
-        assert '<strong>物理主机</strong><small>SSH 准入、承载能力与维护状态</small>' in html
-        assert '<strong>工作节点</strong><small>调度、容器、负载与诊断</small>' in html
-        assert '<strong>平台设置</strong><small>镜像、网络、备份与访问安全</small>' in html
-        assert '<strong>预生产验收</strong><small>按项目启用的访问与验收环境</small>' in html
-        assert '<strong>代码仓库</strong><small>项目级 Git 来源、基准分支与发布目标</small>' in html
+        assert "<strong>运行概览</strong><small>角色环境与系统就绪状态</small>" in html
+        assert "<strong>模型服务</strong><small>认证、角色路由与主备切换</small>" in html
+        assert "<strong>物理主机</strong><small>SSH 准入、承载能力与维护状态</small>" in html
+        assert "<strong>工作节点</strong><small>调度、容器、负载与诊断</small>" in html
+        assert "<strong>平台设置</strong><small>镜像、网络、备份与访问安全</small>" in html
+        assert "<strong>预生产验收</strong><small>按项目启用的访问与验收环境</small>" in html
+        assert "<strong>代码仓库</strong><small>项目级 Git 来源、基准分支与发布目标</small>" in html
+        assert "<strong>产品规格</strong><small>需求产品化、待决策事项与批准版本</small>" in html
+        assert 'id="product-decision-form"' in html
+        assert 'id="approve-product-spec"' in html
         assert 'id="project-repository-form"' in html
         assert 'id="check-project-repository"' in html
         assert 'id="save-project-repository"' in html
@@ -194,20 +222,29 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="configure-resources"' in html and "更换节点/模型" in html
         assert 'id="add-evidence"' in html and "补充证据" in html
         assert html.count('id="archive-task"') == 1
-        assert '<details><summary>规划方案' in html
+        assert "<details><summary>规划方案" in html
         script = client.get("/static/app.js").text
         assert "copy-image-reference" in script
         assert "/repository/check" in script
         assert "renderProjectRepository(active)" in script
         assert 'path = "/api/auth/setup"' in script
-        assert "localStorage.setItem(\"taskhub_run_id\"" not in script
+        assert 'localStorage.setItem("taskhub_run_id"' not in script
         assert 'decision === "revise" ? "revise"' in script
         assert 'decision === "manual" ? "manual"' in script
         assert 'byId("test-environment-enabled").checked' in resource_script
         assert '["completed", "rejected", "failed"].includes(run.status)' in script
         for stage in (
-            "intake", "planning", "plan_approval", "implementation", "acceptance",
-            "review", "risk", "supervision", "merge_approval", "merging", "completed",
+            "intake",
+            "planning",
+            "plan_approval",
+            "implementation",
+            "acceptance",
+            "review",
+            "risk",
+            "supervision",
+            "merge_approval",
+            "merging",
+            "completed",
         ):
             assert f'"{stage}"' in script
 
@@ -221,31 +258,42 @@ def test_task_center_approvals_and_recovery_do_not_repeat_completed_work():
             task_index=MemoryTaskIndex(),
         )
         headers = login(client)
-        run = client.post('/api/runs', headers=headers, json={
-            'project_id': 'demo', 'requirement': 'Publish with recovery', 'production_line': 'A'
-        }).json()
-        run_id = client.get('/api/runs').json()['items'][0]['run_id']
-        assert run_id == run['run_id']
-        base = f'/api/runs/{run_id}'
-        assert client.get(base).json()['workflow_steps'][2]['state'] == 'waiting_manual'
-        approved = client.post(base + '/approval', headers=headers,
-                               json={'decision': 'approve'}).json()
-        assert approved['workflow_steps'][8]['state'] == 'waiting_manual'
-        blocked = client.post(base + '/resume', headers=headers,
-                              json={'decision': 'approve'}).json()
-        assert blocked['blocking_reason']['detail'] == 'temporary publication failure'
-        assert blocked['pending_action']['choices'] == ['retry', 'cancel']
-        assert blocked['workflow_steps'][9]['state'] == 'blocked'
-        assert client.get('/api/runs?status=blocked').json()['total'] == 1
-        assert client.post(base + '/resume', headers=headers,
-                           json={'decision': 'approve'}).status_code == 409
-        completed = client.post(base + '/resume', headers=headers,
-                                json={'decision': 'retry'}).json()
-        assert completed['status'] == 'completed'
+        run = client.post(
+            "/api/runs",
+            headers=headers,
+            json={
+                "project_id": "demo",
+                "requirement": "Publish with recovery",
+                "production_line": "A",
+            },
+        ).json()
+        run_id = client.get("/api/runs").json()["items"][0]["run_id"]
+        assert run_id == run["run_id"]
+        base = f"/api/runs/{run_id}"
+        assert client.get(base).json()["workflow_steps"][2]["state"] == "waiting_manual"
+        approved = client.post(
+            base + "/approval", headers=headers, json={"decision": "approve"}
+        ).json()
+        assert approved["workflow_steps"][8]["state"] == "waiting_manual"
+        blocked = client.post(
+            base + "/resume", headers=headers, json={"decision": "approve"}
+        ).json()
+        assert blocked["blocking_reason"]["detail"] == "temporary publication failure"
+        assert blocked["pending_action"]["choices"] == ["retry", "cancel"]
+        assert blocked["workflow_steps"][9]["state"] == "blocked"
+        assert client.get("/api/runs?status=blocked").json()["total"] == 1
+        assert (
+            client.post(base + "/resume", headers=headers, json={"decision": "approve"}).status_code
+            == 409
+        )
+        completed = client.post(
+            base + "/resume", headers=headers, json={"decision": "retry"}
+        ).json()
+        assert completed["status"] == "completed"
         assert provider.plan_calls == provider.review_calls == provider.risk_calls == 1
         assert provider.supervisor_calls == worker.calls == 1
         assert publisher.calls == 2
-        assert sum(e['title'] == 'Plan approved' for e in completed['timeline']) == 1
+        assert sum(e["title"] == "Plan approved" for e in completed["timeline"]) == 1
 
 
 def test_running_checkpoint_can_replay_current_stage():
@@ -277,13 +325,15 @@ def test_running_checkpoint_can_replay_current_stage():
                     **self.values,
                     "current_stage": "completed",
                     "status": "completed",
-                    "timeline": [{
-                        "stage": "completed",
-                        "title": "Replay completed",
-                        "detail": "",
-                        "actor": "system",
-                        "status": "completed",
-                    }],
+                    "timeline": [
+                        {
+                            "stage": "completed",
+                            "title": "Replay completed",
+                            "detail": "",
+                            "actor": "system",
+                            "status": "completed",
+                        }
+                    ],
                 }
                 self.next = []
                 yield "values", self.values
@@ -301,9 +351,10 @@ def test_running_checkpoint_can_replay_current_stage():
 
 def test_replay_rejects_tasks_waiting_for_owner_action():
     async def scenario():
-        service = RunService(build_main_graph(
-            RecordingProvider(), RecordingWorker(), InMemorySaver()
-        ), task_index=MemoryTaskIndex())
+        service = RunService(
+            build_main_graph(RecordingProvider(), RecordingWorker(), InMemorySaver()),
+            task_index=MemoryTaskIndex(),
+        )
         waiting = await service.start(StartRunRequest(project_id="demo", requirement="wait"))
 
         with pytest.raises(RunConflictError, match="only running tasks|explicit owner action"):
@@ -320,53 +371,78 @@ def test_live_index_failure_and_stale_backfill():
             async def create_plan(self, requirement):
                 entered.set()
                 await release.wait()
-                raise RuntimeError('planner unavailable')
+                raise RuntimeError("planner unavailable")
 
         index, saver = MemoryTaskIndex(), InMemorySaver()
-        service = RunService(build_main_graph(PausedProvider(), RecordingWorker(), saver),
-                             task_index=index)
-        task = asyncio.create_task(service.start(StartRunRequest(
-            project_id='demo', requirement='Failure during planning', production_line='B')))
+        service = RunService(
+            build_main_graph(PausedProvider(), RecordingWorker(), saver), task_index=index
+        )
+        task = asyncio.create_task(
+            service.start(
+                StartRunRequest(
+                    project_id="demo", requirement="Failure during planning", production_line="B"
+                )
+            )
+        )
         await asyncio.wait_for(entered.wait(), 5)
         live = (await index.list()).items[0]
-        assert live.status == 'running' and live.stage == 'planning'
+        assert live.status == "running" and live.stage == "planning"
         release.set()
-        with pytest.raises(RuntimeError, match='planner unavailable'):
+        with pytest.raises(RuntimeError, match="planner unavailable"):
             await task
         failed = await service.get(live.run_id)
-        assert failed.status == 'failed'
-        assert 'planner unavailable' in failed.blocking_reason['detail']
+        assert failed.status == "failed"
+        assert "planner unavailable" in failed.blocking_reason["detail"]
         assert failed.pending_action is None
-        assert failed.workflow_steps[1]['state'] == 'blocked'
-        assert failed.workflow_steps[2]['state'] == 'not_started'
-        assert (await index.get(live.run_id)).status == 'failed'
-        await index.upsert(dict(run_id=live.run_id, project_id='demo', requirement='stale',
-                                current_stage='intake', status='running'))
+        assert failed.workflow_steps[1]["state"] == "blocked"
+        assert failed.workflow_steps[2]["state"] == "not_started"
+        assert (await index.get(live.run_id)).status == "failed"
+        await index.upsert(
+            dict(
+                run_id=live.run_id,
+                project_id="demo",
+                requirement="stale",
+                current_stage="intake",
+                status="running",
+            )
+        )
         await service.backfill(saver)
         repaired = await index.get(live.run_id)
-        assert repaired.status == 'failed' and repaired.production_line == 'B'
+        assert repaired.status == "failed" and repaired.production_line == "B"
         await service.backfill(saver)
         assert (await index.get(live.run_id)).updated_at == repaired.updated_at
+
     asyncio.run(scenario())
 
 
 def test_terminal_steps_and_pagination():
-    for stage in ('failed', 'rejected'):
-        steps = workflow_steps(dict(current_stage=stage, status=stage,
-                                    timeline=[{'stage': 'plan_approval'}]))
-        assert steps[2]['state'] == 'blocked'
-        assert all(step['state'] == 'not_started' for step in steps[3:])
-    assert all(step['state'] == 'not_started' for step in workflow_steps(
-        dict(current_stage='failed', status='failed')))
+    for stage in ("failed", "rejected"):
+        steps = workflow_steps(
+            dict(current_stage=stage, status=stage, timeline=[{"stage": "plan_approval"}])
+        )
+        assert steps[2]["state"] == "blocked"
+        assert all(step["state"] == "not_started" for step in steps[3:])
+    assert all(
+        step["state"] == "not_started"
+        for step in workflow_steps(dict(current_stage="failed", status="failed"))
+    )
 
     async def scenario():
         index = MemoryTaskIndex()
         for number in range(55):
-            await index.upsert(dict(run_id=str(number), project_id='demo', requirement='task',
-                                    current_stage='planning', status='running'))
+            await index.upsert(
+                dict(
+                    run_id=str(number),
+                    project_id="demo",
+                    requirement="task",
+                    current_stage="planning",
+                    status="running",
+                )
+            )
         first, second = await index.list(), await index.list(page=2)
         assert len(first.items) == 50 and len(second.items) == 5
         assert len({item.run_id for item in first.items + second.items}) == 55
+
     asyncio.run(scenario())
 
 

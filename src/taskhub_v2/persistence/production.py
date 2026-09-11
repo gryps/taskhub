@@ -7,7 +7,9 @@ from typing import Protocol
 
 from taskhub_v2.config import Settings
 from taskhub_v2.domain.production import (
+    ProductDecision,
     ProductionObject,
+    Requirement,
     immutable_content,
     object_identity,
     production_object_adapter,
@@ -41,6 +43,34 @@ def _validate_replacement(previous: ProductionObject, record: ProductionObject) 
         validate_transition(record.object_type, _state(previous), _state(record))
     except ValueError as error:
         raise ProductionObjectConflictError(str(error)) from error
+    if isinstance(previous, Requirement) and isinstance(record, Requirement):
+        previous_supplements = [item.model_dump() for item in previous.supplements]
+        target_supplements = [item.model_dump() for item in record.supplements]
+        original_changed = (
+            previous.original_text != record.original_text
+            or previous.attachments != record.attachments
+            or previous.submitted_at != record.submitted_at
+            or target_supplements[: len(previous_supplements)] != previous_supplements
+        )
+        if original_changed:
+            raise ProductionObjectConflictError(
+                "requirement originals are immutable and supplements are append-only"
+            )
+        return
+    if isinstance(previous, ProductDecision) and isinstance(record, ProductDecision):
+        fixed_fields_changed = (
+            previous.requirement_id != record.requirement_id
+            or previous.spec_id != record.spec_id
+            or previous.spec_version != record.spec_version
+            or previous.questions != record.questions
+        )
+        if fixed_fields_changed:
+            raise ProductionObjectConflictError("product decision questions are immutable")
+        if _state(previous) != "pending" and immutable_content(previous) != immutable_content(
+            record
+        ):
+            raise ProductionObjectConflictError("resolved product decisions are immutable")
+        return
     mutable_states = {
         "product_spec": {"draft", "in_review"},
         "execution_plan": {"draft", "validating"},

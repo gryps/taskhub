@@ -48,6 +48,8 @@ class RunService:
             "run_id": run_id,
             "project_id": request.project_id,
             "production_line": request.production_line,
+            "product_spec_id": request.product_spec_id,
+            "product_spec_version": request.product_spec_version,
             "requirement": request.requirement,
             "requirement_version": 1,
             "current_stage": Stage.INTAKE.value,
@@ -96,9 +98,10 @@ class RunService:
                 values["project_id"] if effective_project != values["project_id"] else None
             ),
             requirement=values["requirement"],
-            production_line=values.get("production_line") or (
-                indexed.production_line if indexed else "default"
-            ),
+            production_line=values.get("production_line")
+            or (indexed.production_line if indexed else "default"),
+            product_spec_id=values.get("product_spec_id"),
+            product_spec_version=values.get("product_spec_version"),
             created_at=indexed.created_at if indexed else None,
             updated_at=indexed.updated_at if indexed else None,
             stage=values["current_stage"],
@@ -141,12 +144,15 @@ class RunService:
     def _project_task(self, item):
         effective = item.rebound_project_id or item.project_id
         missing = self._project_missing(effective)
-        return item.model_copy(update={
-            "project_id": effective,
-            "original_project_id": item.project_id if effective != item.project_id else None,
-            "orphaned": missing, "project_missing": missing,
-            "allowed_actions": ["archive", "rebind_project"] if missing else [],
-        })
+        return item.model_copy(
+            update={
+                "project_id": effective,
+                "original_project_id": item.project_id if effective != item.project_id else None,
+                "orphaned": missing,
+                "project_missing": missing,
+                "allowed_actions": ["archive", "rebind_project"] if missing else [],
+            }
+        )
 
     async def archive(self, run_id: str):
         await self.get(run_id)
@@ -177,8 +183,7 @@ class RunService:
         # that cursor before querying individual graph snapshots.
         for run_id, values in latest.items():
             snapshot = await self.graph.aget_state(self._config(run_id))
-            await self.task_index.upsert(checkpoint_values(snapshot),
-                                         values.get("production_line"))
+            await self.task_index.upsert(checkpoint_values(snapshot), values.get("production_line"))
 
     async def recover_interrupted(self) -> None:
         """Replay graph-owned running checkpoints after a controller restart."""
@@ -213,8 +218,9 @@ class RunService:
         finally:
             snapshot = await self.graph.aget_state(self._config(run_id))
             if snapshot.values and self.task_index:
-                await self.task_index.upsert(checkpoint_values(snapshot),
-                                             snapshot.values.get("production_line"))
+                await self.task_index.upsert(
+                    checkpoint_values(snapshot), snapshot.values.get("production_line")
+                )
 
     async def approve(self, run_id: str, request: ApprovalRequest) -> RunView:
         current = await self.get(run_id)
@@ -232,9 +238,7 @@ class RunService:
         ):
             raise RunConflictError("run is not waiting for plan approval")
         update = {"project_id": current.project_id} if current.original_project_id else None
-        await self._execute(
-            run_id, Command(resume=request.model_dump(mode="json"), update=update)
-        )
+        await self._execute(run_id, Command(resume=request.model_dump(mode="json"), update=update))
         return await self.get(run_id, sync=True)
 
     async def resume(self, run_id: str, request: ResumeRequest) -> RunView:
@@ -285,9 +289,7 @@ class RunService:
         await self._execute(run_id, payload)
         return await self.get(run_id, sync=True)
 
-    async def submit_acceptance(
-        self, run_id: str, request: AcceptanceSubmission
-    ) -> RunView:
+    async def submit_acceptance(self, run_id: str, request: AcceptanceSubmission) -> RunView:
         current = await self.get(run_id)
         if current.archived_at:
             raise RunConflictError("task is archived; workflow actions are disabled")

@@ -24,6 +24,10 @@ from taskhub_v2.domain.models import (
 )
 from taskhub_v2.execution.runner import NodeExecutionError
 from taskhub_v2.projects import ProjectNotFoundError
+from taskhub_v2.services.productization import (
+    ProductizationConflictError,
+    ProductizationNotFoundError,
+)
 from taskhub_v2.services.runs import RunConflictError, RunNotFoundError, RunService
 
 router = APIRouter(prefix="/api")
@@ -38,6 +42,19 @@ async def health() -> dict[str, str]:
 @router.post("/runs", response_model=RunView, status_code=201)
 async def start_run(payload: StartRunRequest, request: Request, service: Service) -> RunView:
     try:
+        if request.app.state.production_orchestration_enabled:
+            if not payload.product_spec_id or payload.product_spec_version is None:
+                raise RunConflictError("必须先批准产品规格，才能开始实现")
+            spec, requirement = await request.app.state.productization.execution_source(
+                payload.project_id, payload.product_spec_id, payload.product_spec_version
+            )
+            payload = payload.model_copy(
+                update={
+                    "requirement": requirement,
+                    "product_spec_id": spec.spec_id,
+                    "product_spec_version": spec.version,
+                }
+            )
         if request.app.state.settings.worker_mode != "git":
             return await service.start(payload)
         project = request.app.state.projects.get(payload.project_id)
@@ -50,13 +67,9 @@ async def start_run(payload: StartRunRequest, request: Request, service: Service
                 async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
                     response = await client.get(project.test_environment.target_url)
                 if response.status_code >= 500:
-                    raise RunConflictError(
-                        f"预生产环境未就绪：HTTP {response.status_code}"
-                    )
+                    raise RunConflictError(f"预生产环境未就绪：HTTP {response.status_code}")
             except httpx.HTTPError as exc:
-                raise RunConflictError(
-                    f"预生产环境未就绪：{type(exc).__name__}"
-                ) from exc
+                raise RunConflictError(f"预生产环境未就绪：{type(exc).__name__}") from exc
         health = await request.app.state.node_scheduler.status()
         for capability in project.acceptance_capabilities:
             ready = any(
@@ -76,7 +89,13 @@ async def start_run(payload: StartRunRequest, request: Request, service: Service
         return await service.start(payload)
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail="project is not registered") from exc
-    except (NodeExecutionError, RunConflictError, ValueError) as exc:
+    except (
+        NodeExecutionError,
+        ProductizationConflictError,
+        ProductizationNotFoundError,
+        RunConflictError,
+        ValueError,
+    ) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
@@ -93,9 +112,15 @@ async def list_runs(
 ) -> TaskPage:
     if page < 1 or not 1 <= page_size <= 200:
         raise HTTPException(status_code=422, detail="invalid pagination")
-    return await service.list(project_id=project_id, production_line=production_line,
-                              status=status, stage=stage, page=page, page_size=page_size,
-                              include_archived=include_archived)
+    return await service.list(
+        project_id=project_id,
+        production_line=production_line,
+        status=status,
+        stage=stage,
+        page=page,
+        page_size=page_size,
+        include_archived=include_archived,
+    )
 
 
 @router.post("/runs/{run_id}/archive", response_model=TaskSummary)

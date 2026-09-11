@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=39">
+  <link rel="stylesheet" href="/static/styles.css?v=40">
 </head>
 <body>
   <header class="app-header">
@@ -180,6 +180,41 @@
             </div>
           </section>
         </form>
+      </details>
+      <details id="product-spec-disclosure" class="providers-section project-settings-disclosure resource-disclosure hidden">
+        <summary>
+          <span class="project-settings-heading"><strong>产品规格</strong><small>需求产品化、待决策事项与批准版本</small></span>
+          <span id="product-spec-summary" class="muted">尚未生成</span>
+        </summary>
+        <div class="project-form resource-form product-spec-surface">
+          <p class="form-note">原始需求永久保留。规格批准后不可修改，后续变化通过新版本表达。</p>
+          <section class="management-card product-spec-card" aria-labelledby="product-spec-title">
+            <header>
+              <div><h3 id="product-spec-title">当前项目产品规格</h3><p id="product-spec-detail">输入开发需求后先生成产品规格。</p></div>
+              <span id="product-spec-state" class="card-state warn">未生成</span>
+            </header>
+            <div class="product-spec-toolbar">
+              <label>规格版本<select id="product-spec-version" disabled><option value="">暂无版本</option></select></label>
+              <span id="product-spec-source" class="muted">未绑定需求</span>
+            </div>
+            <div id="product-spec-sections" class="product-spec-sections"></div>
+            <form id="product-decision-form" class="product-decision hidden">
+              <div class="section-head"><h3>需要一次确认的信息</h3><span class="badge waiting">待决策</span></div>
+              <p>请集中回答下列问题，系统不会在后续开发任务中重复询问。</p>
+              <div id="product-decision-questions" class="product-decision-questions"></div>
+              <button type="submit" data-permission="projects:manage">保存决策</button>
+            </form>
+            <div id="product-spec-diff" class="product-spec-diff hidden"></div>
+            <footer class="management-card-actions product-spec-actions">
+              <button id="review-product-spec" type="button" class="secondary hidden" data-permission="projects:manage">提交评审</button>
+              <button id="approve-product-spec" type="button" class="hidden" data-permission="projects:manage">批准规格</button>
+              <label id="product-spec-revision-field" class="product-spec-revision hidden">修订原因<input id="product-spec-revision-reason" maxlength="4000" placeholder="说明需求变化原因"></label>
+              <button id="revise-product-spec" type="button" class="secondary hidden" data-permission="projects:manage">创建修订版本</button>
+              <button id="show-product-spec-diff" type="button" class="secondary hidden">查看版本差异</button>
+              <span id="product-spec-message" role="status"></span>
+            </footer>
+          </section>
+        </div>
       </details>
       <details id="test-environment-disclosure" class="providers-section project-settings-disclosure resource-disclosure">
         <summary>
@@ -562,7 +597,7 @@
     </section>
     </div>
   </main>
-  <script src="/static/app.js?v=13"></script>
+  <script src="/static/app.js?v=14"></script>
   <script src="/static/task-center.js?v=13"></script>
   <script src="/static/resource-center.js?v=25"></script>
   <script src="/static/onboarding.js?v=2"></script>

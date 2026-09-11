@@ -269,3 +269,10 @@ Updated: 2026-09-11
 - The fixed `0.1.0-alpha` tags were overwritten in both GHCR and Aliyun ACR. Authenticated manifest reads confirmed that each repository exposes the expected digest and that the two registries are byte-identical for each image.
 - The controller at `192.168.31.31:8200` now runs the released Seed digest and is healthy. The PostgreSQL container and existing named volumes were retained; the served frontend assets are `styles.css?v=39`, `app.js?v=13` and `resource-center.js?v=25`.
 - The latest complete backup is `C:\taskhub-seed\deploy\release\backups\20260911T152347Z`. It contains sensitive configuration and business data and must remain on the controlled host. Temporary build and registry-authentication directories were removed after publication.
+
+## Productized Delivery Phase 1
+
+- On 2026-09-12, Phase 1 added append-only Requirement intake, structured ProductSpec drafts, one consolidated product decision, review/approval governance, immutable approved versions, ChangeRequest-backed revisions and field-level version diffs.
+- With `TASKHUB_PRODUCTION_ORCHESTRATION_ENABLED=true`, a run cannot start without an explicitly approved ProductSpec ID and version. The server rebuilds the implementation source from the immutable requirement and supplements, and the LangGraph state preserves the exact binding. The flag remains off by default for legacy compatibility.
+- The development-flow ProductSpec card presents raw and structured content, decisions, state, version selection and diffs. Real Chromium layout checks passed at 1440, 680 and 390 pixels without horizontal overflow; targeted API/static tests passed.
+- Phase 1 does not yet produce ProjectContract files or a real task DAG. Continue from Phase 2. This phase was source-only: push `.3 Git` and GitHub, with no deployment, Docker build or registry upload.
