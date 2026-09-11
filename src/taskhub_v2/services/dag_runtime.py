@@ -12,6 +12,7 @@ class ProductizedExecutionRuntime:
     planner: DagPlanService
     scheduler: PersistentDagScheduler
     store: object
+    revisions: object | None = None
 
     async def view(self, project_id: str, run_id: str) -> dict:
         bundle = await self.planner.for_run(project_id, run_id)
@@ -64,9 +65,7 @@ def build_dag_runtime(
 
     async def capability_resolver(project_id, required, workload):
         statuses = await node_scheduler.status()
-        eligible = (
-            await topology_resolver(project_id, workload) if topology_resolver else None
-        )
+        eligible = await topology_resolver(project_id, workload) if topology_resolver else None
         for item in statuses:
             workloads = set(item.get("workloads") or ["test"])
             available = {

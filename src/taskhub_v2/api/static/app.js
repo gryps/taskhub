@@ -291,6 +291,7 @@ function render(run) {
   renderEvidence(run);
   refreshDeployment(run);
   loadExecutionPlan(run.run_id).catch(() => renderExecutionPlan(null));
+  window.loadRevisionCenter?.(run.project_id, run.run_id);
 }
 
 const dagStateLabels = {draft: "草稿", validating: "验证中", active: "已激活",
@@ -493,6 +494,7 @@ async function loadProjects(preferredProjectId = currentProjectId) {
     : "请先创建或接入项目";
   renderProjectRepository(active);
   await Promise.all([loadCurrentProjectContract(), loadCurrentProductSpec()]);
+  window.loadRevisionCenter?.(currentProjectId, currentRun);
   refreshStartAction();
   window.dispatchEvent(new CustomEvent("taskhub:projects", {detail: data.projects}));
 }

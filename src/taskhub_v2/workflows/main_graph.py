@@ -212,7 +212,6 @@ def build_main_graph(
 
     def route_approval(state: CodingState) -> str:
         return "implementation" if state.get("decision") == "approve" else "reject"
-
     def route_implementation(state: CodingState) -> str:
         if state.get("status") != RunStatus.BLOCKED:
             return "acceptance"
@@ -220,10 +219,11 @@ def build_main_graph(
         revision_available = int(state.get("revision_count", 0)) < int(
             state.get("max_revision_attempts", 2)
         )
-        if reason.get("code") == "tests_failed" and revision_available:
+        if reason.get("code") in {"tests_failed", "dag_task_failed"} and revision_available:
             return "revision"
+        if reason.get("code") == "dag_task_failed":
+            return "revision_limit"
         return "recovery"
-
     def route_acceptance(state: CodingState) -> str:
         if state.get("status") != RunStatus.BLOCKED:
             return "review"
@@ -234,7 +234,6 @@ def build_main_graph(
             and int(state.get("revision_count", 0)) < int(state.get("max_revision_attempts", 2))
             else "recovery"
         )
-
     def route_recovery(state: CodingState) -> str:
         return "implementation" if state.get("decision") == "retry" else "reject"
 
@@ -278,7 +277,9 @@ def build_main_graph(
     builder.add_node(
         "implementation",
         build_implementation_graph(
-            worker, production_runtime.scheduler if production_runtime else None
+            worker,
+            production_runtime.scheduler if production_runtime else None,
+            production_runtime.revisions if production_runtime else None,
         ),
     )
     builder.add_node("implementation_revision", prepare_test_failure_revision)
@@ -320,6 +321,7 @@ def build_main_graph(
         {
             "recovery": "implementation_recovery",
             "revision": "implementation_revision",
+            "revision_limit": "revision_limit",
             "acceptance": "acceptance",
         },
     )

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=43">
+  <link rel="stylesheet" href="/static/styles.css?v=44">
 </head>
 <body>
   <header class="app-header">
@@ -275,6 +275,25 @@
               <div id="execution-tasks" class="execution-task-list"><p class="empty-state">尚无任务</p></div>
             </section>
           </section>
+        </div>
+      </details>
+      <details id="change-request-disclosure" class="providers-section project-settings-disclosure resource-disclosure hidden">
+        <summary>
+          <span class="project-settings-heading"><strong>变更与持续修订</strong><small>影响子图、计划新版本、回归范围与证据复用</small></span>
+          <span id="change-request-summary" class="muted">尚无变更请求</span>
+        </summary>
+        <div class="project-form resource-form revision-surface">
+          <p class="form-note">局部变更只替代受影响任务及其下游；未受影响的已验证成果保留原证据，不直接改写历史任务或 attempt。</p>
+          <form id="change-request-form" class="management-card revision-create-card">
+            <header><div><h3>提出变更请求</h3><p id="change-request-plan">请先选择一个已生成执行计划的运行</p></div><span class="card-state">影响分析</span></header>
+            <div class="form-grid">
+              <label class="wide">变更原因<textarea id="change-request-reason" required minlength="3" maxlength="4000" rows="3" placeholder="说明变化、失败或冲突，以及期望结果"></textarea></label>
+              <label class="wide">变化路径（每行一项）<textarea id="change-request-paths" rows="3" placeholder="src/api/users.py"></textarea></label>
+              <fieldset class="wide revision-task-picker"><legend>明确影响的任务（可选）</legend><div id="change-request-tasks"><span class="muted">执行计划加载后显示</span></div></fieldset>
+            </div>
+            <footer class="management-card-actions"><button id="create-change-request" type="submit" data-permission="delivery:execute">生成影响分析</button><span id="change-request-message" role="status"></span></footer>
+          </form>
+          <div id="change-request-list" class="revision-card-list"><p class="empty-state">尚无变更请求</p></div>
         </div>
       </details>
       <details id="test-environment-disclosure" class="providers-section project-settings-disclosure resource-disclosure">
@@ -658,7 +677,8 @@
     </section>
     </div>
   </main>
-  <script src="/static/app.js?v=16"></script>
+  <script src="/static/revision-center.js?v=1"></script>
+  <script src="/static/app.js?v=17"></script>
   <script src="/static/task-center.js?v=13"></script>
   <script src="/static/resource-center.js?v=25"></script>
   <script src="/static/onboarding.js?v=2"></script>

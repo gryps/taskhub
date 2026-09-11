@@ -4,9 +4,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from taskhub_v2.domain.change_request import ChangeRequest, ChangeRequestStatus
 from taskhub_v2.domain.production import (
-    ChangeRequest,
-    ChangeRequestStatus,
     ProductDecision,
     ProductDecisionStatus,
     ProductSpec,

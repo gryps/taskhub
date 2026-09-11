@@ -164,6 +164,29 @@ button {
   font-weight: 700;
   text-decoration: none;
 }
+
+.revision-surface { display: grid; gap: 14px; }
+.revision-create-card { display: grid; gap: 14px; }
+.revision-task-picker { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.revision-task-picker legend { color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.revision-task-picker > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.revision-task-picker label { display: flex; align-items: flex-start; gap: 7px; padding: 8px; border-radius: 7px; background: var(--surface-muted); }
+.revision-task-picker label span { display: grid; gap: 2px; min-width: 0; }
+.revision-task-picker label strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.revision-task-picker label small { color: var(--text-tertiary); font-size: 12px; overflow-wrap: anywhere; }
+.revision-card-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.revision-card { display: grid; align-content: start; gap: 12px; }
+.revision-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin: 0; }
+.revision-facts div { padding: 8px; border-radius: 7px; background: var(--surface-muted); }
+.revision-facts dt { color: var(--text-tertiary); font-size: 12px; }
+.revision-facts dd { margin: 3px 0 0; color: var(--text-primary); font-size: 13px; font-weight: 700; }
+.revision-impact { border-top: 1px solid var(--line); padding-top: 9px; }
+.revision-impact summary { cursor: pointer; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.revision-impact p { margin: 4px 0 9px; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 680px) {
+  .revision-card-list, .revision-task-picker > div { grid-template-columns: 1fr; }
+  .revision-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 button:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
 button:active:not(:disabled) { transform: translateY(1px); }
 button.secondary { background: var(--surface); border-color: var(--border-strong); color: #33423d; }

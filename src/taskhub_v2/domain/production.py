@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
+from taskhub_v2.domain.change_request import ChangeRequest
 from taskhub_v2.domain.dag import DagExecutionSnapshot, ExecutionBatch
 from taskhub_v2.domain.production_base import ProductionRecord, utc_now
 from taskhub_v2.domain.project_contract import ProjectContract
@@ -52,13 +53,6 @@ class TaskAttemptStatus(StrEnum):
     FAILED = "failed"
     TIMED_OUT = "timed_out"
     ABANDONED = "abandoned"
-
-
-class ChangeRequestStatus(StrEnum):
-    PROPOSED = "proposed"
-    APPROVED = "approved"
-    APPLIED = "applied"
-    REJECTED = "rejected"
 
 
 class RequirementStatus(StrEnum):
@@ -234,6 +228,8 @@ class ExecutionPlan(ProductionRecord):
     object_type: Literal["execution_plan"] = "execution_plan"
     plan_id: str = Field(pattern=r"^plan_[A-Za-z0-9_-]{3,100}$")
     version: int = Field(ge=1)
+    previous_plan_version: int | None = Field(default=None, ge=1)
+    change_request_id: str = ""
     status: ExecutionPlanStatus = ExecutionPlanStatus.DRAFT
     product_spec_id: str
     product_spec_version: int = Field(ge=1)
@@ -244,6 +240,16 @@ class ExecutionPlan(ProductionRecord):
     milestones: list[dict[str, Any]] = Field(default_factory=list)
     policy: dict[str, Any] = Field(default_factory=dict)
     legacy_run_id: str | None = None
+
+    @model_validator(mode="after")
+    def revision_chain_is_explicit(self):
+        if self.version == 1 and (self.previous_plan_version or self.change_request_id):
+            raise ValueError("first execution plan cannot reference a revision")
+        if self.version > 1 and (
+            self.previous_plan_version != self.version - 1 or not self.change_request_id
+        ):
+            raise ValueError("revised execution plan requires predecessor and ChangeRequest")
+        return self
 
 
 class ProductionTask(ProductionRecord):
@@ -273,6 +279,9 @@ class ProductionTask(ProductionRecord):
     waiting_reasons: list[str] = Field(default_factory=list)
     assigned_node_id: str = ""
     batch_id: str = ""
+    supersedes_task_id: str = ""
+    reused_from_task_id: str = ""
+    reused_attempt_id: str = ""
 
     @model_validator(mode="after")
     def dependencies_do_not_reference_self(self):
@@ -301,20 +310,7 @@ class TaskAttempt(ProductionRecord):
     started_at: str = ""
     finished_at: str = ""
     failure_reason: str = ""
-
-
-class ChangeRequest(ProductionRecord):
-    object_type: Literal["change_request"] = "change_request"
-    change_request_id: str = Field(pattern=r"^cr_[A-Za-z0-9_-]{3,100}$")
-    version: int = Field(default=1, ge=1)
-    status: ChangeRequestStatus = ChangeRequestStatus.PROPOSED
-    reason: str = Field(min_length=1, max_length=4_000)
-    source_event: str = Field(min_length=1, max_length=200)
-    affected_task_ids: list[str] = Field(default_factory=list)
-    superseded_task_ids: list[str] = Field(default_factory=list)
-    added_task_ids: list[str] = Field(default_factory=list)
-    regression_scope: list[str] = Field(default_factory=list)
-    plan_diff: dict[str, Any] = Field(default_factory=dict)
+    reused_from_attempt_id: str = ""
 
 
 class CapabilityPack(ProductionRecord):

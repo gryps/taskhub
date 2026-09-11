@@ -305,3 +305,13 @@ Updated: 2026-09-11
 - Desktop operations include drag/connect, selection, pan/zoom, minimap, auto-layout, undo/redo and context menus. Toolbar, Shift+F10 and list editing provide equivalent non-pointer paths; the list owns inventory-backed resource binding and resource-pool membership on narrow screens.
 - Verification: full Python suite `249 passed, 13 skipped`; TypeScript/Vite production build passed; real Google Chrome passed canvas operations and page-overflow checks at 1440, 680 and 390 pixels. Changed-file Ruff, legacy JavaScript syntax, architecture line limits and diff checks passed.
 - Phase 3A is source-only: push `.3 Git` and GitHub. Do not deploy, build Docker or publish registry images. Continue strictly from Phase 4.
+
+## Productized Delivery Phase 4
+
+- On 2026-09-12, Phase 4 added DB-backed ChangeRequest lifecycle records and explainable impact analysis from explicit tasks, changed paths, unfinished work and dependency descendants.
+- Applying an approved request creates ExecutionPlan version N+1. Impacted tasks receive replacement IDs and new attempts; completed unaffected tasks retain their validated result and evidence through explicit reuse links. Historical plans, tasks and attempts are never overwritten.
+- Verification tasks in the affected subgraph form the integration regression scope. Scheduler batch IDs include the plan version, so restart and revised execution cannot collide with earlier batches.
+- Automatic revisions respect each project's maximum revision count and escalate to a proposed request for human approval once exhausted. Manual requests support propose, approve, apply and reject through CSRF- and permission-protected APIs.
+- Development Workflow now contains a compact ChangeRequest configuration/presentation card. Its impact, reuse and regression facts come from the server, with responsive coverage at 1440, 680 and 390 pixels.
+- Verification: full Python suite `254 passed, 16 skipped`; TypeScript/Vite production build, changed-file Ruff, JavaScript syntax, architecture limits, diff checks and real Chrome at 1440, 680 and 390 pixels passed.
+- Phase 4 is source-only: push `.3 Git` and GitHub. Do not deploy, build Docker or publish registry images. Continue strictly from Phase 5.

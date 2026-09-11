@@ -39,6 +39,8 @@ class DagTaskExecutor(Protocol):
 
 
 class DagExecutionError(RuntimeError):
+    reason = "dag_task_failed"
+
     def __init__(self, detail: str, snapshot: DagExecutionSnapshot | None = None):
         self.detail = detail
         self.snapshot = snapshot

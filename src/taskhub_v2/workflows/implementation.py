@@ -68,13 +68,22 @@ async def recover_implementation(state: CodingState) -> dict:
     }
 
 
-def build_implementation_graph(worker: WorkerGateway, dag_scheduler=None):
+def build_implementation_graph(worker: WorkerGateway, dag_scheduler=None, revision_service=None):
     async def implement(state: StepState) -> dict:
         plan = Plan.model_validate(state["plan"])
         try:
             outcome = None
             if dag_scheduler and state.get("execution_plan"):
                 execution_plan = state["execution_plan"]
+                target_version = int(state.get("revision_count", 0)) + 1
+                while revision_service and execution_plan["version"] < target_version:
+                    revised = await revision_service.prepare_automatic(
+                        state["project_id"],
+                        execution_plan["plan_id"],
+                        execution_plan["version"],
+                        state.get("revision_feedback") or "workflow requested a revision",
+                    )
+                    execution_plan = revised["execution_plan"].model_dump(mode="json")
                 outcome = await dag_scheduler.execute(
                     execution_plan["plan_id"], execution_plan["version"]
                 )

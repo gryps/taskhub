@@ -5,6 +5,8 @@ def required_permission(path: str, method: str) -> str | None:
         return "users:manage" if "users" in path else "security:manage"
     if method in {"GET", "HEAD", "OPTIONS"}:
         return "read"
+    if path.startswith("/api/change-requests"):
+        return "delivery:execute"
     if path.startswith(
         ("/api/hosts", "/api/remote-nodes", "/api/containers", "/api/settings", "/api/onboarding")
     ):

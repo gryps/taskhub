@@ -24,6 +24,7 @@ from taskhub_v2.api.project_contract_routes import router as project_contract_ro
 from taskhub_v2.api.project_routes import router as project_router
 from taskhub_v2.api.provider_routes import router as provider_router
 from taskhub_v2.api.remote_node_routes import router as remote_node_router
+from taskhub_v2.api.revision_routes import router as revision_router
 from taskhub_v2.api.routes import router
 from taskhub_v2.api.system_routes import router as system_router
 from taskhub_v2.api.topology_routes import router as topology_router
@@ -56,6 +57,7 @@ from taskhub_v2.services.productization import ProductizationService
 from taskhub_v2.services.project_contracts import ProjectContractService
 from taskhub_v2.services.providers import ProviderCatalog
 from taskhub_v2.services.remote_nodes import RemoteNodeService
+from taskhub_v2.services.revisions import RevisionService
 from taskhub_v2.services.system_diagnostics import SystemDiagnosticsService
 from taskhub_v2.services.topologies import TopologyService
 from taskhub_v2.workers import (
@@ -210,9 +212,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 effective_settings,
                 provider_health,
                 test_scheduler,
-                ScheduledCodingRouter(
-                    test_scheduler, app.state.topologies.eligible_node_ids
-                ),
+                ScheduledCodingRouter(test_scheduler, app.state.topologies.eligible_node_ids),
             )
             app.state.dag_runtime = (
                 build_dag_runtime(
@@ -225,6 +225,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if effective_settings.production_orchestration_enabled
                 else None
             )
+            app.state.revisions = (
+                RevisionService(production_objects, projects, app.state.dag_runtime.planner)
+                if app.state.dag_runtime
+                else None
+            )
+            if app.state.dag_runtime:
+                app.state.dag_runtime.revisions = app.state.revisions
             graph = build_main_graph(
                 provider,
                 worker,
@@ -294,6 +301,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(container_router)
     app.include_router(host_router)
     app.include_router(remote_node_router)
+    app.include_router(revision_router)
     app.include_router(project_router)
     app.include_router(project_contract_router)
     app.include_router(dag_router)

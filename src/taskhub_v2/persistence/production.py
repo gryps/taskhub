@@ -120,7 +120,7 @@ def _validate_replacement(previous: ProductionObject, record: ProductionObject) 
         "change_request": {"proposed"},
         "capability_pack": {"draft"},
     }.get(record.object_type, set())
-    changes_allowed = record.object_type == "task_attempt" or (
+    changes_allowed = record.object_type in {"task_attempt", "change_request"} or (
         _state(previous) in mutable_states and _state(record) in mutable_states
     )
     if immutable_content(previous) != immutable_content(record) and not changes_allowed:

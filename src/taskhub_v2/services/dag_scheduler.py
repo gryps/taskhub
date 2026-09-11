@@ -108,7 +108,9 @@ class PersistentDagScheduler:
                 sequence = len(batches) + 1
                 batch = ExecutionBatch(
                     project_id=plan.project_id,
-                    batch_id=f"batch_{plan.plan_id.removeprefix('plan_')}_{sequence:03d}",
+                    batch_id=(
+                        f"batch_{plan.plan_id.removeprefix('plan_')}_v{plan.version}_{sequence:03d}"
+                    ),
                     plan_id=plan.plan_id,
                     plan_version=plan.version,
                     sequence=sequence,
