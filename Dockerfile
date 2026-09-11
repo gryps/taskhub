@@ -54,7 +54,7 @@ EXPOSE 8200
 VOLUME ["/var/lib/taskhub"]
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=6 \
-  CMD-SHELL if [ -n "$TASKHUB_TLS_CERT_FILE" ]; then curl -fkSs https://127.0.0.1:8200/api/health >/dev/null; else curl -fSs http://127.0.0.1:8200/api/health >/dev/null; fi
+  CMD if [ -n "$TASKHUB_TLS_CERT_FILE" ]; then curl -fkSs https://127.0.0.1:8200/api/health >/dev/null; else curl -fSs http://127.0.0.1:8200/api/health >/dev/null; fi
 
 ENTRYPOINT ["/usr/local/bin/taskhub-entrypoint"]
 CMD ["python", "-m", "uvicorn", "taskhub_v2.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8200"]
