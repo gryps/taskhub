@@ -3,6 +3,9 @@
 本文件是 `docs/requirements/productized-delivery-orchestration.md` 的持续开发续接点。每个
 Phase 完成后更新，用于在会话上下文压缩或新会话中恢复准确状态。
 
+逐阶段代码、测试和总体验收证据见
+`docs/requirements/productized-delivery-completion-audit.md`。
+
 | 阶段 | 状态 | 已交付边界 |
 | --- | --- | --- |
 | Phase 0 | 已完成 | 六类领域 Schema、状态不变量、统一仓储、旧线性兼容视图、功能开关 |
