@@ -68,18 +68,26 @@ async def recover_implementation(state: CodingState) -> dict:
     }
 
 
-def build_implementation_graph(worker: WorkerGateway):
+def build_implementation_graph(worker: WorkerGateway, dag_scheduler=None):
     async def implement(state: StepState) -> dict:
         plan = Plan.model_validate(state["plan"])
         try:
-            result = await worker.execute(
-                state["run_id"],
-                state["project_id"],
-                execution_requirement(state),
-                plan,
-                revision=int(state.get("revision_count", 0)),
-                feedback=state.get("revision_feedback", ""),
-            )
+            outcome = None
+            if dag_scheduler and state.get("execution_plan"):
+                execution_plan = state["execution_plan"]
+                outcome = await dag_scheduler.execute(
+                    execution_plan["plan_id"], execution_plan["version"]
+                )
+                result = outcome.implementation
+            else:
+                result = await worker.execute(
+                    state["run_id"],
+                    state["project_id"],
+                    execution_requirement(state),
+                    plan,
+                    revision=int(state.get("revision_count", 0)),
+                    feedback=state.get("revision_feedback", ""),
+                )
         except Exception as exc:
             reason = getattr(exc, "reason", exc.__class__.__name__)
             detail = getattr(exc, "detail", str(exc))[:16_000]
@@ -124,7 +132,7 @@ def build_implementation_graph(worker: WorkerGateway):
                     detail,
                 ),
             }
-        return {
+        update = {
             "implementation": result.model_dump(mode="json"),
             "current_stage": Stage.IMPLEMENTATION.value,
             "status": RunStatus.RUNNING.value,
@@ -138,6 +146,16 @@ def build_implementation_graph(worker: WorkerGateway):
                 result.summary,
             ),
         }
+        if outcome:
+            update.update(
+                {
+                    "execution_plan": outcome.plan.model_dump(mode="json"),
+                    "production_tasks": [item.model_dump(mode="json") for item in outcome.tasks],
+                    "execution_batches": [item.model_dump(mode="json") for item in outcome.batches],
+                    "dag_snapshot": outcome.snapshot.model_dump(mode="json"),
+                }
+            )
+        return update
 
     builder = StateGraph(StepState)
     builder.add_node("worker_execute", implement)

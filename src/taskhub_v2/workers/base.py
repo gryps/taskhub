@@ -12,6 +12,8 @@ class WorkerGateway(Protocol):
         plan: Plan,
         revision: int = 0,
         feedback: str = "",
+        base_commit: str = "",
+        task_context: dict | None = None,
     ) -> ExecutionResult: ...
 
 

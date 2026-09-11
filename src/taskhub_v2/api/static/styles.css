@@ -1122,9 +1122,11 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .resource-readonly .container-action { display: none !important; }
 
 .product-spec-surface,
-.project-contract-surface { display: grid; gap: 12px; }
+.project-contract-surface,
+.execution-plan-surface { display: grid; gap: 12px; }
 .product-spec-card > header { padding: 14px 16px; }
 .project-contract-card > header { padding: 14px 16px; }
+.execution-plan-card > header { padding: 14px 16px; }
 .product-spec-toolbar {
   display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
   align-items: end; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border);
@@ -1182,6 +1184,38 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .product-spec-diff div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; }
 .product-spec-diff dt { color: var(--text); font-size: 12px; font-weight: 750; }
 .product-spec-diff dd { margin: 0; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.execution-plan-facts {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+  padding: 14px 16px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.execution-plan-facts > div { min-width: 0; padding: 10px 12px; border-radius: 9px; background: var(--surface-subtle); }
+.execution-plan-facts span { display: block; margin-bottom: 4px; color: var(--text-tertiary); font-size: 12px; }
+.execution-plan-facts strong { color: var(--text); font-size: 13px; }
+.execution-plan-section { padding: 14px 16px; }
+.execution-plan-section + .execution-plan-section { border-top: 1px solid var(--border); }
+.execution-plan-section h4 { margin: 0 0 10px; color: var(--text); font-size: 14px; }
+.execution-batch-list,
+.execution-task-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.execution-batch-card,
+.execution-task-card { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-subtle); }
+.execution-batch-card header,
+.execution-task-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.execution-batch-card strong,
+.execution-task-card strong { display: block; color: var(--text); font-size: 14px; line-height: 1.4; }
+.execution-task-card code { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 12px; overflow-wrap: anywhere; }
+.execution-batch-card p { margin: 8px 0 5px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.execution-batch-card small { color: var(--text-tertiary); font-size: 12px; }
+.batch-selection-reason { display: block; margin-top: 4px; line-height: 1.45; }
+.execution-task-card dl { display: grid; gap: 7px; margin: 10px 0 0; }
+.execution-task-card dl > div { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 8px; }
+.execution-task-card dt { color: var(--text-tertiary); font-size: 12px; }
+.execution-task-card dd { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.execution-waiting { margin: 9px 0 0; padding-top: 9px; border-top: 1px solid var(--border); color: var(--warning); font-size: 12px; line-height: 1.45; }
+.dag-state { flex: 0 0 auto; padding: 3px 7px; border-radius: 999px; color: var(--text-secondary); background: var(--surface); font-size: 12px; font-weight: 700; }
+.dag-completed, .dag-active { color: var(--success); }
+.dag-running, .dag-ready, .dag-assigned, .dag-verifying { color: var(--accent); }
+.dag-failed, .dag-blocked { color: var(--danger); }
+.empty-state { grid-column: 1 / -1; margin: 0; color: var(--text-tertiary); font-size: 13px; }
 
 @media (max-width: 680px) {
   .runtime-role-grid { grid-template-columns: 1fr; }
@@ -1191,7 +1225,10 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .product-spec-toolbar,
   .product-spec-sections,
   .project-contract-toolbar,
-  .project-contract-facts { grid-template-columns: 1fr; }
+  .project-contract-facts,
+  .execution-plan-facts,
+  .execution-batch-list,
+  .execution-task-list { grid-template-columns: 1fr; }
   .product-spec-diff div { grid-template-columns: 1fr; gap: 3px; }
 }
 

@@ -5,11 +5,11 @@ from taskhub_v2.providers.base import ModelProvider
 from taskhub_v2.workflows.state import StepState, event, execution_requirement, model_run
 
 
-def build_planning_graph(provider: ModelProvider):
+def build_planning_graph(provider: ModelProvider, dag_planner=None):
     async def create_plan(state: StepState) -> dict:
         result = await provider.create_plan(execution_requirement(state))
         plan = result.content
-        return {
+        update = {
             "plan": plan.model_dump(),
             "current_stage": Stage.PLAN_APPROVAL.value,
             "status": RunStatus.WAITING.value,
@@ -27,6 +27,15 @@ def build_planning_graph(provider: ModelProvider):
                 f"{len(plan.steps)} implementation steps",
             ),
         }
+        if dag_planner:
+            bundle = await dag_planner.compile_from_run(state, plan)
+            update.update(
+                {
+                    "execution_plan": bundle.plan.model_dump(mode="json"),
+                    "production_tasks": [item.model_dump(mode="json") for item in bundle.tasks],
+                }
+            )
+        return update
 
     builder = StateGraph(StepState)
     builder.add_node("create_plan", create_plan)

@@ -37,6 +37,7 @@ def build_main_graph(
     checkpointer,
     publisher: PublisherGateway | None = None,
     acceptance: AcceptanceGateway | None = None,
+    production_runtime=None,
 ):
     publisher = publisher or LocalPublisher()
     acceptance = acceptance or LocalAcceptanceGateway()
@@ -55,9 +56,7 @@ def build_main_graph(
         return {
             "decision": decision,
             "pending_action": None,
-            "current_stage": (
-                Stage.IMPLEMENTATION.value if approved else Stage.REJECTED.value
-            ),
+            "current_stage": (Stage.IMPLEMENTATION.value if approved else Stage.REJECTED.value),
             "status": RunStatus.RUNNING.value if approved else RunStatus.REJECTED.value,
             "timeline": event(
                 Stage.PLAN_APPROVAL,
@@ -89,9 +88,7 @@ def build_main_graph(
             "decision": decision,
             "pending_action": None,
             "blocking_reason": None if retry else state.get("blocking_reason"),
-            "current_stage": (
-                Stage.SUPERVISION.value if retry else Stage.REJECTED.value
-            ),
+            "current_stage": (Stage.SUPERVISION.value if retry else Stage.REJECTED.value),
             "status": RunStatus.RUNNING.value if retry else RunStatus.REJECTED.value,
             "timeline": event(
                 Stage.SUPERVISION,
@@ -129,9 +126,7 @@ def build_main_graph(
     async def prepare_revision(state: CodingState) -> dict:
         supervision = state.get("supervision") or {}
         reasons = supervision.get("reasons") or []
-        feedback = "\n".join(
-            [supervision.get("summary", "Supervisor requested changes"), *reasons]
-        )
+        feedback = "\n".join([supervision.get("summary", "Supervisor requested changes"), *reasons])
         revision = int(state.get("revision_count", 0)) + 1
         return {
             "revision_count": revision,
@@ -155,9 +150,7 @@ def build_main_graph(
     async def publish(state: CodingState) -> dict:
         implementation = ExecutionResult.model_validate(state["implementation"])
         try:
-            result = await publisher.publish(
-                state["run_id"], state["project_id"], implementation
-            )
+            result = await publisher.publish(state["run_id"], state["project_id"], implementation)
         except Exception as exc:
             reason = getattr(exc, "reason", exc.__class__.__name__)
             detail = getattr(exc, "detail", str(exc))[:500]
@@ -168,24 +161,16 @@ def build_main_graph(
                     code=reason,
                     detail=detail,
                     responsible_node=implementation.execution_node or "publisher",
-                    model=(
-                        implementation.model_run.model
-                        if implementation.model_run
-                        else "none"
-                    ),
+                    model=(implementation.model_run.model if implementation.model_run else "none"),
                     recommended_action="retry publication or cancel the task",
-                    retry_after_seconds=max(
-                        0, int(getattr(exc, "retry_after_seconds", 0))
-                    ),
+                    retry_after_seconds=max(0, int(getattr(exc, "retry_after_seconds", 0))),
                 ),
                 "pending_action": {
                     "type": "publication_recovery",
                     "title": "Publication needs attention",
                     "choices": ["retry", "cancel"],
                 },
-                "timeline": event(
-                    Stage.MERGE_BLOCKED, "Publication blocked", "publisher", detail
-                ),
+                "timeline": event(Stage.MERGE_BLOCKED, "Publication blocked", "publisher", detail),
             }
         return {
             "publication": result.model_dump(mode="json"),
@@ -238,13 +223,18 @@ def build_main_graph(
         if reason.get("code") == "tests_failed" and revision_available:
             return "revision"
         return "recovery"
+
     def route_acceptance(state: CodingState) -> str:
         if state.get("status") != RunStatus.BLOCKED:
             return "review"
         reason = state.get("blocking_reason") or {}
-        return "revision" if reason.get("responsible_node") == "implementation" and int(
-            state.get("revision_count", 0)
-        ) < int(state.get("max_revision_attempts", 2)) else "recovery"
+        return (
+            "revision"
+            if reason.get("responsible_node") == "implementation"
+            and int(state.get("revision_count", 0)) < int(state.get("max_revision_attempts", 2))
+            else "recovery"
+        )
+
     def route_recovery(state: CodingState) -> str:
         return "implementation" if state.get("decision") == "retry" else "reject"
 
@@ -259,13 +249,13 @@ def build_main_graph(
             return "browser_acceptance"
         if missing_evidence:
             return "revision_limit"
-        if int(state.get("revision_count", 0)) < int(
-            state.get("max_revision_attempts", 2)
-        ):
+        if int(state.get("revision_count", 0)) < int(state.get("max_revision_attempts", 2)):
             return "revision"
         return "revision_limit"
+
     def route_risk(state: CodingState) -> str:
         return "risk_recovery" if state.get("status") == RunStatus.BLOCKED else "supervisor"
+
     def route_supervision_recovery(state: CodingState) -> str:
         return "supervisor" if state.get("decision") == "retry" else "reject"
 
@@ -280,9 +270,17 @@ def build_main_graph(
 
     builder = StateGraph(CodingState)
     builder.add_node("intake", build_intake_graph())
-    builder.add_node("planning", build_planning_graph(provider))
+    builder.add_node(
+        "planning",
+        build_planning_graph(provider, production_runtime.planner if production_runtime else None),
+    )
     builder.add_node("plan_approval", request_plan_approval)
-    builder.add_node("implementation", build_implementation_graph(worker))
+    builder.add_node(
+        "implementation",
+        build_implementation_graph(
+            worker, production_runtime.scheduler if production_runtime else None
+        ),
+    )
     builder.add_node("implementation_revision", prepare_test_failure_revision)
     builder.add_node("acceptance", build_acceptance_graph(acceptance))
     builder.add_node("review", build_review_graph(provider))

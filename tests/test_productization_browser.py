@@ -86,20 +86,61 @@ def test_product_spec_card_layout(tmp_path):
         )
         assert context.request.post(f"{contract_root}/review", headers={"X-CSRF-Token": csrf}).ok
         assert context.request.post(f"{contract_root}/activate", headers={"X-CSRF-Token": csrf}).ok
+        detail = context.request.get(f"{url}/api/product-specs/current?project_id=demo").json()
+        spec = detail["product_spec"]
+        if detail["decisions"]:
+            decision = detail["decisions"][0]
+            answers = {item["key"]: "按批准项目契约执行" for item in decision["questions"]}
+            resolved = context.request.post(
+                f"{url}/api/projects/demo/product-decisions/{decision['decision_id']}/resolve",
+                headers={"X-CSRF-Token": csrf},
+                data={"answers": answers},
+            )
+            assert resolved.ok
+        spec_root = (
+            f"{url}/api/product-specs/{spec['spec_id']}/versions/{spec['version']}?project_id=demo"
+        )
+        assert context.request.post(
+            spec_root.replace("?", "/review?"), headers={"X-CSRF-Token": csrf}
+        ).ok
+        assert context.request.post(
+            spec_root.replace("?", "/approve?"), headers={"X-CSRF-Token": csrf}
+        ).ok
+        started = context.request.post(
+            f"{url}/api/runs",
+            headers={"X-CSRF-Token": csrf},
+            data={
+                "project_id": "demo",
+                "requirement": "ignored because the approved specification is authoritative",
+                "product_spec_id": spec["spec_id"],
+                "product_spec_version": spec["version"],
+            },
+        )
+        assert started.status == 201
         page.locator("#nav-workflow").click()
         page.evaluate("Promise.all([loadCurrentProductSpec(), loadCurrentProjectContract()])")
+        page.evaluate(
+            "run => { currentRun = run.run_id; render(run); }",
+            started.json(),
+        )
 
         disclosure = page.locator("#product-spec-disclosure")
         expect(disclosure).to_be_visible()
         disclosure.locator("summary").click()
-        expect(page.locator("#product-spec-state")).to_have_text("草稿")
+        expect(page.locator("#product-spec-state")).to_have_text("已批准")
         expect(page.locator("#product-spec-sections .product-spec-section")).to_have_count(11)
-        expect(page.locator("#product-decision-form")).to_be_visible()
+        expect(page.locator("#product-decision-form")).to_be_hidden()
         contract_disclosure = page.locator("#project-contract-disclosure")
         expect(contract_disclosure).to_be_visible()
         contract_disclosure.locator("summary").click()
         expect(page.locator("#project-contract-state")).to_have_text("已生效")
         expect(page.locator("#project-contract-facts > div")).to_have_count(6)
+        execution_disclosure = page.locator("#execution-plan-disclosure")
+        expect(execution_disclosure).to_be_visible()
+        execution_disclosure.locator("summary").click()
+        expect(page.locator("#execution-plan-state")).to_have_text("已激活")
+        expect(page.locator("#execution-plan-facts > div")).to_have_count(4)
+        assert page.locator("#execution-tasks .execution-task-card").count() >= 2
         assert (
             page.locator("#product-spec-title").evaluate(
                 "element => getComputedStyle(element).fontSize"
@@ -128,6 +169,12 @@ def test_product_spec_card_layout(tmp_path):
                 .split()
             )
             assert contract_columns == columns
+            dag_columns = len(
+                page.locator("#execution-tasks")
+                .evaluate("element => getComputedStyle(element).gridTemplateColumns")
+                .split()
+            )
+            assert dag_columns == columns
             assert page.evaluate(
                 "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
             )

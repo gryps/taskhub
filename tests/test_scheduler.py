@@ -51,9 +51,7 @@ def registry(tmp_path):
 def test_scheduler_round_robins_new_runs_and_keeps_sticky_assignment(tmp_path):
     async def scenario():
         runner = RecordingRunner()
-        scheduler = NodeScheduler(
-            registry(tmp_path), runner, str(tmp_path / "state.json")
-        )
+        scheduler = NodeScheduler(registry(tmp_path), runner, str(tmp_path / "state.json"))
         first = await scheduler.run("job-1", "run-1", [], 30, str(tmp_path))
         second = await scheduler.run("job-2", "run-2", [], 30, str(tmp_path))
         repeated = await scheduler.run("job-3", "run-1", [], 30, str(tmp_path))
@@ -69,9 +67,7 @@ def test_scheduler_round_robins_new_runs_and_keeps_sticky_assignment(tmp_path):
 def test_scheduler_fails_over_to_another_node(tmp_path):
     async def scenario():
         runner = RecordingRunner(failing={"node-a"})
-        scheduler = NodeScheduler(
-            registry(tmp_path), runner, str(tmp_path / "state.json")
-        )
+        scheduler = NodeScheduler(registry(tmp_path), runner, str(tmp_path / "state.json"))
         return await scheduler.run("job-1", "run-1", [], 30, str(tmp_path)), runner
 
     result, runner = asyncio.run(scenario())
@@ -87,12 +83,8 @@ def test_scheduler_routes_only_to_node_with_required_tool(tmp_path):
                 "node-b": {"python3": True, "pytest": True, "npm": True},
             }
         )
-        scheduler = NodeScheduler(
-            registry(tmp_path), runner, str(tmp_path / "state.json")
-        )
-        result = await scheduler.run(
-            "job-npm", "run-npm", [["npm", "test"]], 30, str(tmp_path)
-        )
+        scheduler = NodeScheduler(registry(tmp_path), runner, str(tmp_path / "state.json"))
+        result = await scheduler.run("job-npm", "run-npm", [["npm", "test"]], 30, str(tmp_path))
         return result, runner
 
     result, runner = asyncio.run(scenario())
@@ -104,16 +96,33 @@ def test_scheduler_treats_npx_as_npm_capability(tmp_path):
     async def scenario():
         runner = RecordingRunner(
             capabilities={
-                "node-a": {"windows_gui": True, "playwright": True, "screenshot": True,
-                    "trace": True, "npm": True, "browser_profile": True,
-                    "browser_authenticated": True},
+                "node-a": {
+                    "windows_gui": True,
+                    "playwright": True,
+                    "screenshot": True,
+                    "trace": True,
+                    "npm": True,
+                    "browser_profile": True,
+                    "browser_authenticated": True,
+                },
             }
         )
         path = tmp_path / "nodes.json"
-        path.write_text(json.dumps({"nodes": [{
-            "id": "node-a", "kind": "remote", "url": "http://node-a:8301",
-            "workloads": ["browser_acceptance"],
-        }]}), encoding="utf-8")
+        path.write_text(
+            json.dumps(
+                {
+                    "nodes": [
+                        {
+                            "id": "node-a",
+                            "kind": "remote",
+                            "url": "http://node-a:8301",
+                            "workloads": ["browser_acceptance"],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         scheduler = NodeScheduler(NodeRegistry(str(path)), runner, str(tmp_path / "state.json"))
         await scheduler.preflight_browser([["npx", "playwright", "test"]], set())
 
@@ -130,17 +139,28 @@ def test_scheduler_preserves_single_browser_node_execution_failure(tmp_path):
                     "playwright": True,
                     "screenshot": True,
                     "trace": True,
-                        "npm": True,
-                        "browser_profile": True,
-                        "browser_authenticated": True,
+                    "npm": True,
+                    "browser_profile": True,
+                    "browser_authenticated": True,
                 },
             },
         )
         path = tmp_path / "nodes.json"
-        path.write_text(json.dumps({"nodes": [{
-            "id": "node-a", "kind": "remote", "url": "http://node-a:8301",
-            "workloads": ["browser_acceptance"],
-        }]}), encoding="utf-8")
+        path.write_text(
+            json.dumps(
+                {
+                    "nodes": [
+                        {
+                            "id": "node-a",
+                            "kind": "remote",
+                            "url": "http://node-a:8301",
+                            "workloads": ["browser_acceptance"],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         scheduler = NodeScheduler(NodeRegistry(str(path)), runner, str(tmp_path / "state.json"))
         await scheduler.run(
             "job-browser",
@@ -165,9 +185,7 @@ def test_scheduler_reports_missing_required_tool(tmp_path):
                 "node-b": {"python3": True, "pytest": False},
             }
         )
-        scheduler = NodeScheduler(
-            registry(tmp_path), runner, str(tmp_path / "state.json")
-        )
+        scheduler = NodeScheduler(registry(tmp_path), runner, str(tmp_path / "state.json"))
         await scheduler.run(
             "job-pytest",
             "run-pytest",
@@ -198,9 +216,7 @@ def test_scheduler_prefers_primary_and_uses_fallback_when_primary_fails(tmp_path
 
     async def scenario():
         runner = RecordingRunner(failing={"primary"})
-        scheduler = NodeScheduler(
-            NodeRegistry(str(path)), runner, str(tmp_path / "state.json")
-        )
+        scheduler = NodeScheduler(NodeRegistry(str(path)), runner, str(tmp_path / "state.json"))
         result = await scheduler.run("job-1", "run-1", [], 30, str(tmp_path))
         return result, runner
 
@@ -225,26 +241,80 @@ def test_scheduler_filters_nodes_by_workload(tmp_path):
 
     async def scenario():
         runner = RecordingRunner()
-        scheduler = NodeScheduler(
-            NodeRegistry(str(path)), runner, str(tmp_path / "state.json")
-        )
-        return await scheduler.run(
-            "job-code", "run-code", [], 30, str(tmp_path), workload="coding"
-        )
+        scheduler = NodeScheduler(NodeRegistry(str(path)), runner, str(tmp_path / "state.json"))
+        return await scheduler.run("job-code", "run-code", [], 30, str(tmp_path), workload="coding")
 
     result = asyncio.run(scenario())
     assert result.node_id == "coding"
+
+
+def test_coding_scheduler_enforces_dag_task_capabilities(tmp_path):
+    import pytest
+
+    path = tmp_path / "nodes.json"
+    path.write_text(
+        json.dumps(
+            {
+                "nodes": [
+                    {"id": "coding", "kind": "local", "workloads": ["coding"]},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    runner = RecordingRunner(capabilities={"coding": {"coding": True, "python3": True}})
+    scheduler = NodeScheduler(NodeRegistry(str(path)), runner, str(tmp_path / "state.json"))
+
+    async def scenario():
+        await scheduler.run_coding(
+            "task-code",
+            "task-code",
+            "implement",
+            None,
+            "",
+            30,
+            str(tmp_path),
+            required_capabilities_override={"docker"},
+        )
+
+    with pytest.raises(NodeExecutionError, match="coding, docker"):
+        asyncio.run(scenario())
 
 
 def test_browser_preflight_does_not_execute_or_reserve_slots(tmp_path):
     import pytest
 
     path = tmp_path / "nodes.json"
-    path.write_text(json.dumps({"nodes": [{"id": "windows-gui-34", "kind": "remote",
-        "url": "http://192.168.31.34:8301", "workloads": ["browser_acceptance"]}]}))
-    capabilities = dict.fromkeys(["windows_gui", "playwright", "chromium", "edge",
-                                  "screenshot", "video", "trace", "python3", "pytest",
-                                  "browser_profile", "browser_authenticated"], True)
+    path.write_text(
+        json.dumps(
+            {
+                "nodes": [
+                    {
+                        "id": "windows-gui-34",
+                        "kind": "remote",
+                        "url": "http://192.168.31.34:8301",
+                        "workloads": ["browser_acceptance"],
+                    }
+                ]
+            }
+        )
+    )
+    capabilities = dict.fromkeys(
+        [
+            "windows_gui",
+            "playwright",
+            "chromium",
+            "edge",
+            "screenshot",
+            "video",
+            "trace",
+            "python3",
+            "pytest",
+            "browser_profile",
+            "browser_authenticated",
+        ],
+        True,
+    )
     runner = RecordingRunner(capabilities={"windows-gui-34": capabilities})
     scheduler = NodeScheduler(NodeRegistry(str(path)), runner, str(tmp_path / "state.json"))
 

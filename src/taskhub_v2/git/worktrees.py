@@ -14,10 +14,14 @@ class GitWorkspaceManager:
     def __init__(self, root: str):
         self.root = Path(root).resolve()
 
-    async def prepare(self, project: ProjectDefinition, run_id: str) -> Workspace:
-        return await asyncio.to_thread(self._prepare, project, run_id)
+    async def prepare(
+        self, project: ProjectDefinition, run_id: str, base_commit: str = ""
+    ) -> Workspace:
+        return await asyncio.to_thread(self._prepare, project, run_id, base_commit)
 
-    def _prepare(self, project: ProjectDefinition, run_id: str) -> Workspace:
+    def _prepare(
+        self, project: ProjectDefinition, run_id: str, requested_base_commit: str = ""
+    ) -> Workspace:
         repository = Path(project.repository).resolve()
         self._verify_repository(repository)
         if project.authority_remote:
@@ -27,7 +31,9 @@ class GitWorkspaceManager:
         if not target.is_relative_to(self.root):
             raise WorkspaceError("workspace path escaped configured root")
         branch = f"taskhub/{safe_run_id}"
-        base_commit = self._git(repository, "rev-parse", project.base_ref).strip()
+        base_commit = self._git(
+            repository, "rev-parse", requested_base_commit or project.base_ref
+        ).strip()
         if target.exists():
             current = self._git(target, "rev-parse", "HEAD").strip()
             branch_base = self._original_base(target, current, project.base_ref, run_id)
@@ -38,18 +44,21 @@ class GitWorkspaceManager:
                 base_commit=branch_base,
             )
         target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        branch_exists = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(repository),
-                "show-ref",
-                "--verify",
-                "--quiet",
-                f"refs/heads/{branch}",
-            ],
-            check=False,
-        ).returncode == 0
+        branch_exists = (
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(repository),
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    f"refs/heads/{branch}",
+                ],
+                check=False,
+            ).returncode
+            == 0
+        )
         if branch_exists:
             self._git(repository, "worktree", "add", str(target), branch)
         else:
@@ -61,9 +70,7 @@ class GitWorkspaceManager:
             base_commit=base_commit,
         )
 
-    def _original_base(
-        self, target: Path, current: str, base_ref: str, run_id: str
-    ) -> str:
+    def _original_base(self, target: Path, current: str, base_ref: str, run_id: str) -> str:
         first_run_commit = self._git(
             target,
             "log",

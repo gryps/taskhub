@@ -16,6 +16,10 @@ class BaseState(TypedDict, total=False):
     current_stage: str
     status: str
     plan: dict[str, Any] | None
+    execution_plan: dict[str, Any] | None
+    production_tasks: list[dict[str, Any]]
+    execution_batches: list[dict[str, Any]]
+    dag_snapshot: dict[str, Any] | None
     implementation: str | None
     acceptance: dict[str, Any] | None
     review: str | None

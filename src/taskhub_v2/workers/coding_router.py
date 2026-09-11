@@ -19,14 +19,17 @@ class CodexCodingRouter:
         self.health = health
 
     async def modify(
-        self, requirement: str, plan: Plan, workdir: str, feedback: str = ""
+        self,
+        requirement: str,
+        plan: Plan,
+        workdir: str,
+        feedback: str = "",
+        task_context: dict | None = None,
     ) -> ModelResult[CodeChangeSummary]:
         failures = []
         for provider in self.providers:
             available, health = (
-                self.health.availability(provider.provider_id)
-                if self.health
-                else (True, None)
+                self.health.availability(provider.provider_id) if self.health else (True, None)
             )
             if not available:
                 failures.append(f"{provider.provider_id}:cooldown:{health['reason']}")
@@ -53,19 +56,27 @@ class ScheduledCodingRouter:
         self.scheduler = scheduler
 
     async def modify(
-        self, requirement: str, plan: Plan, workdir: str, feedback: str = ""
+        self,
+        requirement: str,
+        plan: Plan,
+        workdir: str,
+        feedback: str = "",
+        task_context: dict | None = None,
     ) -> ModelResult[CodeChangeSummary]:
         from pathlib import Path
 
-        job_id = f"{Path(workdir).name}-code"
+        context = task_context or {}
+        task_id = str(context.get("task_id") or Path(workdir).name)
+        job_id = f"{task_id}-code"
         scheduled = await self.scheduler.run_coding(
             job_id,
-            Path(workdir).name,
+            task_id,
             requirement,
             plan,
             feedback,
             1200,
             workdir,
+            required_capabilities_override=set(context.get("required_capabilities") or []),
         )
         scheduled.result.usage["coding_node"] = scheduled.node_id
         return scheduled.result

@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
+from taskhub_v2.domain.dag import DagExecutionSnapshot, ExecutionBatch
 from taskhub_v2.domain.production_base import ProductionRecord, utc_now
 from taskhub_v2.domain.project_contract import ProjectContract
 
@@ -86,6 +87,15 @@ STATE_TRANSITIONS: dict[str, dict[str, set[str]]] = {
         "draft": {"in_review", "rejected"},
         "in_review": {"active", "draft", "rejected"},
         "active": {"superseded"},
+    },
+    "execution_batch": {
+        "planned": {"running", "failed"},
+        "running": {"completed", "failed"},
+    },
+    "dag_snapshot": {
+        "planning": {"running", "waiting", "blocked"},
+        "running": {"running", "waiting", "completed", "blocked"},
+        "waiting": {"running", "waiting", "blocked"},
     },
     "product_spec": {
         "draft": {"in_review", "rejected"},
@@ -227,6 +237,9 @@ class ExecutionPlan(ProductionRecord):
     status: ExecutionPlanStatus = ExecutionPlanStatus.DRAFT
     product_spec_id: str
     product_spec_version: int = Field(ge=1)
+    project_contract_id: str = ""
+    project_contract_version: int = Field(default=1, ge=1)
+    run_id: str = ""
     task_ids: list[str] = Field(default_factory=list)
     milestones: list[dict[str, Any]] = Field(default_factory=list)
     policy: dict[str, Any] = Field(default_factory=dict)
@@ -252,6 +265,14 @@ class ProductionTask(ProductionRecord):
     expected_artifacts: list[str] = Field(default_factory=list)
     estimated_size: Literal["small", "medium", "large"] = "small"
     risk_level: Literal["low", "medium", "high"] = "medium"
+    task_type: Literal["analysis", "implementation", "verification"] = "implementation"
+    resource_locks: list[str] = Field(default_factory=list)
+    priority: int = Field(default=100, ge=0, le=10_000)
+    input_contracts_frozen: bool = True
+    independently_verifiable: bool = True
+    waiting_reasons: list[str] = Field(default_factory=list)
+    assigned_node_id: str = ""
+    batch_id: str = ""
 
     @model_validator(mode="after")
     def dependencies_do_not_reference_self(self):
@@ -273,6 +294,13 @@ class TaskAttempt(ProductionRecord):
     request_digest: str = ""
     result: dict[str, Any] | None = None
     evidence_ids: list[str] = Field(default_factory=list)
+    plan_id: str = ""
+    plan_version: int = Field(default=1, ge=1)
+    idempotency_key: str = ""
+    base_commit: str = ""
+    started_at: str = ""
+    finished_at: str = ""
+    failure_reason: str = ""
 
 
 class ChangeRequest(ProductionRecord):
@@ -318,6 +346,8 @@ ProductionObject = Annotated[
     Requirement
     | ProductDecision
     | ProjectContract
+    | ExecutionBatch
+    | DagExecutionSnapshot
     | ProductSpec
     | ExecutionPlan
     | ProductionTask
@@ -337,6 +367,10 @@ def object_identity(record: ProductionObject) -> tuple[str, str, str]:
             identity = record.decision_id, "1"
         case ProjectContract():
             identity = record.contract_id, str(record.version)
+        case ExecutionBatch():
+            identity = record.batch_id, "1"
+        case DagExecutionSnapshot():
+            identity = record.snapshot_id, str(record.sequence)
         case ProductSpec():
             identity = record.spec_id, str(record.version)
         case ExecutionPlan():

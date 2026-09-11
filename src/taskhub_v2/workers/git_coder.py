@@ -12,9 +12,7 @@ from taskhub_v2.workers.coding_router import CodexCodingRouter
 from taskhub_v2.workers.test_diagnostics import failed_test_diagnostics
 
 FORBIDDEN_FILES = {".env", ".env.local", "auth.json", "credentials.json"}
-GENERATED_PARTS = {
-    ".venv", "__pycache__", ".pytest_cache", "node_modules", "dist", "build"
-}
+GENERATED_PARTS = {".venv", "__pycache__", ".pytest_cache", "node_modules", "dist", "build"}
 GENERATED_SUFFIXES = {".pyc", ".pyo", ".coverage"}
 
 
@@ -50,9 +48,11 @@ class GitCodingWorker:
         plan: Plan,
         revision: int = 0,
         feedback: str = "",
+        base_commit: str = "",
+        task_context: dict | None = None,
     ) -> ExecutionResult:
         project = self.projects.get(project_id)
-        workspace = await self.workspaces.prepare(project, run_id)
+        workspace = await self.workspaces.prepare(project, run_id, base_commit)
         await self._cleanup_generated_untracked(workspace.path)
         existing = await self._existing_result(
             workspace.path, workspace.base_commit, revision, feedback
@@ -80,9 +80,10 @@ class GitCodingWorker:
             return existing
 
         model_results = []
-        model_result = await self.coder.modify(
-            requirement, plan, workspace.path, feedback=feedback
-        )
+        coding_options = {"feedback": feedback}
+        if task_context:
+            coding_options["task_context"] = task_context
+        model_result = await self.coder.modify(requirement, plan, workspace.path, **coding_options)
         model_results.append(model_result)
         changed_files = await self._changed_files(workspace.path)
         if not changed_files:
@@ -91,8 +92,11 @@ class GitCodingWorker:
                     run_id, revision, workspace, project, model_result
                 )
             retry_feedback = self._no_change_feedback(model_result, feedback)
+            retry_options = {"feedback": retry_feedback}
+            if task_context:
+                retry_options["task_context"] = task_context
             model_result = await self.coder.modify(
-                requirement, plan, workspace.path, feedback=retry_feedback
+                requirement, plan, workspace.path, **retry_options
             )
             model_results.append(model_result)
             changed_files = await self._changed_files(workspace.path)
@@ -130,6 +134,8 @@ class GitCodingWorker:
         await self._cleanup_generated_untracked(workspace.path)
         await self._git(workspace.path, "add", "-A", "--", *changed_files)
         commit_metadata = f"TaskHub-Run: {run_id}\nTaskHub-Revision: {revision}"
+        if task_context and task_context.get("task_id"):
+            commit_metadata += f"\nTaskHub-Task: {task_context['task_id']}"
         if feedback:
             commit_metadata += f"\nTaskHub-Feedback: {self._feedback_key(feedback)}"
         await self._git(
@@ -178,8 +184,7 @@ class GitCodingWorker:
     def _no_change_feedback(model_result, existing_feedback: str) -> str:
         prefix = f"{existing_feedback}\n" if existing_feedback else ""
         return (
-            prefix
-            + "The previous coding attempt returned successfully but produced no Git "
+            prefix + "The previous coding attempt returned successfully but produced no Git "
             "changes. Its summary was: "
             + model_result.content.summary
             + ". Re-inspect the repository, identify the concrete files required by the "
@@ -255,17 +260,13 @@ class GitCodingWorker:
         feedback_recorded = True
         if feedback and expected == head:
             message = await self._git(workdir, "log", "-1", "--format=%B")
-            feedback_recorded = (
-                f"TaskHub-Feedback: {self._feedback_key(feedback)}" in message
-            )
+            feedback_recorded = f"TaskHub-Feedback: {self._feedback_key(feedback)}" in message
         recoverable = (
-            head != base_commit
-            and (revision == 0 or expected == head)
-            and feedback_recorded
+            head != base_commit and (revision == 0 or expected == head) and feedback_recorded
         )
         if not status and recoverable:
             diff = await self._git(workdir, "diff", "--binary", f"{base_commit}..{head}")
-            changed = (await self._git(workdir, "diff", "--name-only", f"{base_commit}..{head}"))
+            changed = await self._git(workdir, "diff", "--name-only", f"{base_commit}..{head}")
             return ExecutionResult(
                 summary="Recovered previously committed execution",
                 evidence=diff[-50_000:],

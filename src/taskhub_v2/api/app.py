@@ -12,6 +12,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from taskhub_v2.api.auth_routes import router as auth_router
 from taskhub_v2.api.configuration_routes import router as configuration_router
 from taskhub_v2.api.container_routes import router as container_router
+from taskhub_v2.api.dag_routes import router as dag_router
 from taskhub_v2.api.deployment_routes import router as deployment_router
 from taskhub_v2.api.diagnostic_routes import router as diagnostic_router
 from taskhub_v2.api.host_routes import router as host_router
@@ -42,6 +43,7 @@ from taskhub_v2.security.node_credentials import NodeCredentialVault
 from taskhub_v2.services import RunService
 from taskhub_v2.services.configuration import ManagedConfigurationService
 from taskhub_v2.services.containers import ContainerManager
+from taskhub_v2.services.dag_runtime import build_dag_runtime
 from taskhub_v2.services.device_auth import CodexDeviceAuthService
 from taskhub_v2.services.hosts import PhysicalHostService
 from taskhub_v2.services.operational_log import OperationalLog
@@ -196,14 +198,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.project_contracts = ProjectContractService(
                 production_objects, projects, test_scheduler
             )
+            worker = build_worker(
+                effective_settings,
+                provider_health,
+                test_scheduler,
+                ScheduledCodingRouter(test_scheduler),
+            )
+            app.state.dag_runtime = (
+                build_dag_runtime(production_objects, projects, worker, test_scheduler)
+                if effective_settings.production_orchestration_enabled
+                else None
+            )
             graph = build_main_graph(
                 provider,
-                build_worker(
-                    effective_settings,
-                    provider_health,
-                    test_scheduler,
-                    ScheduledCodingRouter(test_scheduler),
-                ),
+                worker,
                 checkpointer,
                 build_publisher(effective_settings, test_scheduler),
                 build_acceptance(
@@ -215,6 +223,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         else None
                     ),
                 ),
+                production_runtime=app.state.dag_runtime,
             )
             app.state.run_service = RunService(
                 graph,
@@ -271,6 +280,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(remote_node_router)
     app.include_router(project_router)
     app.include_router(project_contract_router)
+    app.include_router(dag_router)
     app.include_router(productization_router)
     app.include_router(node_router)
     app.include_router(onboarding_router)

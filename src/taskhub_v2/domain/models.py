@@ -308,6 +308,10 @@ class RunView(BaseModel):
     max_revision_attempts: int = 2
     revision_feedback: str = ""
     plan: Plan | None = None
+    execution_plan: dict[str, Any] | None = None
+    production_tasks: list[dict[str, Any]] = Field(default_factory=list)
+    execution_batches: list[dict[str, Any]] = Field(default_factory=list)
+    dag_snapshot: dict[str, Any] | None = None
     implementation: ExecutionResult | None = None
     acceptance: AcceptanceResult | None = None
     review: str | None = None

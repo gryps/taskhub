@@ -144,6 +144,21 @@ def test_product_spec_must_be_approved_before_run(tmp_path):
         assert run["project_contract_id"] == contract["contract_id"]
         assert run["project_contract_version"] == 1
         assert run["requirement"].startswith("为管理员用户增加状态页")
+        assert run["execution_plan"]["status"] == "active"
+        assert len(run["production_tasks"]) == 3
+
+        implemented = client.post(
+            f"/api/runs/{run['run_id']}/approval",
+            headers=headers,
+            json={"decision": "approve"},
+        )
+        assert implemented.status_code == 200
+        implemented_run = implemented.json()
+        assert implemented_run["execution_plan"]["status"] == "completed"
+        assert len(implemented_run["execution_batches"]) == 2
+        dag = client.get(f"/api/runs/{run['run_id']}/execution-plan").json()
+        assert dag["task_page"] == {"page": 1, "page_size": 100, "total": 3}
+        assert dag["latest_snapshot"]["status"] == "completed"
 
 
 def test_approved_product_spec_still_requires_active_project_contract(tmp_path):

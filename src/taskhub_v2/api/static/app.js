@@ -290,6 +290,57 @@ function render(run) {
   );
   renderEvidence(run);
   refreshDeployment(run);
+  loadExecutionPlan(run.run_id).catch(() => renderExecutionPlan(null));
+}
+
+const dagStateLabels = {draft: "草稿", validating: "验证中", active: "已激活",
+  completed: "已完成", superseded: "已替代", planned: "待运行", running: "运行中",
+  failed: "失败", pending: "等待", ready: "就绪", assigned: "已分配",
+  verifying: "验证中", blocked: "阻塞"};
+
+function renderExecutionPlan(data) {
+  const disclosure = byId("execution-plan-disclosure");
+  const plan = data?.execution_plan;
+  disclosure.classList.toggle("hidden", !productizationEnabled || !plan);
+  if (!plan) return;
+  const tasks = data.tasks || [];
+  const batches = data.batches || [];
+  const counts = tasks.reduce((result, task) => {
+    result[task.status] = (result[task.status] || 0) + 1;
+    return result;
+  }, {});
+  const state = dagStateLabels[plan.status] || plan.status;
+  byId("execution-plan-summary").textContent = `v${plan.version} · ${state} · ${tasks.length} 项任务`;
+  byId("execution-plan-title").textContent = `${activeProject?.name || plan.project_id} · 执行计划`;
+  byId("execution-plan-detail").textContent = `计划 ${plan.plan_id} · 绑定产品规格 v${plan.product_spec_version} 与项目契约 v${plan.project_contract_version}`;
+  byId("execution-plan-state").textContent = state;
+  byId("execution-plan-state").className = `card-state ${["completed", "active"].includes(plan.status) ? "ok" : plan.status === "failed" ? "bad" : "warn"}`;
+  byId("execution-plan-facts").innerHTML = [
+    ["任务总数", tasks.length], ["等待 / 就绪", `${counts.pending || 0} / ${counts.ready || 0}`],
+    ["运行 / 验证", `${(counts.assigned || 0) + (counts.running || 0)} / ${counts.verifying || 0}`],
+    ["完成 / 阻塞", `${counts.completed || 0} / ${counts.blocked || 0}`],
+  ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("");
+  byId("execution-batches").innerHTML = batches.length ? batches.map((batch) => `
+    <article class="execution-batch-card">
+      <header><strong>批次 ${batch.sequence}</strong><span class="dag-state dag-${escapeHtml(batch.status)}">${escapeHtml(dagStateLabels[batch.status] || batch.status)}</span></header>
+      <p>${batch.task_ids.length} 项任务 · ${escapeHtml(batch.task_ids.join("、"))}</p>
+      <small>${Object.keys(batch.assignments || {}).length ? `节点：${escapeHtml(Object.values(batch.assignments).join("、"))}` : "等待节点分配"}</small>
+      ${Object.keys(batch.selection_reasons || {}).length ? `<small class="batch-selection-reason">${escapeHtml(Object.values(batch.selection_reasons).join("；"))}</small>` : ""}
+    </article>`).join("") : '<p class="empty-state">尚无批次</p>';
+  byId("execution-tasks").innerHTML = tasks.length ? tasks.map((task) => {
+    const reasons = task.waiting_reasons || data.latest_snapshot?.waiting_reasons?.[task.task_id] || [];
+    return `<article class="execution-task-card">
+      <header><div><strong>${escapeHtml(task.title)}</strong><code>${escapeHtml(task.task_id)}</code></div><span class="dag-state dag-${escapeHtml(task.status)}">${escapeHtml(dagStateLabels[task.status] || task.status)}</span></header>
+      <dl><div><dt>依赖</dt><dd>${escapeHtml((task.depends_on || []).join("、") || "无")}</dd></div><div><dt>节点</dt><dd>${escapeHtml(task.assigned_node_id || "待分配")}</dd></div><div><dt>资源锁</dt><dd>${escapeHtml((task.resource_locks || []).join("、") || "无")}</dd></div></dl>
+      ${reasons.length ? `<p class="execution-waiting">${escapeHtml(reasons.join("；"))}</p>` : ""}
+    </article>`;
+  }).join("") : '<p class="empty-state">尚无任务</p>';
+}
+
+async function loadExecutionPlan(runId) {
+  if (!productizationEnabled || !runId) return renderExecutionPlan(null);
+  const data = await request(`/api/runs/${encodeURIComponent(runId)}/execution-plan`);
+  if (currentRunState?.run_id === runId) renderExecutionPlan(data);
 }
 
 function stageName(stage) {

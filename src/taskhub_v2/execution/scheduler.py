@@ -77,7 +77,7 @@ class NodeScheduler:
                 node = await self._acquire(sticky_key, excluded, required, workload)
             except NodeExecutionError:
                 if failures:
-                    raise NodeExecutionError("; ".join(failures))
+                    raise NodeExecutionError("; ".join(failures)) from None
                 raise
             try:
                 if workload == "browser_acceptance":
@@ -179,11 +179,14 @@ class NodeScheduler:
         feedback: str,
         timeout: int,
         workdir: str,
+        *,
+        required_capabilities_override: set[str] | None = None,
     ) -> ScheduledCoding:
         excluded: set[str] = set()
         failures = []
         while True:
-            node = await self._acquire(sticky_key, excluded, {"coding"}, "coding")
+            required = {"coding"} | (required_capabilities_override or set())
+            node = await self._acquire(sticky_key, excluded, required, "coding")
             try:
                 return await self.runner.run_coding(
                     node, job_id, requirement, plan, feedback, timeout, workdir

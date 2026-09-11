@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=41">
+  <link rel="stylesheet" href="/static/styles.css?v=42">
 </head>
 <body>
   <header class="app-header">
@@ -249,6 +249,30 @@
               <button id="show-product-spec-diff" type="button" class="secondary hidden">查看版本差异</button>
               <span id="product-spec-message" role="status"></span>
             </footer>
+          </section>
+        </div>
+      </details>
+      <details id="execution-plan-disclosure" class="providers-section project-settings-disclosure resource-disclosure hidden">
+        <summary>
+          <span class="project-settings-heading"><strong>执行计划与动态批次</strong><small>服务端 DAG、任务依赖、资源锁与节点分配</small></span>
+          <span id="execution-plan-summary" class="muted">尚未生成</span>
+        </summary>
+        <div class="project-form resource-form execution-plan-surface">
+          <p class="form-note">批次由依赖、合同、节点能力、资源锁和并发预算自动计算，无需人工维护批次编号。</p>
+          <section class="management-card execution-plan-card" aria-labelledby="execution-plan-title">
+            <header>
+              <div><h3 id="execution-plan-title">当前运行执行计划</h3><p id="execution-plan-detail">运行进入规划后自动生成。</p></div>
+              <span id="execution-plan-state" class="card-state warn">未生成</span>
+            </header>
+            <div id="execution-plan-facts" class="execution-plan-facts"></div>
+            <section class="execution-plan-section" aria-labelledby="execution-batches-title">
+              <h4 id="execution-batches-title">动态批次</h4>
+              <div id="execution-batches" class="execution-batch-list"><p class="empty-state">尚无批次</p></div>
+            </section>
+            <section class="execution-plan-section" aria-labelledby="execution-tasks-title">
+              <h4 id="execution-tasks-title">任务与依赖</h4>
+              <div id="execution-tasks" class="execution-task-list"><p class="empty-state">尚无任务</p></div>
+            </section>
           </section>
         </div>
       </details>
@@ -633,7 +657,7 @@
     </section>
     </div>
   </main>
-  <script src="/static/app.js?v=15"></script>
+  <script src="/static/app.js?v=16"></script>
   <script src="/static/task-center.js?v=13"></script>
   <script src="/static/resource-center.js?v=25"></script>
   <script src="/static/onboarding.js?v=2"></script>

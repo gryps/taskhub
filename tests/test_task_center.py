@@ -156,8 +156,8 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert "styles.css?v=41" in html
-        assert "app.js?v=15" in html
+        assert "styles.css?v=42" in html
+        assert "app.js?v=16" in html
         assert html.count('class="resource-disclosure-heading"') == 5
         assert html.count('class="resource-order"') == 5
         assert "resource-center.js?v=25" in html
@@ -196,6 +196,11 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="run-project-contract-gate"' in html
         assert 'id="product-decision-form"' in html
         assert 'id="approve-product-spec"' in html
+        assert 'id="execution-plan-disclosure"' in html
+        assert 'id="execution-plan-facts"' in html
+        assert 'id="execution-batches"' in html
+        assert 'id="execution-tasks"' in html
+        assert "/static/app.js?v=16" in html
         assert 'id="project-repository-form"' in html
         assert 'id="check-project-repository"' in html
         assert 'id="save-project-repository"' in html

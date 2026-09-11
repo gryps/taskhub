@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
+from taskhub_v2.domain.dag import DagExecutionSnapshot, ExecutionBatch
 from taskhub_v2.domain.models import RunStatus, RunView, Stage
 from taskhub_v2.domain.production import (
     CapabilityPack,
@@ -99,6 +100,22 @@ def test_memory_store_persists_all_phase_zero_objects():
                 profile_id="python-service",
                 modules=[ModuleContract(name="domain", paths=["src/domain/**"])],
             ),
+            ExecutionBatch(
+                project_id="project-a",
+                batch_id="batch_project_a_001",
+                plan_id="plan_project_a",
+                plan_version=1,
+                sequence=1,
+                task_ids=["task_build_app"],
+            ),
+            DagExecutionSnapshot(
+                project_id="project-a",
+                snapshot_id="snapshot_project_a",
+                plan_id="plan_project_a",
+                plan_version=1,
+                sequence=1,
+                status="planning",
+            ),
         ]
         for record in records:
             stored = await store.save(record)
@@ -110,10 +127,12 @@ def test_memory_store_persists_all_phase_zero_objects():
                 ChangeRequest: ("change_request", "cr_scope_001", "1"),
                 CapabilityPack: ("capability_pack", "pack_frontend_style", "1.0.0"),
                 ProjectContract: ("project_contract", "pc_project_a", "1"),
+                ExecutionBatch: ("execution_batch", "batch_project_a_001", "1"),
+                DagExecutionSnapshot: ("dag_snapshot", "snapshot_project_a", "1"),
             }[type(record)]
             assert await store.get(object_type, object_id, revision) == stored
             assert len(stored.content_digest) == 64
-        assert len(await store.list(project_id="project-a")) == 7
+        assert len(await store.list(project_id="project-a")) == 9
 
     asyncio.run(scenario())
 

@@ -285,3 +285,13 @@ Updated: 2026-09-11
 - Executable gates cover directory/module boundaries, prohibited dependencies and cycles, complexity, cross-layer data access, interface digest/client consistency, migration ordering/rollback, secrets, binaries/licenses, Docker/Compose health, declared quality commands and required build artifacts. Manual Markdown rules require explicit evidence.
 - With productized orchestration enabled, implementation requires both an approved ProductSpec and active ProjectContract and stores their exact identifiers and versions on the run. Contract gates become structured acceptance evidence.
 - The workflow UI has a responsive ProjectContract card for template, lifecycle, facts and gate results. Continue strictly from Phase 3 (DAG and persistent scheduling). Phase 2 was source-only: push `.3 Git` and GitHub, with no deployment, Docker build or registry upload.
+
+## Productized Delivery Phase 3
+
+- On 2026-09-12, Phase 3 added versioned, DB-backed ExecutionPlan, ProductionTask, ExecutionBatch, TaskAttempt and DAG execution snapshots bound to exact ProductSpec and ProjectContract versions.
+- Planner validation rejects cycles, unknown dependencies, implementation tasks without executable acceptance, invalid data flow, unsafe parallel path overlap, contract path violations, unverifiable oversized work and unavailable capabilities without an installation strategy.
+- The persistent scheduler computes Ready state from dependencies, frozen contracts, governance state, healthy capabilities and locks; creates dynamic batches; enforces global/project budgets fairly; delegates node slots, priority, task stickiness and failover to NodeScheduler; and persists assignment and waiting reasons.
+- Each attempt gets an idempotency key and isolated Git worktree at the exact integration base. Parallel commits are integrated by the controller. Restart recovery reuses persisted successful results without running the command again and creates a new attempt after execution failure.
+- The development flow adds a read-only text/card execution-plan view with counts, batches, task dependencies, node assignments, locks and waiting reasons. It deliberately does not introduce a graph canvas before Phase 3A.
+- Verification: full Python suite `244 passed, 10 skipped`; real Google Chrome passed at 1440, 680 and 390 pixels with no page-level horizontal overflow; Ruff, JavaScript syntax, architecture line limits and diff checks passed. Static assets are `styles.css?v=42` and `app.js?v=16`.
+- Continue strictly from Phase 3A. This phase is source-only: push `.3 Git` and GitHub; do not deploy, build Docker or publish registry images.

@@ -6,9 +6,11 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from taskhub_v2.config import Settings
+from taskhub_v2.domain.dag import ExecutionBatch
 from taskhub_v2.domain.production import (
     ProductDecision,
     ProductionObject,
+    ProductionTask,
     Requirement,
     immutable_content,
     object_identity,
@@ -88,6 +90,27 @@ def _validate_replacement(previous: ProductionObject, record: ProductionObject) 
             raise ProductionObjectConflictError(
                 "project contract content is immutable during lifecycle transitions"
             )
+        return
+    if isinstance(previous, ProductionTask) and isinstance(record, ProductionTask):
+        runtime_fields = {
+            "status",
+            "waiting_reasons",
+            "assigned_node_id",
+            "batch_id",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "content_digest",
+        }
+        if previous.model_dump(mode="json", exclude=runtime_fields) != record.model_dump(
+            mode="json", exclude=runtime_fields
+        ):
+            raise ProductionObjectConflictError("production task definition is immutable")
+        return
+    if isinstance(previous, ExecutionBatch) and isinstance(record, ExecutionBatch):
+        fixed_fields = {"project_id", "batch_id", "plan_id", "plan_version", "sequence", "task_ids"}
+        if any(getattr(previous, field) != getattr(record, field) for field in fixed_fields):
+            raise ProductionObjectConflictError("execution batch definition is immutable")
         return
     mutable_states = {
         "product_spec": {"draft", "in_review"},
