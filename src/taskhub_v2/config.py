@@ -11,6 +11,7 @@ class Settings(BaseModel):
     port: int = 8200
     checkpointer: Literal["memory", "postgres"] = "memory"
     postgres_dsn: str = "postgresql://taskhub:taskhub@localhost:5432/taskhub"
+    production_orchestration_enabled: bool = False
     provider: Literal["deterministic", "openai", "routed"] = "deterministic"
     provider_secrets_file: str = "/home/gryps/.config/taskhub-v2/providers.env"
     provider_workdir: str = "/home/gryps/apps/taskhub-v2"
@@ -107,6 +108,9 @@ def get_settings() -> Settings:
         postgres_dsn=os.getenv(
             "TASKHUB_POSTGRES_DSN", "postgresql://taskhub:taskhub@localhost:5432/taskhub"
         ),
+        production_orchestration_enabled=os.getenv(
+            "TASKHUB_PRODUCTION_ORCHESTRATION_ENABLED", "false"
+        ).lower() in {"1", "true", "yes", "on"},
         provider=os.getenv("TASKHUB_PROVIDER", "deterministic"),
         provider_secrets_file=os.getenv(
             "TASKHUB_PROVIDER_SECRETS_FILE", "/home/gryps/.config/taskhub-v2/providers.env"

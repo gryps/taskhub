@@ -2,6 +2,25 @@
 
 Updated: 2026-09-11
 
+## Productized Delivery Phase 0 Baseline
+
+- Productized delivery development is now tracked by
+  `docs/requirements/productized-delivery-orchestration.md` and the durable phase ledger
+  `docs/agent/productization-progress.md`.
+- Phase 0 adds ProductSpec, ExecutionPlan, ProductionTask, TaskAttempt, ChangeRequest and
+  CapabilityPack schemas, explicit state-transition invariants, immutable approved/active version
+  content and content digests. Draft content remains editable for the following phases.
+- Memory and PostgreSQL stores share the same create/get/list contract. PostgreSQL uses additive,
+  idempotent `taskhub_schema_migration` and `taskhub_production_object` tables and does not alter
+  LangGraph checkpoints or the existing task index.
+- Existing runs can be projected as a Legacy Linear Plan with one approved specification, one
+  plan, one task and one dynamic compatibility batch. This projection deliberately does not invent
+  detailed DAG or acceptance evidence.
+- `TASKHUB_PRODUCTION_ORCHESTRATION_ENABLED` defaults to `false`; disabling it is the application
+  rollback path and the additive tables remain intact. Phase 1 is the next implementation boundary.
+- This phase is source-only: push to `.3 Git` and GitHub, with no deployment, Docker build or
+  registry upload.
+
 ## Workflow Project Context and Local Image Build
 
 - Feature commit `601cc11b4fca4ad60168f0dd23fd0287e9305a31` makes the workflow header the single current-project selector; new runs and project-scoped preproduction acceptance follow that shared context.

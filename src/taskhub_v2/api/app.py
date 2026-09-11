@@ -27,6 +27,7 @@ from taskhub_v2.deployment import DeploymentManager
 from taskhub_v2.persistence.checkpoints import checkpoint_store
 from taskhub_v2.persistence.configuration import configuration_store
 from taskhub_v2.persistence.hosts import physical_host_store
+from taskhub_v2.persistence.production import production_store
 from taskhub_v2.persistence.remote_nodes import remote_node_store
 from taskhub_v2.persistence.task_index import task_index_store
 from taskhub_v2.projects import ProjectProvisioner, ProjectRegistry
@@ -104,6 +105,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             configuration_store(settings) as managed_store,
             physical_host_store(settings) as host_store,
             remote_node_store(settings) as remote_store,
+            production_store(settings) as production_objects,
             checkpoint_store(settings) as checkpointer,
             task_index_store(settings) as task_index,
         ):
@@ -133,6 +135,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             provider_health.switch_lock_seconds = effective_settings.provider_switch_lock_seconds
             app.state.settings = effective_settings
+            app.state.production_objects = production_objects
+            app.state.production_orchestration_enabled = (
+                effective_settings.production_orchestration_enabled
+            )
             app.state.managed_configuration = managed_configuration
             app.state.device_auth = CodexDeviceAuthService(
                 effective_settings.codex_cli_bin,
