@@ -235,3 +235,9 @@ Updated: 2026-09-11
 - Verification passed with `213 passed, 8 skipped`; the opt-in real-Chrome regression passed at 1440, 680 and 390 pixels with no page overflow. Changed-file Ruff, all frontend JavaScript syntax checks and `git diff --check` passed.
 - The fixed public `0.1.0-alpha` tags were overwritten in both registries. Seed digest is `sha256:ba314f197658539af47a959f8a8a95c052c009ed53548b2a4afe29d5120d8955`; Node digest is `sha256:3b37ddf5392d5dea7dbff5d0d5fada87d91c9750685a23fd11157dd7689d5104`. Authenticated manifest reads confirmed matching `linux/amd64` descriptors for all four GHCR/Aliyun ACR references.
 - Registry credentials were held only in a temporary Docker CLI configuration on the `.31` build host and were removed after publication. No credential was added to Git, documentation or image layers. The running `.31` controller was not recreated as part of this image-only publication.
+
+## Project-Scoped Preproduction Settings Deployment
+
+- On 2026-09-11, the immutable controller at `192.168.31.31:8200` was recreated from local `taskhub-seed:0.1.0-alpha` image ID `sha256:acdabccce3aeeb6d3bf996cca74dc9e257956abef01b8628bc0ed0afdc4a1bcf`, built from feature commit `601cc11b4fca4ad60168f0dd23fd0287e9305a31`. Registry images were not changed.
+- The existing PostgreSQL container and named volumes `taskhub-seed_taskhub-data` and `taskhub-seed_postgres-data` were retained. Both containers are healthy, LAN health returns `{"status":"ok","orchestrator":"langgraph"}`, and the controller serves `styles.css?v=38`, `app.js?v=12` and `resource-center.js?v=25`.
+- The complete pre-update recovery set is `C:\taskhub-seed\deploy\release\backups\20260911T134441Z`. The prior Seed image is additionally tagged locally as `taskhub-seed:rollback-20260911T214426`; both recovery sources contain operational or sensitive data and must remain on the controlled host.
