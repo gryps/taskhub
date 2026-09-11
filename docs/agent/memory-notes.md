@@ -241,3 +241,12 @@ Updated: 2026-09-11
 - On 2026-09-11, the immutable controller at `192.168.31.31:8200` was recreated from local `taskhub-seed:0.1.0-alpha` image ID `sha256:acdabccce3aeeb6d3bf996cca74dc9e257956abef01b8628bc0ed0afdc4a1bcf`, built from feature commit `601cc11b4fca4ad60168f0dd23fd0287e9305a31`. Registry images were not changed.
 - The existing PostgreSQL container and named volumes `taskhub-seed_taskhub-data` and `taskhub-seed_postgres-data` were retained. Both containers are healthy, LAN health returns `{"status":"ok","orchestrator":"langgraph"}`, and the controller serves `styles.css?v=38`, `app.js?v=12` and `resource-center.js?v=25`.
 - The complete pre-update recovery set is `C:\taskhub-seed\deploy\release\backups\20260911T134441Z`. The prior Seed image is additionally tagged locally as `taskhub-seed:rollback-20260911T214426`; both recovery sources contain operational or sensitive data and must remain on the controlled host.
+
+## Project Git Repository Management Release
+
+- On 2026-09-11, project-scoped Git repository management was released from image-source commit `864e3cc8e88b8c5f93499d6c58dc8a371aa353cf`. The development-flow project card now persists the remote repository and base ref, rejects URL-embedded credentials, tests connectivity, rolls back a failed remote update and requires a successful Git preflight before starting a delivery run.
+- Verification passed with `217 passed, 8 skipped`; the opt-in real-Chrome responsive regression passed. JavaScript syntax, changed-file Ruff and diff checks also passed.
+- Complete `linux/amd64` Seed and Node images were rebuilt with OCI provenance disabled. Seed digest is `sha256:e528e106fa8b8be9ba64cdccaa3a63ac0d1f9154fbfc4315beaa20b73bbb58f2`; Node digest is `sha256:42d4d3c6dc39d7803437bf4b6892fd6e8ecd79a81ddbb1c7d0bee665754a1dec`.
+- The fixed `0.1.0-alpha` tags were overwritten in both GHCR and Aliyun ACR. Authenticated manifest reads confirmed that each repository exposes the expected digest and that the two registries are byte-identical for each image.
+- The controller at `192.168.31.31:8200` now runs the released Seed digest and is healthy. The PostgreSQL container and existing named volumes were retained; the served frontend assets are `styles.css?v=39`, `app.js?v=13` and `resource-center.js?v=25`.
+- The latest complete backup is `C:\taskhub-seed\deploy\release\backups\20260911T152347Z`. It contains sensitive configuration and business data and must remain on the controlled host. Temporary build and registry-authentication directories were removed after publication.
