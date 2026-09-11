@@ -1,3 +1,4 @@
+import asyncio
 import json
 from pathlib import Path
 from typing import Annotated
@@ -40,6 +41,10 @@ async def start_run(payload: StartRunRequest, request: Request, service: Service
         if request.app.state.settings.worker_mode != "git":
             return await service.start(payload)
         project = request.app.state.projects.get(payload.project_id)
+        try:
+            await asyncio.to_thread(request.app.state.projects.check_repository, project)
+        except (ValueError, OSError) as exc:
+            raise RunConflictError(f"项目代码仓库未就绪：{exc}") from exc
         if project.test_environment:
             try:
                 async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:

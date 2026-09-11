@@ -367,7 +367,18 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .form-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; }
 .form-grid .wide { grid-column: 1 / -1; }
 .form-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
-#project-message, #attach-project-message, #test-environment-message { color: var(--danger); font-size: 12px; }
+#project-message, #attach-project-message, #project-repository-message, #test-environment-message { color: var(--danger); font-size: 12px; }
+.project-repository-card { overflow: visible; box-shadow: none; }
+.project-repository-card > header { border-radius: 11px 11px 0 0; }
+.project-repository-facts { border-bottom: 1px solid var(--border); }
+.project-repository-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 15px 0;
+}
+.project-repository-fields input { min-height: 38px; }
+.project-repository-fields input[readonly] { color: var(--text-secondary); background: var(--surface-subtle); }
+.project-repository-actions { padding: 0 15px 15px; }
 .composer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 0; padding: 20px; }
 .composer-requirement textarea { min-height: 112px; }
 .composer-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }

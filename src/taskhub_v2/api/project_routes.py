@@ -1,3 +1,4 @@
+import asyncio
 import shlex
 
 import httpx
@@ -35,6 +36,12 @@ class TestEnvironmentRequest(BaseModel):
     expected_environment: str = Field(default="production", max_length=40)
 
 
+class ProjectRepositoryRequest(BaseModel):
+    remote_name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+    remote_url: str = Field(min_length=1, max_length=1000)
+    base_ref: str = Field(pattern=r"^[A-Za-z0-9._/-]{1,200}$")
+
+
 def parse_test_commands(value: str) -> list[list[str]]:
     commands = []
     for line in value.splitlines():
@@ -46,7 +53,8 @@ def parse_test_commands(value: str) -> list[list[str]]:
     return commands
 
 
-def project_view(item: ProjectDefinition) -> dict:
+def project_view(item: ProjectDefinition, registry=None) -> dict:
+    repository_settings = registry.repository_settings(item) if registry else None
     return {
         "id": item.id,
         "name": item.name or item.id,
@@ -58,13 +66,17 @@ def project_view(item: ProjectDefinition) -> dict:
         "test_environment": (
             item.test_environment.model_dump(mode="json") if item.test_environment else None
         ),
-        "repository_ready": True,
+        "repository_ready": (
+            repository_settings["ready"] if repository_settings else True
+        ),
+        "repository_settings": repository_settings,
     }
 
 
 @router.get("")
 async def projects(request: Request) -> dict:
-    return {"projects": [project_view(item) for item in request.app.state.projects.list()]}
+    registry = request.app.state.projects
+    return {"projects": [project_view(item, registry) for item in registry.list()]}
 
 
 @router.get("/available")
@@ -91,7 +103,7 @@ async def create_project(payload: ProjectCreateRequest, request: Request) -> dic
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (ProjectProvisionError, ValueError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return project_view(created)
+    return project_view(created, request.app.state.projects)
 
 
 @router.post("/attach", status_code=status.HTTP_201_CREATED)
@@ -109,7 +121,37 @@ async def attach_project(payload: ProjectAttachRequest, request: Request) -> dic
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (ProjectProvisionError, ValueError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return project_view(created)
+    return project_view(created, request.app.state.projects)
+
+
+@router.put("/{project_id}/repository")
+async def update_project_repository(
+    project_id: str, payload: ProjectRepositoryRequest, request: Request
+) -> dict:
+    try:
+        updated = await asyncio.to_thread(
+            request.app.state.projects.configure_repository,
+            project_id,
+            remote_name=payload.remote_name,
+            remote_url=payload.remote_url.strip(),
+            base_ref=payload.base_ref,
+        )
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="项目不存在") from exc
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return project_view(updated, request.app.state.projects)
+
+
+@router.post("/{project_id}/repository/check")
+async def check_project_repository(project_id: str, request: Request) -> dict:
+    try:
+        project = request.app.state.projects.get(project_id)
+        return await asyncio.to_thread(request.app.state.projects.check_repository, project)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="项目不存在") from exc
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.put("/{project_id}/test-environment")
@@ -126,7 +168,7 @@ async def update_test_environment(
         raise HTTPException(status_code=404, detail="项目不存在") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return project_view(updated)
+    return project_view(updated, request.app.state.projects)
 
 
 @router.delete("/{project_id}/test-environment")
@@ -138,7 +180,7 @@ async def delete_test_environment(project_id: str, request: Request) -> dict:
         )
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail="项目不存在") from exc
-    return project_view(updated)
+    return project_view(updated, request.app.state.projects)
 
 
 @router.post("/{project_id}/test-environment/check")

@@ -79,14 +79,25 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         expect(project_select).to_have_value("alpha-project")
         project_select.select_option("beta-project")
         expect(project_select).to_have_value("beta-project")
+        page.locator("#project-repository-disclosure > summary").click()
+        expect(page.locator("#project-repository-form")).to_be_visible()
+        assert page.locator(".project-repository-card h3").evaluate(
+            "element => getComputedStyle(element).fontSize"
+        ) == "14px"
+        assert page.locator(".project-repository-facts dd").first.evaluate(
+            "element => getComputedStyle(element).fontSize"
+        ) == "13px"
         page.locator("#test-environment-disclosure > summary").click()
-        assert page.locator(".project-settings-heading strong").evaluate(
+        environment_heading = page.locator(
+            "#test-environment-disclosure .project-settings-heading"
+        )
+        assert environment_heading.locator("strong").evaluate(
             "element => getComputedStyle(element).fontSize"
         ) == "15px"
-        assert page.locator(".project-settings-heading small").evaluate(
+        assert environment_heading.locator("small").evaluate(
             "element => getComputedStyle(element).fontSize"
         ) == "12px"
-        expect(page.locator(".field-help")).to_have_count(3)
+        expect(page.locator("#test-environment-form .field-help")).to_have_count(3)
         page.locator("#nav-resources").click()
         expect(page.locator(".resource-disclosure-heading")).to_have_count(5)
         expect(page.locator(".resource-order")).to_have_count(5)

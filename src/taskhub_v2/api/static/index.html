@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=38">
+  <link rel="stylesheet" href="/static/styles.css?v=39">
 </head>
 <body>
   <header class="app-header">
@@ -151,6 +151,36 @@
           </div>
         </div>
       </form>
+      <details id="project-repository-disclosure" class="providers-section project-settings-disclosure resource-disclosure">
+        <summary>
+          <span class="project-settings-heading"><strong>代码仓库</strong><small>项目级 Git 来源、基准分支与发布目标</small></span>
+          <span id="project-repository-summary" class="muted">未读取</span>
+        </summary>
+        <form id="project-repository-form" class="project-form resource-form">
+          <p class="form-note">任务从控制中心工作副本创建独立工作区，验收通过后发布到这里配置的远端分支。</p>
+          <section class="management-card project-repository-card" aria-labelledby="project-repository-card-title">
+            <header>
+              <div><h3 id="project-repository-card-title">当前项目仓库</h3><p id="project-repository-detail">请选择项目</p></div>
+              <span id="project-repository-state" class="readiness-state">未配置</span>
+            </header>
+            <dl class="management-card-facts project-repository-facts">
+              <div><dt>仓库类型</dt><dd id="project-repository-provider">—</dd></div>
+              <div><dt>认证方式</dt><dd id="project-repository-auth">—</dd></div>
+            </dl>
+            <div class="form-grid project-repository-fields">
+              <label class="wide">远端仓库地址<input id="project-repository-url" required maxlength="1000" autocomplete="off" spellcheck="false" placeholder="ssh://git@example.com/team/project.git"><span class="field-help">禁止在地址中嵌入密码或访问令牌；SSH 使用 Seed 的运行身份。</span></label>
+              <label>远端名称<input id="project-repository-remote" required maxlength="64" value="origin" spellcheck="false"></label>
+              <label>基准分支<input id="project-repository-branch" required maxlength="200" value="main" spellcheck="false"></label>
+              <label class="wide">控制中心工作副本<input id="project-repository-path" readonly aria-readonly="true" spellcheck="false"></label>
+            </div>
+            <div class="form-actions project-repository-actions">
+              <button id="check-project-repository" type="button" class="secondary">测试连接</button>
+              <button id="save-project-repository" type="submit">保存仓库配置</button>
+              <span id="project-repository-message" role="status"></span>
+            </div>
+          </section>
+        </form>
+      </details>
       <details id="test-environment-disclosure" class="providers-section project-settings-disclosure resource-disclosure">
         <summary>
           <span class="project-settings-heading"><strong>预生产验收</strong><small>按项目启用的访问与验收环境</small></span>
@@ -532,7 +562,7 @@
     </section>
     </div>
   </main>
-  <script src="/static/app.js?v=12"></script>
+  <script src="/static/app.js?v=13"></script>
   <script src="/static/task-center.js?v=13"></script>
   <script src="/static/resource-center.js?v=25"></script>
   <script src="/static/onboarding.js?v=2"></script>

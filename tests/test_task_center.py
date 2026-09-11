@@ -131,10 +131,10 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert 'styles.css?v=38' in html
+        assert 'styles.css?v=39' in html
         assert html.count('class="resource-disclosure-heading"') == 5
         assert html.count('class="resource-order"') == 5
-        assert 'app.js?v=12' in html
+        assert 'app.js?v=13' in html
         assert 'resource-center.js?v=25' in html
         assert html.count('class="configuration-card"') >= 9
         assert html.count('class="management-card-grid"') >= 4
@@ -165,6 +165,10 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert '<strong>工作节点</strong><small>调度、容器、负载与诊断</small>' in html
         assert '<strong>平台设置</strong><small>镜像、网络、备份与访问安全</small>' in html
         assert '<strong>预生产验收</strong><small>按项目启用的访问与验收环境</small>' in html
+        assert '<strong>代码仓库</strong><small>项目级 Git 来源、基准分支与发布目标</small>' in html
+        assert 'id="project-repository-form"' in html
+        assert 'id="check-project-repository"' in html
+        assert 'id="save-project-repository"' in html
         assert 'id="workflow-project"' in html
         resource_script = client.get("/static/resource-center.js").text
         assert "/upgrade`" in resource_script
@@ -193,6 +197,8 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert '<details><summary>规划方案' in html
         script = client.get("/static/app.js").text
         assert "copy-image-reference" in script
+        assert "/repository/check" in script
+        assert "renderProjectRepository(active)" in script
         assert 'path = "/api/auth/setup"' in script
         assert "localStorage.setItem(\"taskhub_run_id\"" not in script
         assert 'decision === "revise" ? "revise"' in script

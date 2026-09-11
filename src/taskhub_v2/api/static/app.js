@@ -433,10 +433,80 @@ async function loadProjects(preferredProjectId = currentProjectId) {
   projectSelect.value = currentProjectId || "";
   projectSelect.disabled = data.projects.length === 0;
   byId("active-project").textContent = active
-    ? `当前运行和预生产配置均使用“${active.name}”`
+    ? `当前运行、代码仓库和预生产配置均使用“${active.name}”`
     : "请先创建或接入项目";
-  byId("start").disabled = !active;
+  byId("start").disabled = !active || !active.repository_ready;
+  renderProjectRepository(active);
   window.dispatchEvent(new CustomEvent("taskhub:projects", {detail: data.projects}));
+}
+
+function renderProjectRepository(project) {
+  const settings = project?.repository_settings;
+  const ready = Boolean(project?.repository_ready && settings?.ready);
+  byId("project-repository-card-title").textContent = project
+    ? `${project.name} · 代码仓库` : "当前项目仓库";
+  byId("project-repository-detail").textContent = settings?.detail || "请选择项目";
+  byId("project-repository-summary").textContent = !project
+    ? "没有已接入项目" : ready ? `${settings.provider} · ${settings.base_ref}` : "仓库需要修复";
+  const state = byId("project-repository-state");
+  state.textContent = !project ? "未配置" : ready ? "已配置" : "异常";
+  state.className = `card-state ${ready ? "ok" : project ? "bad" : "warn"}`;
+  byId("project-repository-provider").textContent = settings?.provider || "—";
+  byId("project-repository-auth").textContent = settings?.credential_mode === "seed_ssh"
+    ? "Seed SSH 运行身份" : settings ? "Seed Git 运行身份" : "—";
+  byId("project-repository-url").value = settings?.remote_url || "";
+  byId("project-repository-remote").value = settings?.remote_name || "origin";
+  byId("project-repository-branch").value = settings?.base_ref || "main";
+  byId("project-repository-path").value = settings?.local_path || "";
+  const allowed = Boolean(project && canPermission("projects:manage"));
+  for (const id of ["project-repository-url", "project-repository-remote", "project-repository-branch", "check-project-repository", "save-project-repository"]) {
+    byId(id).disabled = !allowed;
+  }
+  byId("project-repository-message").textContent = "";
+}
+
+async function saveProjectRepository(event) {
+  event.preventDefault();
+  if (!currentProjectId || !byId("project-repository-form").reportValidity()) return;
+  const button = byId("save-project-repository");
+  button.disabled = true;
+  byId("project-repository-message").textContent = "正在验证并保存仓库配置";
+  try {
+    const project = await request(`/api/projects/${encodeURIComponent(currentProjectId)}/repository`, {
+      method: "PUT",
+      body: JSON.stringify({
+        remote_url: byId("project-repository-url").value.trim(),
+        remote_name: byId("project-repository-remote").value.trim(),
+        base_ref: byId("project-repository-branch").value.trim(),
+      }),
+    });
+    await loadProjects(project.id);
+    byId("project-repository-message").textContent = "仓库配置已保存，连接验证通过";
+  } catch (error) {
+    byId("project-repository-message").textContent = error.message;
+  } finally {
+    button.disabled = !canPermission("projects:manage");
+  }
+}
+
+async function checkProjectRepository() {
+  if (!currentProjectId) return;
+  const button = byId("check-project-repository");
+  button.disabled = true;
+  byId("project-repository-message").textContent = "正在检测仓库、分支和远端连接";
+  try {
+    const result = await request(`/api/projects/${encodeURIComponent(currentProjectId)}/repository/check`, {method: "POST"});
+    byId("project-repository-state").textContent = "连接正常";
+    byId("project-repository-state").className = "card-state ok";
+    byId("project-repository-detail").textContent = result.detail;
+    byId("project-repository-message").textContent = `验证通过 · ${result.commit.slice(0, 12)}`;
+  } catch (error) {
+    byId("project-repository-state").textContent = "连接失败";
+    byId("project-repository-state").className = "card-state bad";
+    byId("project-repository-message").textContent = error.message;
+  } finally {
+    button.disabled = !canPermission("projects:manage");
+  }
 }
 
 async function createProject(event) {
@@ -753,6 +823,8 @@ byId("project-name").addEventListener("input", () => {
 byId("project-type").addEventListener("change", applyProjectPreset);
 byId("attach-project-form").addEventListener("submit", attachProject);
 byId("attach-project-repository").addEventListener("change", applySelectedRepository);
+byId("project-repository-form").addEventListener("submit", saveProjectRepository);
+byId("check-project-repository").addEventListener("click", checkProjectRepository);
 byId("workflow-project").addEventListener("change", (event) => {
   loadProjects(event.target.value).catch((error) => {
     byId("active-project").textContent = error.message;

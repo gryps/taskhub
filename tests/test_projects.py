@@ -25,6 +25,17 @@ def repository(path: Path) -> Path:
     return path
 
 
+def add_remote(repository_path: Path, remote_path: Path) -> Path:
+    subprocess.run(
+        ["git", "init", "--bare", "--initial-branch=main", str(remote_path)],
+        check=True,
+        capture_output=True,
+    )
+    git(repository_path, "remote", "add", "origin", str(remote_path))
+    git(repository_path, "push", "-u", "origin", "main")
+    return remote_path
+
+
 class FakeProvisioner:
     def __init__(self, registry, repository_path: Path):
         self.registry = registry
@@ -168,6 +179,105 @@ def test_project_registration_rejects_an_invalid_authority_repository(tmp_path: 
         )
 
     assert response.status_code == 422
+
+
+def test_project_repository_settings_can_be_viewed_checked_and_updated(tmp_path: Path):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    remote = add_remote(repo, tmp_path / "shop.git")
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+        )
+    )
+    app.state.projects.add(
+        ProjectDefinition(
+            id="shop", name="Shop", repository=str(repo), authority_remote="origin"
+        )
+    )
+
+    with TestClient(app) as client:
+        login = client.post("/api/auth/login", json={"token": "admin-secret"})
+        headers = {"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]}
+        listed = client.get("/api/projects").json()["projects"][0]
+        checked = client.post("/api/projects/shop/repository/check", headers=headers)
+        updated = client.put(
+            "/api/projects/shop/repository",
+            headers=headers,
+            json={
+                "remote_name": "origin",
+                "remote_url": str(remote),
+                "base_ref": "main",
+            },
+        )
+
+    assert listed["repository_ready"] is True
+    assert listed["repository_settings"]["remote_url"] == str(remote)
+    assert listed["repository_settings"]["credential_mode"] == "runtime"
+    assert checked.status_code == 200
+    assert checked.json()["detail"] == "仓库、基准分支和远端连接均正常"
+    assert updated.status_code == 200
+
+
+def test_project_repository_rejects_a_password_in_the_remote_url(tmp_path: Path):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+        )
+    )
+    app.state.projects.add(ProjectDefinition(id="shop", repository=str(repo)))
+
+    with TestClient(app) as client:
+        login = client.post("/api/auth/login", json={"token": "admin-secret"})
+        response = client.put(
+            "/api/projects/shop/repository",
+            headers={"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]},
+            json={
+                "remote_name": "origin",
+                "remote_url": "https://user:secret@example.com/team/shop.git",
+                "base_ref": "main",
+            },
+        )
+
+    assert response.status_code == 422
+    assert "不能包含密码或访问令牌" in response.json()["detail"]
+
+
+def test_git_run_is_blocked_before_creation_when_project_remote_is_unavailable(
+    tmp_path: Path,
+):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    git(repo, "remote", "add", "origin", str(tmp_path / "missing.git"))
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+            worker_mode="git",
+            workspace_root=str(tmp_path / "workspaces"),
+        )
+    )
+    app.state.projects.add(
+        ProjectDefinition(id="shop", repository=str(repo), authority_remote="origin")
+    )
+
+    with TestClient(app) as client:
+        login = client.post("/api/auth/login", json={"token": "admin-secret"})
+        response = client.post(
+            "/api/runs",
+            headers={"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]},
+            json={"project_id": "shop", "requirement": "实现仓库预检"},
+        )
+
+    assert response.status_code == 409
+    assert "项目代码仓库未就绪" in response.json()["detail"]
 
 
 def test_project_test_environment_can_be_configured(tmp_path: Path):
