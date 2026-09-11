@@ -130,6 +130,14 @@ class TestEnvironmentDefinition(BaseModel):
         }
 
 
+class ProjectSchedulingPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    concurrency_limit: int = Field(default=2, ge=1, le=20)
+    priority_weight: int = Field(default=1, ge=1, le=10)
+    run_cost_budget_units: int = Field(default=100, ge=1, le=100_000)
+
+
 class ProjectDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -144,6 +152,7 @@ class ProjectDefinition(BaseModel):
     test_environment: TestEnvironmentDefinition | None = None
     test_timeout_seconds: int = Field(default=600, ge=1, le=3600)
     max_revision_attempts: int = Field(default=2, ge=0, le=10)
+    scheduling_policy: ProjectSchedulingPolicy = Field(default_factory=ProjectSchedulingPolicy)
 
 
 class Workspace(BaseModel):

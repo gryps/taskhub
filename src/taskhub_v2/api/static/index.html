@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=45">
+  <link rel="stylesheet" href="/static/styles.css?v=46">
 </head>
 <body>
   <header class="app-header">
@@ -272,6 +272,24 @@
           <span id="capability-message" role="status"></span>
         </div>
       </details>
+      <details id="scheduling-policy-disclosure" class="providers-section project-settings-disclosure resource-disclosure">
+        <summary>
+          <span class="project-settings-heading"><strong>运行策略</strong><small>项目并发、调度优先级与单次运行成本上限</small></span>
+          <span id="scheduling-policy-summary" class="muted">默认策略</span>
+        </summary>
+        <form id="scheduling-policy-form" class="project-form resource-form scheduling-policy-surface">
+          <p class="form-note">策略在生成执行计划时冻结；修改只影响之后的新计划，不改写正在运行或历史计划。</p>
+          <section class="management-card scheduling-policy-card" aria-labelledby="scheduling-policy-title">
+            <header><div><h3 id="scheduling-policy-title">当前项目运行策略</h3><p id="scheduling-policy-detail">请选择项目</p></div><span class="card-state">项目级</span></header>
+            <div class="scheduling-policy-fields">
+              <label>并发任务上限<input id="scheduling-concurrency" type="number" min="1" max="20" required><span class="field-help">限制该项目同时运行的任务数。</span></label>
+              <label>优先级权重<input id="scheduling-priority" type="number" min="1" max="10" required><span class="field-help">权重越高，跨项目调度时获得更多机会，但不会饿死其他项目。</span></label>
+              <label>单次成本预算<input id="scheduling-cost-budget" type="number" min="1" max="100000" required><span class="field-help">按任务估算规模计费；达到上限后停止派发新任务。</span></label>
+            </div>
+            <footer class="management-card-actions"><button type="submit" data-permission="projects:manage">保存运行策略</button><span id="scheduling-policy-message" role="status"></span></footer>
+          </section>
+        </form>
+      </details>
       <details id="execution-plan-disclosure" class="providers-section project-settings-disclosure resource-disclosure hidden">
         <summary>
           <span class="project-settings-heading"><strong>执行计划与动态批次</strong><small>服务端 DAG、任务依赖、资源锁与节点分配</small></span>
@@ -285,13 +303,22 @@
               <span id="execution-plan-state" class="card-state warn">未生成</span>
             </header>
             <div id="execution-plan-facts" class="execution-plan-facts"></div>
+            <section class="execution-plan-section execution-analysis-section" aria-labelledby="execution-analysis-title">
+              <h4 id="execution-analysis-title">执行预测与瓶颈</h4>
+              <div id="execution-analysis" class="execution-analysis"><p class="empty-state">尚无分析</p></div>
+            </section>
             <section class="execution-plan-section" aria-labelledby="execution-batches-title">
               <h4 id="execution-batches-title">动态批次</h4>
               <div id="execution-batches" class="execution-batch-list"><p class="empty-state">尚无批次</p></div>
             </section>
             <section class="execution-plan-section" aria-labelledby="execution-tasks-title">
-              <h4 id="execution-tasks-title">任务与依赖</h4>
+              <div class="execution-task-heading"><h4 id="execution-tasks-title">任务与依赖</h4><span id="execution-task-range" class="muted"></span></div>
               <div id="execution-tasks" class="execution-task-list"><p class="empty-state">尚无任务</p></div>
+              <nav id="execution-task-pagination" class="execution-task-pagination hidden" aria-label="执行计划任务分页">
+                <button id="execution-task-previous" type="button" class="secondary">上一页</button>
+                <span id="execution-task-page" role="status"></span>
+                <button id="execution-task-next" type="button" class="secondary">下一页</button>
+              </nav>
             </section>
           </section>
         </div>
@@ -709,7 +736,7 @@
   </main>
   <script src="/static/revision-center.js?v=1"></script>
   <script src="/static/capability-center.js?v=1"></script>
-  <script src="/static/app.js?v=18"></script>
+  <script src="/static/app.js?v=19"></script>
   <script src="/static/task-center.js?v=13"></script>
   <script src="/static/resource-center.js?v=25"></script>
   <script src="/static/onboarding.js?v=2"></script>

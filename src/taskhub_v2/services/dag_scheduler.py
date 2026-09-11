@@ -13,6 +13,7 @@ from taskhub_v2.domain.production import (
     TaskAttemptStatus,
 )
 from taskhub_v2.persistence.production import ProductionStore
+from taskhub_v2.services.dag_cost import apply_cost_budget
 from taskhub_v2.services.dag_readiness import (
     add_selection_waiting_reasons,
     select_non_conflicting,
@@ -36,7 +37,7 @@ class PersistentDagScheduler:
         store: ProductionStore,
         executor: DagTaskExecutor,
         *,
-        global_concurrency: int = 4,
+        global_concurrency: int = 20,
         project_concurrency: int = 2,
         max_attempts: int = 2,
     ):
@@ -94,6 +95,12 @@ class PersistentDagScheduler:
                 )
                 selected = select_non_conflicting(candidates, limit, self.active_locks)
                 add_selection_waiting_reasons(candidates, selected, reasons)
+                selected, _spent, _remaining = apply_cost_budget(
+                    tasks,
+                    selected,
+                    reasons,
+                    int(plan.policy.get("run_cost_budget_units", 100)),
+                )
                 for task in tasks:
                     updated_reasons = reasons[task.task_id]
                     if task.status == ProductionTaskStatus.PENDING and not updated_reasons:
@@ -234,7 +241,11 @@ class PersistentDagScheduler:
                 )
             )
             try:
-                async with self.budget.slot(plan.project_id, project_limit):
+                async with self.budget.slot(
+                    plan.project_id,
+                    project_limit,
+                    int(plan.policy.get("priority_weight", 1)),
+                ):
                     result = await self.executor.execute(task, attempt, base_commit=base_commit)
                 node_id = result.coding_node or result.execution_node or "controller-local"
                 attempt = await self.store.save(

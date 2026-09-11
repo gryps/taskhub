@@ -6,7 +6,11 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from taskhub_v2.domain.models import ProjectDefinition, TestEnvironmentDefinition
+from taskhub_v2.domain.models import (
+    ProjectDefinition,
+    ProjectSchedulingPolicy,
+    TestEnvironmentDefinition,
+)
 from taskhub_v2.projects import ProjectConflictError, ProjectNotFoundError, ProjectProvisionError
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -46,6 +50,10 @@ class ProjectRepositoryRequest(BaseModel):
     base_ref: str = Field(pattern=r"^[A-Za-z0-9._/-]{1,200}$")
 
 
+class ProjectSchedulingPolicyRequest(ProjectSchedulingPolicy):
+    pass
+
+
 def parse_test_commands(value: str) -> list[list[str]]:
     commands = []
     for line in value.splitlines():
@@ -70,6 +78,7 @@ def project_view(item: ProjectDefinition, registry=None) -> dict:
         "test_environment": (
             item.test_environment.model_dump(mode="json") if item.test_environment else None
         ),
+        "scheduling_policy": item.scheduling_policy.model_dump(mode="json"),
         "repository_ready": (repository_settings["ready"] if repository_settings else True),
         "repository_settings": repository_settings,
     }
@@ -178,6 +187,29 @@ async def check_project_repository(project_id: str, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="项目不存在") from exc
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.put("/{project_id}/scheduling-policy")
+async def update_project_scheduling_policy(
+    project_id: str, payload: ProjectSchedulingPolicyRequest, request: Request
+) -> dict:
+    try:
+        project = request.app.state.projects.get(project_id)
+        updated = request.app.state.projects.update(
+            project.model_copy(
+                update={"scheduling_policy": ProjectSchedulingPolicy(**payload.model_dump())}
+            )
+        )
+        request.app.state.operation_log.record(
+            "project_scheduling_policy",
+            "updated",
+            actor=str(request.state.session.get("actor") or "system"),
+            project_id=project_id,
+            policy=updated.scheduling_policy.model_dump(mode="json"),
+        )
+        return project_view(updated, request.app.state.projects)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="项目不存在") from exc
 
 
 @router.put("/{project_id}/test-environment")

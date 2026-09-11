@@ -249,6 +249,54 @@ def test_project_repository_rejects_a_password_in_the_remote_url(tmp_path: Path)
     assert "不能包含密码或访问令牌" in response.json()["detail"]
 
 
+def test_project_scheduling_policy_is_validated_persisted_and_audited(tmp_path: Path):
+    projects_file = tmp_path / "projects.json"
+    operations_file = tmp_path / "operations.jsonl"
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+            operations_log_file=str(operations_file),
+        )
+    )
+    repo = repository(tmp_path / "policy-project")
+    app.state.projects.add(ProjectDefinition(id="shop", repository=str(repo)))
+
+    with TestClient(app) as client:
+        login = client.post("/api/auth/login", json={"token": "admin-secret"})
+        headers = {"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]}
+        updated = client.put(
+            "/api/projects/shop/scheduling-policy",
+            headers=headers,
+            json={
+                "concurrency_limit": 8,
+                "priority_weight": 3,
+                "run_cost_budget_units": 240,
+            },
+        )
+        invalid = client.put(
+            "/api/projects/shop/scheduling-policy",
+            headers=headers,
+            json={
+                "concurrency_limit": 21,
+                "priority_weight": 3,
+                "run_cost_budget_units": 240,
+            },
+        )
+
+    assert updated.status_code == 200
+    assert updated.json()["scheduling_policy"] == {
+        "concurrency_limit": 8,
+        "priority_weight": 3,
+        "run_cost_budget_units": 240,
+    }
+    assert invalid.status_code == 422
+    restored = ProjectRegistry(str(projects_file)).get("shop")
+    assert restored.scheduling_policy.concurrency_limit == 8
+    assert "project_scheduling_policy" in operations_file.read_text(encoding="utf-8")
+
+
 def test_git_run_is_blocked_before_creation_when_project_remote_is_unavailable(
     tmp_path: Path,
 ):

@@ -1192,10 +1192,19 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 
 .product-spec-surface,
 .project-contract-surface,
+.scheduling-policy-surface,
 .execution-plan-surface { display: grid; gap: 12px; }
 .product-spec-card > header { padding: 14px 16px; }
 .project-contract-card > header { padding: 14px 16px; }
 .execution-plan-card > header { padding: 14px 16px; }
+.scheduling-policy-card > header { padding: 14px 16px; }
+.scheduling-policy-fields {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+  padding: 14px 16px; border-top: 1px solid var(--border);
+}
+.scheduling-policy-fields label { display: grid; gap: 5px; color: var(--text-secondary); font-size: 12px; }
+.scheduling-policy-card .management-card-actions { align-items: center; }
+#scheduling-policy-message { flex: 1 1 260px; color: var(--text-secondary); font-size: 12px; }
 .product-spec-toolbar {
   display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
   align-items: end; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border);
@@ -1263,6 +1272,23 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .execution-plan-section { padding: 14px 16px; }
 .execution-plan-section + .execution-plan-section { border-top: 1px solid var(--border); }
 .execution-plan-section h4 { margin: 0 0 10px; color: var(--text); font-size: 14px; }
+.execution-analysis {
+  display: grid; grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); gap: 10px;
+}
+.execution-analysis-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.execution-analysis-facts > div,
+.execution-bottlenecks { min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-subtle); }
+.execution-analysis-facts span { display: block; margin-bottom: 4px; color: var(--text-tertiary); font-size: 12px; }
+.execution-analysis-facts strong,
+.execution-bottlenecks > strong { color: var(--text); font-size: 13px; }
+.execution-bottlenecks ul { margin: 8px 0 0; padding-left: 18px; }
+.execution-bottlenecks li,
+.execution-bottlenecks p { margin: 4px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.execution-bottlenecks li span { color: var(--text-tertiary); }
+.execution-task-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.execution-task-heading .muted { font-size: 12px; }
+.execution-task-pagination { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
+.execution-task-pagination span { min-width: 88px; color: var(--text-secondary); font-size: 12px; text-align: center; }
 .execution-batch-list,
 .execution-task-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .execution-batch-card,
@@ -1295,7 +1321,10 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .product-spec-sections,
   .project-contract-toolbar,
   .project-contract-facts,
+  .scheduling-policy-fields,
   .execution-plan-facts,
+  .execution-analysis,
+  .execution-analysis-facts,
   .execution-batch-list,
   .execution-task-list { grid-template-columns: 1fr; }
   .product-spec-diff div { grid-template-columns: 1fr; gap: 3px; }

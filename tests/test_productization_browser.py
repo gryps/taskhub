@@ -135,11 +135,16 @@ def test_product_spec_card_layout(tmp_path):
         contract_disclosure.locator("summary").click()
         expect(page.locator("#project-contract-state")).to_have_text("已生效")
         expect(page.locator("#project-contract-facts > div")).to_have_count(6)
+        policy_disclosure = page.locator("#scheduling-policy-disclosure")
+        expect(policy_disclosure).to_be_visible()
+        policy_disclosure.locator("summary").click()
+        expect(page.locator("#scheduling-policy-summary")).to_contain_text("并发 2")
         execution_disclosure = page.locator("#execution-plan-disclosure")
         expect(execution_disclosure).to_be_visible()
         execution_disclosure.locator("summary").click()
         expect(page.locator("#execution-plan-state")).to_have_text("已激活")
         expect(page.locator("#execution-plan-facts > div")).to_have_count(4)
+        expect(page.locator("#execution-analysis .execution-analysis-facts > div")).to_have_count(6)
         assert page.locator("#execution-tasks .execution-task-card").count() >= 2
         assert (
             page.locator("#product-spec-title").evaluate(
@@ -175,6 +180,18 @@ def test_product_spec_card_layout(tmp_path):
                 .split()
             )
             assert dag_columns == columns
+            policy_columns = len(
+                page.locator(".scheduling-policy-fields")
+                .evaluate("element => getComputedStyle(element).gridTemplateColumns")
+                .split()
+            )
+            assert policy_columns == (3 if width == 1440 else 1)
+            analysis_columns = len(
+                page.locator(".execution-analysis-facts")
+                .evaluate("element => getComputedStyle(element).gridTemplateColumns")
+                .split()
+            )
+            assert analysis_columns == (3 if width == 1440 else 1)
             assert page.evaluate(
                 "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
             )

@@ -87,7 +87,12 @@ def build_dag_runtime(
                 return True
         return False
 
-    planner = DagPlanService(store, capability_inventory, design_contract_resolver)
+    planner = DagPlanService(
+        store,
+        capability_inventory,
+        design_contract_resolver,
+        projects.get,
+    )
     executor = WorkerDagExecutor(
         worker,
         store,

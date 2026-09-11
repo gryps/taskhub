@@ -1,3 +1,5 @@
+import asyncio
+
 from taskhub_v2.domain.production import ProductionTaskStatus
 from taskhub_v2.services.dag_scheduler_models import lock_conflicts
 
@@ -22,11 +24,19 @@ async def waiting_reasons(plan, tasks, completed, active_locks, capability_reaso
             current.append("等待资源锁：" + ", ".join(conflicting_locks))
         if task.status == ProductionTaskStatus.BLOCKED:
             current.extend(task.waiting_reasons or ["任务已阻塞"])
-        if capability_reason:
-            reason = await capability_reason(task)
-            if reason:
-                current.append(reason)
         reasons[task.task_id] = current
+    if capability_reason:
+        representatives = {}
+        for task in tasks:
+            key = (task.task_type, tuple(task.required_capabilities))
+            representatives.setdefault(key, task)
+        keys = list(representatives)
+        results = await asyncio.gather(*(capability_reason(representatives[key]) for key in keys))
+        capability_results = dict(zip(keys, results, strict=True))
+        for task in tasks:
+            reason = capability_results[(task.task_type, tuple(task.required_capabilities))]
+            if reason:
+                reasons[task.task_id].append(reason)
     return reasons
 
 

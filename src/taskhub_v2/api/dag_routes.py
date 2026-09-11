@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from taskhub_v2.services.dag_analysis import analyze_execution
+
 router = APIRouter(prefix="/api", tags=["execution-plans"])
 
 
@@ -29,6 +31,9 @@ async def execution_plan_for_run(
     return {
         **result,
         "enabled": True,
+        "analysis": analyze_execution(
+            result["execution_plan"], tasks, result["batches"], result["attempts"]
+        ),
         "tasks": tasks[start : start + page_size],
         "task_page": {"page": page, "page_size": page_size, "total": len(tasks)},
     }

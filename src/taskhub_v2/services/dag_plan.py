@@ -39,11 +39,16 @@ class DagPlanBundle(BaseModel):
 
 class DagPlanService:
     def __init__(
-        self, store: ProductionStore, capability_inventory=None, design_contract_resolver=None
+        self,
+        store: ProductionStore,
+        capability_inventory=None,
+        design_contract_resolver=None,
+        project_policy_resolver=None,
     ):
         self.store = store
         self.capability_inventory = capability_inventory
         self.design_contract_resolver = design_contract_resolver
+        self.project_policy_resolver = project_policy_resolver
 
     async def compile_from_run(
         self,
@@ -114,6 +119,11 @@ class DagPlanService:
         findings, order = await self.validate(tasks, contract)
         if findings:
             raise DagPlanValidationError(findings)
+        project_policy = (
+            self.project_policy_resolver(project_id).scheduling_policy
+            if self.project_policy_resolver
+            else None
+        )
         plan = ExecutionPlan(
             project_id=project_id,
             plan_id=plan_id,
@@ -130,7 +140,14 @@ class DagPlanService:
             run_id=run_id,
             task_ids=[item.task_id for item in tasks],
             milestones=[{"id": "delivery", "task_ids": order}],
-            policy={"project_concurrency": 2, "priority": 100, "dynamic_batches": True},
+            policy={
+                "project_concurrency": project_policy.concurrency_limit if project_policy else 2,
+                "priority_weight": project_policy.priority_weight if project_policy else 1,
+                "run_cost_budget_units": (
+                    project_policy.run_cost_budget_units if project_policy else 100
+                ),
+                "dynamic_batches": True,
+            },
             created_by=actor,
         )
         persisted = await self.store.get("execution_plan", plan.plan_id, str(plan.version))

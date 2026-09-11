@@ -2,6 +2,29 @@
 
 Updated: 2026-09-11
 
+## Productized Delivery Phase 6
+
+- On 2026-09-12, Phase 6 completed the source implementation for project concurrency, weighted
+  priority, per-run cost budgets, grouped 1,000-task readiness checks, critical-path and bottleneck
+  analysis, and paginated execution-plan text views.
+- Project policies are persisted and frozen into new execution plans. The global scheduler supports
+  20 concurrent grants, applies weighted fairness without starving lower-priority projects, and
+  blocks over-budget tasks before dispatch with an explicit waiting reason.
+- Development Workflow now presents a compact project policy card plus server-owned prediction,
+  cost, quality and bottleneck facts. Tasks are fetched 100 at a time. Static assets are
+  `styles.css?v=46` and `app.js?v=19`.
+- `/api/system/production-readiness` reports persistent orchestration, secure sessions, RBAC, audit,
+  backup identity, Docker proxy isolation and node reconciliation controls without exposing secrets.
+- The production canvas remains the only React route with editable topology state. Other console
+  routes remain native until whole-route capability parity; no scheduling truth is duplicated in
+  either frontend.
+- This phase is source-only: push `.3 Git` and GitHub. Do not deploy, build Docker images or publish
+  registries. A real target-environment release/restore drill remains a deployment gate rather than
+  a fabricated source-stage result.
+- Verification passed with `271 passed, 19 skipped`, the React/TypeScript/Vite production build,
+  changed-file Ruff, JavaScript syntax, architecture and diff checks. Real Google Chrome passed the
+  policy/analysis/task layouts at 1440, 680 and 390 pixels without page-level horizontal overflow.
+
 ## Productized Delivery Phase 0 Baseline
 
 - Productized delivery development is now tracked by

@@ -156,9 +156,9 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert "styles.css?v=45" in html
+        assert "styles.css?v=46" in html
         assert 'href="/canvas/"' in html and "打开生产画布" in html
-        assert "app.js?v=18" in html
+        assert "app.js?v=19" in html
         assert "revision-center.js?v=1" in html
         assert "capability-center.js?v=1" in html
         assert html.count('class="resource-disclosure-heading"') == 5
@@ -201,11 +201,14 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="approve-product-spec"' in html
         assert 'id="execution-plan-disclosure"' in html
         assert 'id="execution-plan-facts"' in html
+        assert 'id="execution-analysis"' in html
+        assert 'id="execution-task-pagination"' in html
+        assert 'id="scheduling-policy-form"' in html
         assert 'id="execution-batches"' in html
         assert 'id="execution-tasks"' in html
         assert 'id="capability-disclosure"' in html
         assert 'id="capability-inventory-disclosure"' in html
-        assert "/static/app.js?v=18" in html
+        assert "/static/app.js?v=19" in html
         assert 'id="project-repository-form"' in html
         assert 'id="check-project-repository"' in html
         assert 'id="save-project-repository"' in html

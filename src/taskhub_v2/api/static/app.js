@@ -9,6 +9,9 @@ const stages = [
 ];
 let currentRun = null;
 let currentRunState = null;
+let executionPlanPage = 1;
+let executionPlanRunId = null;
+const executionPlanPageSize = 100;
 let retryCountdownTimer = null;
 let currentProjectId = localStorage.getItem("taskhub_project_id");
 let eventSource;
@@ -125,6 +128,10 @@ function cookie(name) {
 }
 
 function render(run) {
+  if (executionPlanRunId !== run.run_id) {
+    executionPlanRunId = run.run_id;
+    executionPlanPage = 1;
+  }
   currentRunState = run;
   if (retryCountdownTimer) clearInterval(retryCountdownTimer);
   retryCountdownTimer = null;
@@ -306,21 +313,41 @@ function renderExecutionPlan(data) {
   if (!plan) return;
   const tasks = data.tasks || [];
   const batches = data.batches || [];
+  const analysis = data.analysis || {};
+  const taskCounts = analysis.task_counts || {};
+  const page = data.task_page || {page: 1, page_size: executionPlanPageSize, total: tasks.length};
   const counts = tasks.reduce((result, task) => {
     result[task.status] = (result[task.status] || 0) + 1;
     return result;
   }, {});
   const state = dagStateLabels[plan.status] || plan.status;
-  byId("execution-plan-summary").textContent = `v${plan.version} · ${state} · ${tasks.length} 项任务`;
+  byId("execution-plan-summary").textContent = `v${plan.version} · ${state} · ${page.total} 项任务`;
   byId("execution-plan-title").textContent = `${activeProject?.name || plan.project_id} · 执行计划`;
   byId("execution-plan-detail").textContent = `计划 ${plan.plan_id} · 绑定产品规格 v${plan.product_spec_version} 与项目契约 v${plan.project_contract_version}`;
   byId("execution-plan-state").textContent = state;
   byId("execution-plan-state").className = `card-state ${["completed", "active"].includes(plan.status) ? "ok" : plan.status === "failed" ? "bad" : "warn"}`;
   byId("execution-plan-facts").innerHTML = [
-    ["任务总数", tasks.length], ["等待 / 就绪", `${counts.pending || 0} / ${counts.ready || 0}`],
-    ["运行 / 验证", `${(counts.assigned || 0) + (counts.running || 0)} / ${counts.verifying || 0}`],
-    ["完成 / 阻塞", `${counts.completed || 0} / ${counts.blocked || 0}`],
+    ["任务总数", page.total], ["本页等待 / 就绪", `${counts.pending || 0} / ${counts.ready || 0}`],
+    ["剩余任务", taskCounts.remaining ?? "—"],
+    ["已完成", taskCounts.completed ?? counts.completed ?? 0],
   ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("");
+  const prediction = analysis.prediction || {};
+  const cost = analysis.cost || {};
+  const quality = analysis.quality || {};
+  const bottlenecks = analysis.bottlenecks || [];
+  byId("execution-analysis").innerHTML = analysis.prediction ? `
+    <div class="execution-analysis-facts">
+      <div><span>关键路径</span><strong>${prediction.critical_path_task_ids?.length || 0} 项 / ${prediction.critical_path_units || 0} 单位</strong></div>
+      <div><span>最大并行宽度</span><strong>${prediction.max_parallel_width || 0}</strong></div>
+      <div><span>预计剩余批次</span><strong>${prediction.estimated_remaining_batches || 0}</strong></div>
+      <div><span>成本余额</span><strong>${cost.remaining_budget_units ?? "—"} 单位</strong></div>
+      <div><span>失败尝试</span><strong>${quality.failed_attempts || 0}</strong></div>
+      <div><span>证据完整率</span><strong>${Math.round((quality.evidence_completeness || 0) * 100)}%</strong></div>
+    </div>
+    <div class="execution-bottlenecks"><strong>主要瓶颈</strong>${bottlenecks.length
+      ? `<ul>${bottlenecks.slice(0, 5).map((item) => `<li>${escapeHtml(item.type === "resource_lock" ? "资源锁" : "等待原因")}：${escapeHtml(item.key)} <span>${item.task_count} 项</span></li>`).join("")}</ul>`
+      : "<p>当前未识别出重复资源争用或集中阻塞。</p>"}</div>`
+    : '<p class="empty-state">尚无分析</p>';
   byId("execution-batches").innerHTML = batches.length ? batches.map((batch) => `
     <article class="execution-batch-card">
       <header><strong>批次 ${batch.sequence}</strong><span class="dag-state dag-${escapeHtml(batch.status)}">${escapeHtml(dagStateLabels[batch.status] || batch.status)}</span></header>
@@ -336,12 +363,58 @@ function renderExecutionPlan(data) {
       ${reasons.length ? `<p class="execution-waiting">${escapeHtml(reasons.join("；"))}</p>` : ""}
     </article>`;
   }).join("") : '<p class="empty-state">尚无任务</p>';
+  const first = page.total ? (page.page - 1) * page.page_size + 1 : 0;
+  const last = Math.min(page.total, page.page * page.page_size);
+  const pages = Math.max(1, Math.ceil(page.total / page.page_size));
+  byId("execution-task-range").textContent = page.total ? `${first}–${last} / ${page.total}` : "";
+  byId("execution-task-page").textContent = `第 ${page.page} / ${pages} 页`;
+  byId("execution-task-previous").disabled = page.page <= 1;
+  byId("execution-task-next").disabled = page.page >= pages;
+  byId("execution-task-pagination").classList.toggle("hidden", pages <= 1);
 }
 
 async function loadExecutionPlan(runId) {
   if (!productizationEnabled || !runId) return renderExecutionPlan(null);
-  const data = await request(`/api/runs/${encodeURIComponent(runId)}/execution-plan`);
+  const data = await request(`/api/runs/${encodeURIComponent(runId)}/execution-plan?page=${executionPlanPage}&page_size=${executionPlanPageSize}`);
   if (currentRunState?.run_id === runId) renderExecutionPlan(data);
+}
+
+function renderSchedulingPolicy(project) {
+  const policy = project?.scheduling_policy || {concurrency_limit: 2, priority_weight: 1, run_cost_budget_units: 100};
+  byId("scheduling-policy-detail").textContent = project ? `${project.name} · 新执行计划采用此策略` : "请选择项目";
+  byId("scheduling-concurrency").value = policy.concurrency_limit;
+  byId("scheduling-priority").value = policy.priority_weight;
+  byId("scheduling-cost-budget").value = policy.run_cost_budget_units;
+  byId("scheduling-policy-summary").textContent = project
+    ? `并发 ${policy.concurrency_limit} · 权重 ${policy.priority_weight} · 预算 ${policy.run_cost_budget_units}`
+    : "默认策略";
+  byId("scheduling-policy-form").querySelectorAll("input, button").forEach((item) => {
+    item.disabled = !project || !canPermission("projects:manage");
+  });
+}
+
+async function saveSchedulingPolicy(event) {
+  event.preventDefault();
+  if (!currentProjectId) return;
+  const message = byId("scheduling-policy-message");
+  message.textContent = "正在保存";
+  try {
+    const updated = await request(`/api/projects/${encodeURIComponent(currentProjectId)}/scheduling-policy`, {
+      method: "PUT",
+      body: JSON.stringify({
+        concurrency_limit: Number(byId("scheduling-concurrency").value),
+        priority_weight: Number(byId("scheduling-priority").value),
+        run_cost_budget_units: Number(byId("scheduling-cost-budget").value),
+      }),
+    });
+    activeProject = updated;
+    const index = registeredProjects.findIndex((item) => item.id === updated.id);
+    if (index >= 0) registeredProjects[index] = updated;
+    renderSchedulingPolicy(updated);
+    message.textContent = "运行策略已保存，将用于之后生成的新计划";
+  } catch (error) {
+    message.textContent = error.message;
+  }
 }
 
 function stageName(stage) {
@@ -493,6 +566,7 @@ async function loadProjects(preferredProjectId = currentProjectId) {
     ? `当前运行、代码仓库和预生产配置均使用“${active.name}”`
     : "请先创建或接入项目";
   renderProjectRepository(active);
+  renderSchedulingPolicy(active);
   await Promise.all([loadCurrentProjectContract(), loadCurrentProductSpec()]);
   await window.loadCapabilityCenter?.(
     productizationEnabled ? currentProjectId : null,
@@ -1204,6 +1278,17 @@ byId("run-project-contract-gate").addEventListener("click", () => {
 byId("attach-project-form").addEventListener("submit", attachProject);
 byId("attach-project-repository").addEventListener("change", applySelectedRepository);
 byId("project-repository-form").addEventListener("submit", saveProjectRepository);
+byId("scheduling-policy-form").addEventListener("submit", saveSchedulingPolicy);
+byId("execution-task-previous").addEventListener("click", () => {
+  if (executionPlanPage <= 1 || !currentRun) return;
+  executionPlanPage -= 1;
+  loadExecutionPlan(currentRun).catch(() => {});
+});
+byId("execution-task-next").addEventListener("click", () => {
+  if (!currentRun) return;
+  executionPlanPage += 1;
+  loadExecutionPlan(currentRun).catch(() => { executionPlanPage -= 1; });
+});
 byId("check-project-repository").addEventListener("click", checkProjectRepository);
 byId("product-decision-form").addEventListener("submit", (event) => {
   resolveProductDecision(event).catch((error) => { byId("product-spec-message").textContent = error.message; });
