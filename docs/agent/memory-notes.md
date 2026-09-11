@@ -209,3 +209,11 @@ Updated: 2026-09-11
 - The Seed external URL and Node Agent callback URL remain side by side through medium-width layouts and stack only below 560px, removing the empty area created by an unnecessarily tall configuration row.
 - The runtime-only update is deployed to `192.168.31.31:8200` as `styles.css?v=35`. Per operator direction, no automated or visual acceptance suite was run; LAN health, served asset markers, relevant CSS selectors, container health and `git diff --check` passed.
 - Rollback files are at `C:\taskhub-seed\backups\ui-fix-pre-20260911T151209`. The preview modifies files inside the current container and will be lost if that container is recreated before the changes are included in a rebuilt image.
+
+## Card Configuration Formal Image Release
+
+- The card-based system-configuration frontend, hidden production-line field, disclosure hierarchy and v35 typography/alignment fixes were released from source commit `5b4ce12e42ad1e23905270e9ebd9c4cca502eed8`.
+- Release verification passed with 206 Python tests and 8 skips. The opt-in real-Chrome system-configuration regression passed at 1440, 680 and 390 pixels, including the diagnostic download typography, backup body typography and responsive address-column assertions.
+- The public `0.1.0-alpha` tags were overwritten in both registries with matching `linux/amd64` manifests. Seed digest is `sha256:28ae765419f7ad3671dab3b6963e05f27141db263f7a8e8131080a8800790974`; Node digest is `sha256:53eb01fcfe61148b52360e1158ecc40f5b06ffb9154a71f1c741551549f23133`. Anonymous manifest reads passed for all four references.
+- The controller at `192.168.31.31:8200` now runs the released Seed digest and is healthy. The existing administrator-password state, PostgreSQL data and named volumes were retained; authentication remains configured and PostgreSQL contains 11 public application tables.
+- The validated pre-release recovery set is `C:\taskhub-seed\backups\formal-pre-5b4ce12`; all recorded SHA-256 checks passed. It contains sensitive configuration and business data and must remain on controlled encrypted storage. Temporary registry authentication files and push tasks were removed after publication.
