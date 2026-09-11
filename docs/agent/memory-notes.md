@@ -2,6 +2,16 @@
 
 Updated: 2026-09-11
 
+## Workflow Project Context and Local Image Build
+
+- Feature commit `601cc11b4fca4ad60168f0dd23fd0287e9305a31` makes the workflow header the single current-project selector; new runs and project-scoped preproduction acceptance follow that shared context.
+- The former project-settings row is now the 15px `预生产验收` disclosure. It is disabled by default, requires only the preproduction access URL when enabled, derives a missing gateway host from that URL, and keeps optional gateway/origin variables under advanced configuration for custom deployment and acceptance scripts.
+- The frontend design document plus the version-controlled and installed TaskHub frontend skills retain this interaction contract. Static assets are `styles.css?v=38`, `app.js?v=12` and `resource-center.js?v=25`.
+- Verification passed: 214 tests passed and 8 skipped; the real Chrome layout test passed with the system browser; JavaScript syntax, diff checks and changed-file Ruff excluding the repository's pre-existing `UP046` generic warning passed.
+- Local linux/amd64 images were rebuilt on `192.168.31.31` without registry upload: Seed `taskhub-seed:0.1.0-alpha` is `sha256:acdabccce3aeeb6d3bf996cca74dc9e257956abef01b8628bc0ed0afdc4a1bcf`; Node `taskhub-node:0.1.0-alpha` is `sha256:aae5839d50e176d6e08aff3c60b164d12389e6115c7b7cb6fa8de60b96c3620a`. Both carry revision `601cc11b4fca4ad60168f0dd23fd0287e9305a31`.
+- Docker Desktop's remote SSH session could not use its credential helper, and both Debian upstream and mirror downloads stalled during a full Node dependency rebuild. Because this change does not alter Node system dependencies, the successful Node build reused the previously verified Node environment image and reinstalled the committed TaskHub source before applying the new OCI revision label.
+- GHCR and Aliyun ACR were not contacted for upload, and the running `.31` controller was not recreated or deployed from these local images.
+
 ## Current Frontend Baseline
 
 - The redesigned frontend is deployed to `192.168.31.51:8200`.
