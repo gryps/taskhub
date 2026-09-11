@@ -1121,13 +1121,36 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .resource-readonly .host-state-action,
 .resource-readonly .container-action { display: none !important; }
 
-.product-spec-surface { display: grid; gap: 12px; }
+.product-spec-surface,
+.project-contract-surface { display: grid; gap: 12px; }
 .product-spec-card > header { padding: 14px 16px; }
+.project-contract-card > header { padding: 14px 16px; }
 .product-spec-toolbar {
   display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
   align-items: end; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border); background: var(--surface-subtle);
 }
+.project-contract-toolbar {
+  display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
+  align-items: end; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border); background: var(--surface-subtle);
+}
+.project-contract-toolbar label { display: grid; gap: 5px; color: var(--text-secondary); font-size: 12px; }
+.project-contract-toolbar .muted { align-self: center; font-size: 12px; overflow-wrap: anywhere; }
+.project-contract-facts {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px 16px;
+}
+.project-contract-facts > div {
+  min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 9px;
+  background: var(--surface-subtle);
+}
+.project-contract-facts span { display: block; margin-bottom: 5px; color: var(--text-tertiary); font-size: 12px; }
+.project-contract-facts strong { display: block; color: var(--text); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.project-contract-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.project-contract-actions #project-contract-message { flex: 1 1 240px; color: var(--text-secondary); font-size: 12px; }
+.project-contract-gate { margin: 0 16px 14px; padding: 10px 12px; border-radius: 9px; font-size: 13px; line-height: 1.5; }
+.project-contract-gate.ok { color: var(--success); background: color-mix(in srgb, var(--success) 9%, var(--surface)); }
+.project-contract-gate.bad { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }
 .product-spec-toolbar label { display: grid; gap: 5px; color: var(--text-secondary); font-size: 12px; }
 .product-spec-toolbar .muted { align-self: center; font-size: 12px; overflow-wrap: anywhere; }
 .product-spec-sections {
@@ -1166,7 +1189,9 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .diagnostic-toolbar > * { width: 100%; }
   .security-overview { grid-template-columns: 1fr; }
   .product-spec-toolbar,
-  .product-spec-sections { grid-template-columns: 1fr; }
+  .product-spec-sections,
+  .project-contract-toolbar,
+  .project-contract-facts { grid-template-columns: 1fr; }
   .product-spec-diff div { grid-template-columns: 1fr; gap: 3px; }
 }
 

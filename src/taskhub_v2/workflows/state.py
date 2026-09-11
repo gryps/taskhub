@@ -8,6 +8,9 @@ class BaseState(TypedDict, total=False):
     production_line: str
     product_spec_id: str | None
     product_spec_version: int | None
+    project_contract_id: str | None
+    project_contract_version: int | None
+    project_contract: dict[str, Any] | None
     requirement: str
     requirement_version: int
     current_stage: str
@@ -63,3 +66,14 @@ def event(stage: str, title: str, actor: str, detail: str = "") -> list[dict[str
             "status": "completed",
         }
     ]
+
+
+def execution_requirement(state: BaseState) -> str:
+    requirement = state["requirement"]
+    contract = state.get("project_contract")
+    if not contract:
+        return requirement
+    import json
+
+    context = json.dumps(contract, ensure_ascii=False, sort_keys=True)
+    return f"{requirement}\n\nApproved ProjectContract (mandatory, machine-readable):\n{context}"

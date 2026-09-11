@@ -70,9 +70,24 @@ def create_clear_spec(client, headers):
     return response.json()
 
 
+def activate_contract(client, headers):
+    draft = client.post(
+        "/api/projects/demo/project-contracts/draft",
+        headers=headers,
+        json={"profile_id": "python-service", "inferred": False},
+    ).json()
+    root = (
+        f"/api/projects/demo/project-contracts/{draft['contract_id']}/versions/{draft['version']}"
+    )
+    assert client.post(f"{root}/review", headers=headers).status_code == 200
+    assert client.post(f"{root}/activate", headers=headers).status_code == 200
+    return draft
+
+
 def test_product_spec_must_be_approved_before_run(tmp_path):
     with TestClient(create_app(productization_settings(tmp_path))) as client:
         headers = login(client)
+        contract = activate_contract(client, headers)
         blocked = client.post(
             "/api/runs",
             headers=headers,
@@ -126,12 +141,37 @@ def test_product_spec_must_be_approved_before_run(tmp_path):
         run = started.json()
         assert run["product_spec_id"] == spec["spec_id"]
         assert run["product_spec_version"] == 1
+        assert run["project_contract_id"] == contract["contract_id"]
+        assert run["project_contract_version"] == 1
         assert run["requirement"].startswith("为管理员用户增加状态页")
+
+
+def test_approved_product_spec_still_requires_active_project_contract(tmp_path):
+    with TestClient(create_app(productization_settings(tmp_path))) as client:
+        headers = login(client)
+        spec = create_clear_spec(client, headers)["product_spec"]
+        root = f"/api/product-specs/{spec['spec_id']}/versions/1"
+        client.post(f"{root}/review?project_id=demo", headers=headers)
+        client.post(f"{root}/approve?project_id=demo", headers=headers)
+
+        blocked = client.post(
+            "/api/runs",
+            headers=headers,
+            json={
+                "project_id": "demo",
+                "requirement": "bypass",
+                "product_spec_id": spec["spec_id"],
+                "product_spec_version": 1,
+            },
+        )
+        assert blocked.status_code == 409
+        assert "项目合同" in blocked.json()["detail"]
 
 
 def test_one_product_decision_resolves_all_missing_information(tmp_path):
     with TestClient(create_app(productization_settings(tmp_path))) as client:
         headers = login(client)
+        activate_contract(client, headers)
         created = client.post(
             "/api/requirements",
             headers=headers,
@@ -234,6 +274,7 @@ def test_requirement_original_is_preserved_and_supplements_append(tmp_path):
 def test_approved_spec_keeps_source_snapshot_until_revision(tmp_path):
     with TestClient(create_app(productization_settings(tmp_path))) as client:
         headers = login(client)
+        activate_contract(client, headers)
         created = create_clear_spec(client, headers)
         spec = created["product_spec"]
         root = f"/api/product-specs/{spec['spec_id']}/versions/1"

@@ -2,12 +2,12 @@ from langgraph.graph import END, START, StateGraph
 
 from taskhub_v2.domain.models import RunStatus, Stage
 from taskhub_v2.providers.base import ModelProvider
-from taskhub_v2.workflows.state import StepState, event, model_run
+from taskhub_v2.workflows.state import StepState, event, execution_requirement, model_run
 
 
 def build_planning_graph(provider: ModelProvider):
     async def create_plan(state: StepState) -> dict:
-        result = await provider.create_plan(state["requirement"])
+        result = await provider.create_plan(execution_requirement(state))
         plan = result.content
         return {
             "plan": plan.model_dump(),

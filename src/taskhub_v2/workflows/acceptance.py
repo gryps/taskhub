@@ -9,9 +9,7 @@ def build_acceptance_graph(gateway: AcceptanceGateway):
     async def verify(state: StepState) -> dict:
         implementation = ExecutionResult.model_validate(state["implementation"])
         try:
-            result = await gateway.verify(
-                state["run_id"], state["project_id"], implementation
-            )
+            result = await gateway.verify(state["run_id"], state["project_id"], implementation)
         except Exception as exc:
             reason = getattr(exc, "reason", exc.__class__.__name__)
             detail = getattr(exc, "detail", str(exc))[:4000]
@@ -20,6 +18,7 @@ def build_acceptance_graph(gateway: AcceptanceGateway):
                 "acceptance_contract_missing",
                 "acceptance_suite_invalid",
                 "preproduction_contract_missing",
+                "project_contract_gate_failed",
             }
             return {
                 "current_stage": Stage.ACCEPTANCE_BLOCKED.value,

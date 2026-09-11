@@ -16,6 +16,7 @@ from taskhub_v2.domain.production import (
     validate_transition,
     with_content_digest,
 )
+from taskhub_v2.domain.project_contract import ProjectContract
 
 
 class ProductionObjectConflictError(RuntimeError):
@@ -71,8 +72,26 @@ def _validate_replacement(previous: ProductionObject, record: ProductionObject) 
         ):
             raise ProductionObjectConflictError("resolved product decisions are immutable")
         return
+    if isinstance(previous, ProjectContract) and isinstance(record, ProjectContract):
+        excluded = {
+            "status",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "content_digest",
+            "approved_by",
+            "approved_at",
+        }
+        if previous.model_dump(mode="json", exclude=excluded) != record.model_dump(
+            mode="json", exclude=excluded
+        ):
+            raise ProductionObjectConflictError(
+                "project contract content is immutable during lifecycle transitions"
+            )
+        return
     mutable_states = {
         "product_spec": {"draft", "in_review"},
+        "project_contract": {"draft", "in_review"},
         "execution_plan": {"draft", "validating"},
         "task": {"pending"},
         "change_request": {"proposed"},

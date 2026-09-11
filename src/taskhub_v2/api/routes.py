@@ -28,6 +28,10 @@ from taskhub_v2.services.productization import (
     ProductizationConflictError,
     ProductizationNotFoundError,
 )
+from taskhub_v2.services.project_contracts import (
+    ProjectContractConflictError,
+    ProjectContractNotFoundError,
+)
 from taskhub_v2.services.runs import RunConflictError, RunNotFoundError, RunService
 
 router = APIRouter(prefix="/api")
@@ -42,6 +46,7 @@ async def health() -> dict[str, str]:
 @router.post("/runs", response_model=RunView, status_code=201)
 async def start_run(payload: StartRunRequest, request: Request, service: Service) -> RunView:
     try:
+        project_contract = None
         if request.app.state.production_orchestration_enabled:
             if not payload.product_spec_id or payload.product_spec_version is None:
                 raise RunConflictError("必须先批准产品规格，才能开始实现")
@@ -55,8 +60,27 @@ async def start_run(payload: StartRunRequest, request: Request, service: Service
                     "product_spec_version": spec.version,
                 }
             )
+            project_contract = await request.app.state.project_contracts.active(payload.project_id)
+            payload = payload.model_copy(
+                update={
+                    "project_contract_id": project_contract.contract_id,
+                    "project_contract_version": project_contract.version,
+                }
+            )
         if request.app.state.settings.worker_mode != "git":
-            return await service.start(payload)
+            return await service.start(
+                payload,
+                project_contract=(
+                    {
+                        "contract": project_contract.model_dump(mode="json"),
+                        "required_documents": request.app.state.project_contracts.render_documents(
+                            project_contract
+                        ),
+                    }
+                    if project_contract
+                    else None
+                ),
+            )
         project = request.app.state.projects.get(payload.project_id)
         try:
             await asyncio.to_thread(request.app.state.projects.check_repository, project)
@@ -86,13 +110,27 @@ async def start_run(payload: StartRunRequest, request: Request, service: Service
             await request.app.state.node_scheduler.preflight_browser(
                 [contract.command], contract.required_capabilities
             )
-        return await service.start(payload)
+        return await service.start(
+            payload,
+            project_contract=(
+                {
+                    "contract": project_contract.model_dump(mode="json"),
+                    "required_documents": request.app.state.project_contracts.render_documents(
+                        project_contract
+                    ),
+                }
+                if project_contract
+                else None
+            ),
+        )
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail="project is not registered") from exc
     except (
         NodeExecutionError,
         ProductizationConflictError,
         ProductizationNotFoundError,
+        ProjectContractConflictError,
+        ProjectContractNotFoundError,
         RunConflictError,
         ValueError,
     ) as exc:

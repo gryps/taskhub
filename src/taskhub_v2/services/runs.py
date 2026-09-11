@@ -39,7 +39,9 @@ class RunService:
     def _config(run_id: str) -> dict[str, Any]:
         return {"configurable": {"thread_id": run_id}}
 
-    async def start(self, request: StartRunRequest) -> RunView:
+    async def start(
+        self, request: StartRunRequest, *, project_contract: dict[str, Any] | None = None
+    ) -> RunView:
         max_revisions = 2
         if self.projects is not None:
             max_revisions = self.projects.get(request.project_id).max_revision_attempts
@@ -50,6 +52,9 @@ class RunService:
             "production_line": request.production_line,
             "product_spec_id": request.product_spec_id,
             "product_spec_version": request.product_spec_version,
+            "project_contract_id": request.project_contract_id,
+            "project_contract_version": request.project_contract_version,
+            "project_contract": project_contract,
             "requirement": request.requirement,
             "requirement_version": 1,
             "current_stage": Stage.INTAKE.value,
@@ -102,6 +107,8 @@ class RunService:
             or (indexed.production_line if indexed else "default"),
             product_spec_id=values.get("product_spec_id"),
             product_spec_version=values.get("product_spec_version"),
+            project_contract_id=values.get("project_contract_id"),
+            project_contract_version=values.get("project_contract_version"),
             created_at=indexed.created_at if indexed else None,
             updated_at=indexed.updated_at if indexed else None,
             stage=values["current_stage"],

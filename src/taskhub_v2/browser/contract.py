@@ -86,9 +86,7 @@ class PreproductionContract(BaseModel):
     timeout_seconds: int = Field(default=300, ge=1, le=1800)
     commit_field: str = Field(default="git_commit", min_length=1, max_length=100)
     environment_field: str = Field(default="environment", min_length=1, max_length=100)
-    database_revision_field: str = Field(
-        default="database_revision", min_length=1, max_length=100
-    )
+    database_revision_field: str = Field(default="database_revision", min_length=1, max_length=100)
     expected_database_revision: str = Field(default="", max_length=200)
 
 
@@ -108,6 +106,12 @@ class AcceptanceContract(BaseModel):
     required_artifacts: list[str] = Field(
         default_factory=lambda: ["playwright-report", "junit.xml", "screenshots", "trace.zip"]
     )
+    contract_schema_version: str = ""
+    contract_id: str = ""
+    contract_version: int | None = None
+    quality_commands: list[list[str]] = Field(default_factory=list)
+    expected_artifacts: list[str] = Field(default_factory=list)
+    health_path: str = "/health"
 
     @model_validator(mode="after")
     def enforce_browser_lane(self):
@@ -174,8 +178,7 @@ def load_acceptance_contract(repository: str | Path) -> AcceptanceContract:
         } - set(contract.browsers)
         if unsupported:
             raise ValueError(
-                "acceptance suite uses undeclared browsers: "
-                + ", ".join(sorted(unsupported))
+                "acceptance suite uses undeclared browsers: " + ", ".join(sorted(unsupported))
             )
     return contract
 

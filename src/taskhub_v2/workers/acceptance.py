@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
+import yaml
 
 from taskhub_v2.artifacts import ArtifactStore
 from taskhub_v2.browser import PreviewManager, load_acceptance_contract
@@ -12,6 +13,7 @@ from taskhub_v2.browser.contract import PREPRODUCTION_EXAMPLE, load_acceptance_s
 from taskhub_v2.browser.reports import validate_junit
 from taskhub_v2.domain.models import AcceptanceEvidence, AcceptanceResult
 from taskhub_v2.projects import ProjectRegistry
+from taskhub_v2.workers.contract_acceptance import verify_project_contract
 
 
 class AcceptanceExecutionError(RuntimeError):
@@ -57,15 +59,26 @@ class ProjectAcceptanceGateway:
         scheduler,
         artifacts: ArtifactStore,
         preview_manager: PreviewManager | None = None,
+        project_contracts=None,
     ):
         self.projects = projects
         self.scheduler = scheduler
         self.artifacts = artifacts
         self.preview_manager = preview_manager
+        self.project_contracts = project_contracts
 
     async def verify(self, run_id, project_id, implementation) -> AcceptanceResult:
         project = self.projects.get(project_id)
         records = []
+        contract_evidence = await verify_project_contract(
+            self.project_contracts,
+            self.artifacts,
+            run_id,
+            project_id,
+            implementation,
+        )
+        if contract_evidence:
+            records.append(contract_evidence)
         if implementation.tests:
             records.append(
                 AcceptanceEvidence(
@@ -91,7 +104,8 @@ class ProjectAcceptanceGateway:
                 required_capabilities_override=project.acceptance_capabilities,
                 execution_environment=(
                     project.test_environment.execution_environment()
-                    if project.test_environment else {}
+                    if project.test_environment
+                    else {}
                 ),
             )
             failed = [test for test in scheduled.tests if test.exit_code]
@@ -126,7 +140,7 @@ class ProjectAcceptanceGateway:
             if implementation.workspace
             else Path()
         )
-        if contract_path.is_file():
+        if contract_path.is_file() and _is_browser_acceptance_contract(contract_path):
             if not implementation.workspace or not implementation.commit:
                 raise AcceptanceExecutionError("browser acceptance requires a committed workspace")
             contract = load_acceptance_contract(implementation.workspace.path)
@@ -153,8 +167,7 @@ class ProjectAcceptanceGateway:
             preview = None
             target_url = ""
             execution_environment = (
-                project.test_environment.execution_environment()
-                if project.test_environment else {}
+                project.test_environment.execution_environment() if project.test_environment else {}
             )
             execution_environment["TASKHUB_GIT_COMMIT"] = actual_commit
             try:
@@ -163,38 +176,42 @@ class ProjectAcceptanceGateway:
                         run_id, project, implementation.workspace.path, actual_commit, contract
                     )
                     target_url = project.test_environment.target_url
-                    records.append(AcceptanceEvidence(
-                        id="preproduction-deployment",
-                        kind=(
-                            "database"
-                            if contract.preproduction.expected_database_revision
-                            else "other"
-                        ),
-                        status="passed",
-                        source=prepared.node_id,
-                        summary=(
-                            f"Candidate {actual_commit} deployed to {target_url}; "
-                            f"environment {health['environment']} and database revision "
-                            f"{health['database_revision']} verified"
-                        ),
-                        tests=prepared.tests,
-                    ))
+                    records.append(
+                        AcceptanceEvidence(
+                            id="preproduction-deployment",
+                            kind=(
+                                "database"
+                                if contract.preproduction.expected_database_revision
+                                else "other"
+                            ),
+                            status="passed",
+                            source=prepared.node_id,
+                            summary=(
+                                f"Candidate {actual_commit} deployed to {target_url}; "
+                                f"environment {health['environment']} and database revision "
+                                f"{health['database_revision']} verified"
+                            ),
+                            tests=prepared.tests,
+                        )
+                    )
                 else:
                     if self.preview_manager is None:
-                        raise AcceptanceExecutionError(
-                            "browser preview manager is not configured"
-                        )
+                        raise AcceptanceExecutionError("browser preview manager is not configured")
                     preview = await self.preview_manager.start(
                         preview_id, implementation.workspace.path, actual_commit, contract.preview
                     )
                     target_url = preview.url
                 browser_job_id = f"{run_id}-browser-{uuid4().hex[:8]}"
                 scheduled = await self.scheduler.run(
-                    browser_job_id, f"{run_id}-browser", [contract.command],
-                    contract.timeout_seconds, implementation.workspace.path,
+                    browser_job_id,
+                    f"{run_id}-browser",
+                    [contract.command],
+                    contract.timeout_seconds,
+                    implementation.workspace.path,
                     workload=contract.workload,
                     required_capabilities_override=contract.required_capabilities,
-                    target_url=target_url, git_commit=actual_commit,
+                    target_url=target_url,
+                    git_commit=actual_commit,
                     artifact_paths=contract.required_artifacts,
                     execution_environment=execution_environment,
                 )
@@ -207,17 +224,26 @@ class ProjectAcceptanceGateway:
                 for item in scheduled.metadata.pop("downloaded_artifacts", []):
                     if item["path"].endswith(".xml"):
                         junit_reports.append(item["content"])
-                    browser_artifacts.append(self.artifacts.write_bytes(
-                        run_id, item["path"].replace("/", "-"), _artifact_kind(item["path"]),
-                        item["content"], expected_sha256=item["sha256"],
-                        metadata={**scheduled.metadata, "original_path": item["path"]},
-                    ))
+                    browser_artifacts.append(
+                        self.artifacts.write_bytes(
+                            run_id,
+                            item["path"].replace("/", "-"),
+                            _artifact_kind(item["path"]),
+                            item["content"],
+                            expected_sha256=item["sha256"],
+                            metadata={**scheduled.metadata, "original_path": item["path"]},
+                        )
+                    )
                 found = {item.metadata.get("original_path") for item in browser_artifacts}
                 failed = [test for test in scheduled.tests if test.exit_code]
                 try:
-                    validate_junit(junit_reports, contract.browsers,
-                                   target_url=target_url, git_commit=actual_commit,
-                                   scenarios={item.id: item.browsers for item in suite.scenarios})
+                    validate_junit(
+                        junit_reports,
+                        contract.browsers,
+                        target_url=target_url,
+                        git_commit=actual_commit,
+                        scenarios={item.id: item.browsers for item in suite.scenarios},
+                    )
                 except ValueError as exc:
                     if failed and str(exc) == "browser acceptance requires executed test cases":
                         raise AcceptanceExecutionError(failed[0].output_tail or str(exc)) from exc
@@ -234,16 +260,21 @@ class ProjectAcceptanceGateway:
                     raise AcceptanceExecutionError(
                         "required browser artifacts missing: " + ", ".join(missing)
                     )
-                records.append(AcceptanceEvidence(
-                    id="windows-browser-acceptance", kind="browser",
-                    status="failed" if failed else "passed", source=scheduled.node_id,
-                    summary=(
-                        f"Chromium and Edge acceptance at {target_url} for {actual_commit}; "
-                        "zero failures and skips; verified scenarios: "
-                        + ", ".join(item.id for item in suite.scenarios)
-                    ),
-                    tests=scheduled.tests, artifacts=browser_artifacts,
-                ))
+                records.append(
+                    AcceptanceEvidence(
+                        id="windows-browser-acceptance",
+                        kind="browser",
+                        status="failed" if failed else "passed",
+                        source=scheduled.node_id,
+                        summary=(
+                            f"Chromium and Edge acceptance at {target_url} for {actual_commit}; "
+                            "zero failures and skips; verified scenarios: "
+                            + ", ".join(item.id for item in suite.scenarios)
+                        ),
+                        tests=scheduled.tests,
+                        artifacts=browser_artifacts,
+                    )
+                )
                 if failed:
                     raise AcceptanceExecutionError(failed[0].output_tail)
             finally:
@@ -262,9 +293,7 @@ class ProjectAcceptanceGateway:
             )
         return AcceptanceResult(status="passed", evidence=records)
 
-    async def _prepare_preproduction(
-        self, run_id, project, workspace: str, commit: str, contract
-    ):
+    async def _prepare_preproduction(self, run_id, project, workspace: str, commit: str, contract):
         specification = contract.preproduction
         environment = project.test_environment.execution_environment()
         environment["TASKHUB_GIT_COMMIT"] = commit
@@ -281,10 +310,18 @@ class ProjectAcceptanceGateway:
         failed = [test for test in scheduled.tests if test.exit_code]
         if failed:
             raise PreproductionVerificationError(failed[0].output_tail)
-        health = await _wait_for_preproduction(
-            project.test_environment, specification, commit
-        )
+        health = await _wait_for_preproduction(project.test_environment, specification, commit)
         return scheduled, health
+
+
+def _is_browser_acceptance_contract(path: Path) -> bool:
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return True
+    return not isinstance(payload, dict) or bool(
+        {"preview", "preproduction", "workload"} & payload.keys()
+    )
 
 
 def _artifact_kind(path: str) -> str:
@@ -345,13 +382,18 @@ async def _wait_for_preproduction(environment, specification, commit: str) -> di
 def _browser_acceptance_commit(worktree: str, expected_commit: str) -> str:
     actual_commit = subprocess.run(
         ["git", "-C", worktree, "rev-parse", "--verify", "HEAD^{commit}"],
-        capture_output=True, text=True, check=True, timeout=15,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=15,
     ).stdout.strip()
     if actual_commit == expected_commit:
         return actual_commit
     ancestor = subprocess.run(
         ["git", "-C", worktree, "merge-base", "--is-ancestor", expected_commit, actual_commit],
-        capture_output=True, text=True, timeout=15,
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     if ancestor.returncode == 0:
         return actual_commit

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=40">
+  <link rel="stylesheet" href="/static/styles.css?v=41">
 </head>
 <body>
   <header class="app-header">
@@ -116,10 +116,11 @@
         <div class="form-grid">
           <label>项目名称<input id="project-name" required maxlength="100" placeholder="例如：移动电商平台"></label>
           <label>项目类型<select id="project-type">
-            <option value="general">通用项目</option>
-            <option value="python">Python</option>
-            <option value="node">Node.js</option>
-            <option value="mixed">Python + Node.js</option>
+            <option value="fullstack-web">全栈 Web</option>
+            <option value="backend-api">后端 API</option>
+            <option value="frontend-spa">前端单页应用</option>
+            <option value="python-service" selected>Python 服务</option>
+            <option value="worker-service">后台工作服务</option>
           </select></label>
           <label>项目编号（自动生成）<input id="project-id" required readonly></label>
           <label>基准分支<input id="project-branch" required value="main" maxlength="200"></label>
@@ -180,6 +181,41 @@
             </div>
           </section>
         </form>
+      </details>
+      <details id="project-contract-disclosure" class="providers-section project-settings-disclosure resource-disclosure hidden">
+        <summary>
+          <span class="project-settings-heading"><strong>项目契约</strong><small>目录架构、质量命令与交付物门禁</small></span>
+          <span id="project-contract-summary" class="muted">尚未生成</span>
+        </summary>
+        <div class="project-form resource-form project-contract-surface">
+          <p class="form-note">契约批准后锁定本次实施规则，并生成三份精确的 .taskhub 机器文档供执行节点使用。</p>
+          <section class="management-card project-contract-card" aria-labelledby="project-contract-title">
+            <header>
+              <div><h3 id="project-contract-title">当前项目契约</h3><p id="project-contract-detail">请选择项目并生成契约草稿。</p></div>
+              <span id="project-contract-state" class="card-state warn">未生成</span>
+            </header>
+            <div class="project-contract-toolbar">
+              <label>项目模板<select id="project-contract-profile">
+                <option value="fullstack-web">全栈 Web</option>
+                <option value="backend-api">后端 API</option>
+                <option value="frontend-spa">前端单页应用</option>
+                <option value="python-service">Python 服务</option>
+                <option value="worker-service">后台工作服务</option>
+              </select></label>
+              <span id="project-contract-source" class="muted">未绑定仓库版本</span>
+            </div>
+            <div id="project-contract-facts" class="project-contract-facts"></div>
+            <div id="project-contract-gate" class="project-contract-gate hidden" role="status"></div>
+            <footer class="management-card-actions project-contract-actions">
+              <button id="create-project-contract" type="button" class="secondary" data-permission="projects:manage">生成契约草稿</button>
+              <button id="review-project-contract" type="button" class="secondary hidden" data-permission="projects:manage">提交评审</button>
+              <button id="activate-project-contract" type="button" class="hidden" data-permission="projects:manage">批准并生效</button>
+              <button id="revise-project-contract" type="button" class="secondary hidden" data-permission="projects:manage">创建修订版本</button>
+              <button id="run-project-contract-gate" type="button" class="secondary hidden" data-permission="projects:manage">执行契约门禁</button>
+              <span id="project-contract-message" role="status"></span>
+            </footer>
+          </section>
+        </div>
       </details>
       <details id="product-spec-disclosure" class="providers-section project-settings-disclosure resource-disclosure hidden">
         <summary>
@@ -597,7 +633,7 @@
     </section>
     </div>
   </main>
-  <script src="/static/app.js?v=14"></script>
+  <script src="/static/app.js?v=15"></script>
   <script src="/static/task-center.js?v=13"></script>
   <script src="/static/resource-center.js?v=25"></script>
   <script src="/static/onboarding.js?v=2"></script>

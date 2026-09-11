@@ -73,8 +73,21 @@ def test_product_spec_card_layout(tmp_path):
             },
         )
         assert created.status == 201
+        contract = context.request.post(
+            f"{url}/api/projects/demo/project-contracts/draft",
+            headers={"X-CSRF-Token": csrf},
+            data={"profile_id": "python-service", "inferred": False},
+        )
+        assert contract.status == 201
+        contract_body = contract.json()
+        contract_root = (
+            f"{url}/api/projects/demo/project-contracts/{contract_body['contract_id']}"
+            f"/versions/{contract_body['version']}"
+        )
+        assert context.request.post(f"{contract_root}/review", headers={"X-CSRF-Token": csrf}).ok
+        assert context.request.post(f"{contract_root}/activate", headers={"X-CSRF-Token": csrf}).ok
         page.locator("#nav-workflow").click()
-        page.evaluate("loadCurrentProductSpec()")
+        page.evaluate("Promise.all([loadCurrentProductSpec(), loadCurrentProjectContract()])")
 
         disclosure = page.locator("#product-spec-disclosure")
         expect(disclosure).to_be_visible()
@@ -82,6 +95,11 @@ def test_product_spec_card_layout(tmp_path):
         expect(page.locator("#product-spec-state")).to_have_text("草稿")
         expect(page.locator("#product-spec-sections .product-spec-section")).to_have_count(11)
         expect(page.locator("#product-decision-form")).to_be_visible()
+        contract_disclosure = page.locator("#project-contract-disclosure")
+        expect(contract_disclosure).to_be_visible()
+        contract_disclosure.locator("summary").click()
+        expect(page.locator("#project-contract-state")).to_have_text("已生效")
+        expect(page.locator("#project-contract-facts > div")).to_have_count(6)
         assert (
             page.locator("#product-spec-title").evaluate(
                 "element => getComputedStyle(element).fontSize"
@@ -104,6 +122,12 @@ def test_product_spec_card_layout(tmp_path):
                 .split()
             )
             assert actual_columns == columns
+            contract_columns = len(
+                page.locator("#project-contract-facts")
+                .evaluate("element => getComputedStyle(element).gridTemplateColumns")
+                .split()
+            )
+            assert contract_columns == columns
             assert page.evaluate(
                 "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
             )

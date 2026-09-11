@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from hashlib import sha256
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-
-def utc_now() -> datetime:
-    return datetime.now(UTC)
+from taskhub_v2.domain.production_base import ProductionRecord, utc_now
+from taskhub_v2.domain.project_contract import ProjectContract
 
 
 class ProductSpecStatus(StrEnum):
@@ -83,6 +82,11 @@ STATE_TRANSITIONS: dict[str, dict[str, set[str]]] = {
     "product_decision": {
         "pending": {"resolved", "cancelled"},
     },
+    "project_contract": {
+        "draft": {"in_review", "rejected"},
+        "in_review": {"active", "draft", "rejected"},
+        "active": {"superseded"},
+    },
     "product_spec": {
         "draft": {"in_review", "rejected"},
         "in_review": {"approved", "rejected", "draft"},
@@ -125,17 +129,6 @@ def validate_transition(object_type: str, previous: str, target: str) -> None:
         return
     if target not in STATE_TRANSITIONS.get(object_type, {}).get(previous, set()):
         raise ValueError(f"illegal {object_type} state transition: {previous} -> {target}")
-
-
-class ProductionRecord(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    project_id: str = Field(min_length=1, max_length=80)
-    created_by: str = Field(default="system", min_length=1, max_length=100)
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
-    source_ids: list[str] = Field(default_factory=list)
-    content_digest: str = Field(default="", max_length=128)
 
 
 class RequirementAttachment(BaseModel):
@@ -324,6 +317,7 @@ class CapabilityPack(ProductionRecord):
 ProductionObject = Annotated[
     Requirement
     | ProductDecision
+    | ProjectContract
     | ProductSpec
     | ExecutionPlan
     | ProductionTask
@@ -341,6 +335,8 @@ def object_identity(record: ProductionObject) -> tuple[str, str, str]:
             identity = record.requirement_id, "1"
         case ProductDecision():
             identity = record.decision_id, "1"
+        case ProjectContract():
+            identity = record.contract_id, str(record.version)
         case ProductSpec():
             identity = record.spec_id, str(record.version)
         case ExecutionPlan():

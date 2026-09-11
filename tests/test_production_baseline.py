@@ -14,6 +14,7 @@ from taskhub_v2.domain.production import (
     ProductSpecStatus,
     TaskAttempt,
 )
+from taskhub_v2.domain.project_contract import ModuleContract, ProjectContract
 from taskhub_v2.persistence.production import (
     MemoryProductionStore,
     PostgresProductionStore,
@@ -91,6 +92,13 @@ def test_memory_store_persists_all_phase_zero_objects():
                 source="builtin",
                 summary="Default style",
             ),
+            ProjectContract(
+                project_id="project-a",
+                contract_id="pc_project_a",
+                version=1,
+                profile_id="python-service",
+                modules=[ModuleContract(name="domain", paths=["src/domain/**"])],
+            ),
         ]
         for record in records:
             stored = await store.save(record)
@@ -101,10 +109,11 @@ def test_memory_store_persists_all_phase_zero_objects():
                 TaskAttempt: ("task_attempt", "attempt_build_1", "1"),
                 ChangeRequest: ("change_request", "cr_scope_001", "1"),
                 CapabilityPack: ("capability_pack", "pack_frontend_style", "1.0.0"),
+                ProjectContract: ("project_contract", "pc_project_a", "1"),
             }[type(record)]
             assert await store.get(object_type, object_id, revision) == stored
             assert len(stored.content_digest) == 64
-        assert len(await store.list(project_id="project-a")) == 6
+        assert len(await store.list(project_id="project-a")) == 7
 
     asyncio.run(scenario())
 
@@ -162,5 +171,15 @@ def test_postgres_store_round_trip(postgres_dsn):
             stored = await store.save(product_spec())
             assert await store.get("product_spec", "ps_project_a", "1") == stored
             assert await store.list(project_id="project-a", object_type="product_spec") == [stored]
+            contract = await store.save(
+                ProjectContract(
+                    project_id="project-a",
+                    contract_id="pc_project_a",
+                    version=1,
+                    profile_id="python-service",
+                    modules=[ModuleContract(name="domain", paths=["src/domain/**"])],
+                )
+            )
+            assert await store.get("project_contract", "pc_project_a", "1") == contract
 
     asyncio.run(scenario())

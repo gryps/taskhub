@@ -43,9 +43,7 @@ def build_coder(settings: Settings, health: ProviderHealthStore | None = None):
     }
     if settings.model_cards:
         assigned = sorted(
-            (
-                item["priority"], card
-            )
+            (item["priority"], card)
             for card in settings.model_cards
             if card.get("enabled") and card["service_type"] == "openai"
             for item in card.get("assignments", [])
@@ -88,7 +86,7 @@ def build_publisher(settings: Settings, test_scheduler=None) -> PublisherGateway
     )
 
 
-def build_acceptance(settings: Settings, test_scheduler=None):
+def build_acceptance(settings: Settings, test_scheduler=None, project_contracts=None):
     if settings.worker_mode == "local":
         return LocalAcceptanceGateway()
     return ProjectAcceptanceGateway(
@@ -96,6 +94,7 @@ def build_acceptance(settings: Settings, test_scheduler=None):
         test_scheduler or build_test_scheduler(settings),
         ArtifactStore(settings.artifact_root),
         PreviewManager(settings.postgres_dsn, host=settings.preview_host),
+        project_contracts=project_contracts,
     )
 
 

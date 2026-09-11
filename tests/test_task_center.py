@@ -156,10 +156,10 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert "styles.css?v=40" in html
+        assert "styles.css?v=41" in html
+        assert "app.js?v=15" in html
         assert html.count('class="resource-disclosure-heading"') == 5
         assert html.count('class="resource-order"') == 5
-        assert "app.js?v=14" in html
         assert "resource-center.js?v=25" in html
         assert html.count('class="configuration-card"') >= 9
         assert html.count('class="management-card-grid"') >= 4
@@ -192,6 +192,8 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert "<strong>预生产验收</strong><small>按项目启用的访问与验收环境</small>" in html
         assert "<strong>代码仓库</strong><small>项目级 Git 来源、基准分支与发布目标</small>" in html
         assert "<strong>产品规格</strong><small>需求产品化、待决策事项与批准版本</small>" in html
+        assert "<strong>项目契约</strong><small>目录架构、质量命令与交付物门禁</small>" in html
+        assert 'id="run-project-contract-gate"' in html
         assert 'id="product-decision-form"' in html
         assert 'id="approve-product-spec"' in html
         assert 'id="project-repository-form"' in html

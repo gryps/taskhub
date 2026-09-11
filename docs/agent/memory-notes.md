@@ -275,4 +275,13 @@ Updated: 2026-09-11
 - On 2026-09-12, Phase 1 added append-only Requirement intake, structured ProductSpec drafts, one consolidated product decision, review/approval governance, immutable approved versions, ChangeRequest-backed revisions and field-level version diffs.
 - With `TASKHUB_PRODUCTION_ORCHESTRATION_ENABLED=true`, a run cannot start without an explicitly approved ProductSpec ID and version. The server rebuilds the implementation source from the immutable requirement and supplements, and the LangGraph state preserves the exact binding. The flag remains off by default for legacy compatibility.
 - The development-flow ProductSpec card presents raw and structured content, decisions, state, version selection and diffs. Real Chromium layout checks passed at 1440, 680 and 390 pixels without horizontal overflow; targeted API/static tests passed.
-- Phase 1 does not yet produce ProjectContract files or a real task DAG. Continue from Phase 2. This phase was source-only: push `.3 Git` and GitHub, with no deployment, Docker build or registry upload.
+- Phase 1 did not produce ProjectContract files or a real task DAG; ProjectContract was delivered in Phase 2.
+
+## Productized Delivery Phase 2
+
+- On 2026-09-12, Phase 2 added DB-backed, versioned ProjectContract records with draft, review, active, superseded and rejected lifecycle states.
+- Five official profiles are available: `fullstack-web`, `backend-api`, `frontend-spa`, `python-service` and `worker-service`. New projects select a profile; attached repositories receive an inferred draft for owner review.
+- Every contract renders exact `.taskhub/project.yaml`, `.taskhub/architecture.yaml` and `.taskhub/acceptance.yaml` documents. Approved contract data and documents are injected into planner and worker context without TaskHub directly editing a managed project.
+- Executable gates cover directory/module boundaries, prohibited dependencies and cycles, complexity, cross-layer data access, interface digest/client consistency, migration ordering/rollback, secrets, binaries/licenses, Docker/Compose health, declared quality commands and required build artifacts. Manual Markdown rules require explicit evidence.
+- With productized orchestration enabled, implementation requires both an approved ProductSpec and active ProjectContract and stores their exact identifiers and versions on the run. Contract gates become structured acceptance evidence.
+- The workflow UI has a responsive ProjectContract card for template, lifecycle, facts and gate results. Continue strictly from Phase 3 (DAG and persistent scheduling). Phase 2 was source-only: push `.3 Git` and GitHub, with no deployment, Docker build or registry upload.

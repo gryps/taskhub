@@ -59,8 +59,16 @@ class NodeScheduler:
     ) -> ScheduledTests:
         required = required_capabilities(commands)
         if workload == "browser_acceptance":
-            required.update({"windows_gui", "playwright", "screenshot", "trace",
-                             "browser_profile", "browser_authenticated"})
+            required.update(
+                {
+                    "windows_gui",
+                    "playwright",
+                    "screenshot",
+                    "trace",
+                    "browser_profile",
+                    "browser_authenticated",
+                }
+            )
         required.update(required_capabilities_override or set())
         excluded: set[str] = set()
         failures = []
@@ -73,13 +81,27 @@ class NodeScheduler:
                 raise
             try:
                 if workload == "browser_acceptance":
-                    return await self.runner.run(node, job_id, commands, timeout, workdir,
-                        required_capabilities=required, target_url=target_url,
-                        git_commit=git_commit, artifact_paths=artifact_paths or [],
-                        execution_environment=execution_environment or {})
+                    return await self.runner.run(
+                        node,
+                        job_id,
+                        commands,
+                        timeout,
+                        workdir,
+                        required_capabilities=required,
+                        target_url=target_url,
+                        git_commit=git_commit,
+                        artifact_paths=artifact_paths or [],
+                        execution_environment=execution_environment or {},
+                    )
                 return await self.runner.run(
-                    node, job_id, commands, timeout, workdir,
+                    node,
+                    job_id,
+                    commands,
+                    timeout,
+                    workdir,
                     required_capabilities=required,
+                    git_commit=git_commit,
+                    artifact_paths=artifact_paths or [],
                     execution_environment=execution_environment or {},
                 )
             except Exception as exc:
@@ -99,22 +121,38 @@ class NodeScheduler:
 
         Execution checks again when acquiring its slot because health can change.
         """
-        required = required_capabilities(commands) | capabilities | {
-            "windows_gui", "playwright", "screenshot", "trace",
-            "browser_profile", "browser_authenticated"
-        }
-        nodes = [node for node in self.registry.list()
-                 if node.enabled and "browser_acceptance" in node.workloads
-                 and self.failed_until.get(node.id, 0) <= time.time()]
+        required = (
+            required_capabilities(commands)
+            | capabilities
+            | {
+                "windows_gui",
+                "playwright",
+                "screenshot",
+                "trace",
+                "browser_profile",
+                "browser_authenticated",
+            }
+        )
+        nodes = [
+            node
+            for node in self.registry.list()
+            if node.enabled
+            and "browser_acceptance" in node.workloads
+            and self.failed_until.get(node.id, 0) <= time.time()
+        ]
         health = await asyncio.gather(*(self.runner.health(node) for node in nodes))
         online = [item for item in health if item.get("status") == "ok"]
         if not online:
             raise NodeExecutionError("Windows 验收节点离线")
-        missing = [required - {name for name, available in item.get("capabilities", {}).items()
-                               if available} for item in online]
+        missing = [
+            required
+            - {name for name, available in item.get("capabilities", {}).items() if available}
+            for item in online
+        ]
         if all(missing):
-            raise NodeExecutionError("browser acceptance preflight failed: " +
-                                     ", ".join(sorted(min(missing, key=len))))
+            raise NodeExecutionError(
+                "browser acceptance preflight failed: " + ", ".join(sorted(min(missing, key=len)))
+            )
 
     async def status(self) -> list[dict]:
         nodes = [node for node in self.registry.list() if node.enabled]
@@ -127,9 +165,7 @@ class NodeScheduler:
                 "workloads": sorted(node.workloads),
                 "priority": node.priority,
                 "active": self.active[node.id],
-                "cooldown_seconds": max(
-                    0, int(self.failed_until.get(node.id, 0) - time.time())
-                ),
+                "cooldown_seconds": max(0, int(self.failed_until.get(node.id, 0) - time.time())),
             }
             for node, item in zip(nodes, health, strict=True)
         ]
@@ -195,26 +231,26 @@ class NodeScheduler:
                 )
             ]
             if not nodes:
-                if workload == "browser_acceptance" and not any(item.get("status") == "ok" for item in health):
+                if workload == "browser_acceptance" and not any(
+                    item.get("status") == "ok" for item in health
+                ):
                     raise NodeExecutionError("Windows 验收节点离线")
                 needed = ", ".join(sorted(required)) or "basic execution"
-                prefix = "browser acceptance preflight failed" if workload == "browser_acceptance" else "no healthy execution node provides"
+                prefix = (
+                    "browser acceptance preflight failed"
+                    if workload == "browser_acceptance"
+                    else "no healthy execution node provides"
+                )
                 raise NodeExecutionError(f"{prefix}: {needed}")
             async with self.condition:
                 preferred = self.assignments.get(sticky_key)
                 available = [node for node in nodes if self.active[node.id] < node.slots]
-                preferred_node = next(
-                    (node for node in available if node.id == preferred), None
-                )
+                preferred_node = next((node for node in available if node.id == preferred), None)
                 selected = preferred_node
                 if not selected and available:
                     best_priority = min(node.priority for node in available)
-                    preferred_pool = [
-                        node for node in available if node.priority == best_priority
-                    ]
-                    minimum = min(
-                        self.active[node.id] / node.slots for node in preferred_pool
-                    )
+                    preferred_pool = [node for node in available if node.priority == best_priority]
+                    minimum = min(self.active[node.id] / node.slots for node in preferred_pool)
                     tied = sorted(
                         (
                             node

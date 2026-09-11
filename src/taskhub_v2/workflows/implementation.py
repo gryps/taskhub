@@ -3,7 +3,7 @@ from langgraph.types import interrupt
 
 from taskhub_v2.domain.models import Plan, RunStatus, Stage
 from taskhub_v2.workers.base import WorkerGateway
-from taskhub_v2.workflows.state import CodingState, StepState, event
+from taskhub_v2.workflows.state import CodingState, StepState, event, execution_requirement
 
 
 def implementation_recovery_feedback(reason: dict) -> str:
@@ -75,7 +75,7 @@ def build_implementation_graph(worker: WorkerGateway):
             result = await worker.execute(
                 state["run_id"],
                 state["project_id"],
-                state["requirement"],
+                execution_requirement(state),
                 plan,
                 revision=int(state.get("revision_count", 0)),
                 feedback=state.get("revision_feedback", ""),

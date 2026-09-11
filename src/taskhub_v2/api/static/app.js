@@ -20,6 +20,7 @@ let currentAuth = null;
 let permissionObserver = null;
 let productizationEnabled = false;
 let currentProductSpecDetail = null;
+let currentProjectContract = null;
 let activeProject = null;
 
 const publicImageRegistries = [
@@ -440,7 +441,7 @@ async function loadProjects(preferredProjectId = currentProjectId) {
     ? `当前运行、代码仓库和预生产配置均使用“${active.name}”`
     : "请先创建或接入项目";
   renderProjectRepository(active);
-  await loadCurrentProductSpec();
+  await Promise.all([loadCurrentProjectContract(), loadCurrentProductSpec()]);
   refreshStartAction();
   window.dispatchEvent(new CustomEvent("taskhub:projects", {detail: data.projects}));
 }
@@ -449,6 +450,7 @@ async function loadProductizationStatus() {
   const state = await request("/api/productization/status");
   productizationEnabled = Boolean(state.enabled);
   byId("product-spec-disclosure").classList.toggle("hidden", !productizationEnabled);
+  byId("project-contract-disclosure").classList.toggle("hidden", !productizationEnabled);
 }
 
 function refreshStartAction() {
@@ -460,10 +462,112 @@ function refreshStartAction() {
     return;
   }
   const spec = currentProductSpecDetail?.product_spec;
+  const contract = currentProjectContract;
   button.textContent = !spec ? (canPermission("projects:manage") ? "生成产品规格" : "等待项目负责人生成规格")
-    : spec.status === "approved" ? "按批准规格开始流程" : "等待规格批准";
+    : spec.status !== "approved" ? "等待规格批准"
+      : contract?.status !== "active" ? "等待项目契约生效" : "按批准规格开始流程";
   button.disabled = !repositoryReady || (!spec && !canPermission("projects:manage"))
-    || Boolean(spec && spec.status !== "approved");
+    || Boolean(spec && spec.status !== "approved")
+    || Boolean(spec?.status === "approved" && contract?.status !== "active");
+}
+
+function renderProjectContract(contract) {
+  currentProjectContract = contract || null;
+  const labels = {draft: "草稿", in_review: "待批准", active: "已生效",
+    superseded: "已废弃", rejected: "已拒绝"};
+  const state = byId("project-contract-state");
+  if (!contract) {
+    byId("project-contract-summary").textContent = "尚未生成";
+    byId("project-contract-title").textContent = "当前项目契约";
+    byId("project-contract-detail").textContent = "选择适合的项目模板并生成契约草稿。";
+    state.textContent = "未生成";
+    state.className = "card-state warn";
+    byId("project-contract-source").textContent = "未绑定仓库版本";
+    byId("project-contract-profile").disabled = false;
+    byId("project-contract-facts").innerHTML = "";
+    byId("create-project-contract").classList.remove("hidden");
+    for (const id of ["review-project-contract", "activate-project-contract",
+      "revise-project-contract", "run-project-contract-gate"]) byId(id).classList.add("hidden");
+    refreshStartAction();
+    return;
+  }
+  const profileNames = {"fullstack-web": "全栈 Web", "backend-api": "后端 API",
+    "frontend-spa": "前端单页应用", "python-service": "Python 服务",
+    "worker-service": "后台工作服务"};
+  byId("project-contract-summary").textContent = `v${contract.version} · ${labels[contract.status] || contract.status}`;
+  byId("project-contract-title").textContent = `${activeProject?.name || contract.project_id} · 项目契约`;
+  byId("project-contract-detail").textContent = contract.inferred
+    ? "已依据现有仓库扫描生成，批准前请核对架构与质量命令。"
+    : "已依据标准项目模板生成。";
+  state.textContent = labels[contract.status] || contract.status;
+  state.className = `card-state ${contract.status === "active" ? "ok" : contract.status === "rejected" ? "bad" : "warn"}`;
+  byId("project-contract-profile").value = contract.profile_id;
+  byId("project-contract-profile").disabled = true;
+  byId("project-contract-source").textContent = contract.repository_commit
+    ? `仓库 ${contract.repository_commit.slice(0, 12)} · 契约 ${contract.contract_id}`
+    : `契约 ${contract.contract_id}`;
+  const commandCount = Object.values(contract.commands || {}).flat().length;
+  byId("project-contract-facts").innerHTML = [
+    ["项目模板", profileNames[contract.profile_id] || contract.profile_id],
+    ["技术栈", [...(contract.languages || []), ...(contract.frameworks || [])].join(" · ") || "未声明"],
+    ["模块", `${(contract.modules || []).length} 个`],
+    ["质量命令", `${commandCount} 条`],
+    ["机器文档", ".taskhub/project.yaml 等 3 份"],
+    ["审批信息", contract.approved_by ? `${contract.approved_by} · ${contract.approved_at}` : "尚未批准"],
+  ].map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
+  byId("create-project-contract").classList.add("hidden");
+  byId("review-project-contract").classList.toggle("hidden", contract.status !== "draft");
+  byId("activate-project-contract").classList.toggle("hidden", contract.status !== "in_review");
+  byId("revise-project-contract").classList.toggle("hidden", contract.status !== "active");
+  byId("run-project-contract-gate").classList.toggle("hidden", contract.status !== "active");
+  applyPermissions();
+  refreshStartAction();
+}
+
+async function loadCurrentProjectContract() {
+  if (!productizationEnabled || !currentProjectId) {
+    renderProjectContract(null);
+    return;
+  }
+  const detail = await request(`/api/projects/${encodeURIComponent(currentProjectId)}/project-contract`);
+  renderProjectContract(detail.project_contract);
+}
+
+async function createProjectContract(forceRevision = false) {
+  if (!currentProjectId) return;
+  byId("project-contract-message").textContent = forceRevision ? "正在创建修订版本" : "正在生成契约草稿";
+  await request(`/api/projects/${encodeURIComponent(currentProjectId)}/project-contracts/draft`, {
+    method: "POST",
+    body: JSON.stringify({
+      profile_id: currentProjectContract?.profile_id || byId("project-contract-profile").value,
+      inferred: false,
+      force_revision: forceRevision,
+    }),
+  });
+  byId("project-contract-disclosure").open = true;
+  await loadCurrentProjectContract();
+  byId("project-contract-message").textContent = "契约草稿已生成，请核对后提交评审";
+}
+
+async function transitionProjectContract(action) {
+  const contract = currentProjectContract;
+  if (!contract) return;
+  await request(`/api/projects/${encodeURIComponent(currentProjectId)}/project-contracts/${encodeURIComponent(contract.contract_id)}/versions/${contract.version}/${action}`, {method: "POST"});
+  await loadCurrentProjectContract();
+}
+
+async function runProjectContractGate() {
+  const host = byId("project-contract-gate");
+  host.classList.remove("hidden");
+  host.textContent = "正在执行结构、架构、迁移、凭据与交付物门禁…";
+  const report = await request(`/api/projects/${encodeURIComponent(currentProjectId)}/project-contract/gate`, {
+    method: "POST", body: JSON.stringify({execute_commands: true, strict: true}),
+  });
+  const failed = (report.findings || []).filter((item) => item.status === "failed");
+  host.className = `project-contract-gate ${report.status === "passed" ? "ok" : "bad"}`;
+  host.textContent = report.status === "passed"
+    ? `门禁通过 · 已检查 ${(report.findings || []).length} 项`
+    : `门禁未通过 · ${failed.slice(0, 3).map((item) => item.summary).join("；")}`;
 }
 
 function productSpecList(title, values) {
@@ -686,6 +790,7 @@ async function createProject(event) {
       test_commands: byId("project-tests").value,
       acceptance_commands: byId("project-acceptance").value,
       test_database: byId("project-test-database").checked,
+      profile_id: byId("project-type").value,
     })});
     await loadProjects(project.id);
     byId("project-message").textContent = `${project.name} 已创建并设为当前项目`;
@@ -705,10 +810,11 @@ function generatedProjectId(name) {
 
 function applyProjectPreset() {
   const commands = {
-    general: "",
-    python: "python3 -m pytest -q",
-    node: "npm test",
-    mixed: "python3 -m pytest -q\nnpm test",
+    "fullstack-web": "python3 -m pytest -q\nnpm test",
+    "backend-api": "python3 -m pytest -q",
+    "frontend-spa": "npm test",
+    "python-service": "python3 -m pytest -q",
+    "worker-service": "python3 -m pytest -q",
   };
   byId("project-tests").value = commands[byId("project-type").value];
 }
@@ -867,12 +973,17 @@ byId("start").addEventListener("click", async () => {
     if (productizationEnabled && spec?.status !== "approved") {
       throw new Error("产品规格尚未批准，不能开始实施");
     }
+    if (productizationEnabled && currentProjectContract?.status !== "active") {
+      throw new Error("项目契约尚未批准生效，不能开始实施");
+    }
     const run = await request("/api/runs", {method: "POST", body: JSON.stringify({
       project_id: currentProjectId,
       requirement: byId("requirement").value,
       production_line: byId("production-line").value || "default",
       product_spec_id: spec?.spec_id || null,
       product_spec_version: spec?.version || null,
+      project_contract_id: currentProjectContract?.contract_id || null,
+      project_contract_version: currentProjectContract?.version || null,
     })});
     currentRun = run.run_id;
     render(run);
@@ -997,6 +1108,25 @@ byId("project-name").addEventListener("input", () => {
   byId("project-id").value = generatedProjectId(byId("project-name").value);
 });
 byId("project-type").addEventListener("change", applyProjectPreset);
+byId("create-project-contract").addEventListener("click", () => {
+  createProjectContract(false).catch((error) => { byId("project-contract-message").textContent = error.message; });
+});
+byId("review-project-contract").addEventListener("click", () => {
+  transitionProjectContract("review").catch((error) => { byId("project-contract-message").textContent = error.message; });
+});
+byId("activate-project-contract").addEventListener("click", () => {
+  transitionProjectContract("activate").catch((error) => { byId("project-contract-message").textContent = error.message; });
+});
+byId("revise-project-contract").addEventListener("click", () => {
+  createProjectContract(true).catch((error) => { byId("project-contract-message").textContent = error.message; });
+});
+byId("run-project-contract-gate").addEventListener("click", () => {
+  runProjectContractGate().catch((error) => {
+    const host = byId("project-contract-gate");
+    host.className = "project-contract-gate bad";
+    host.textContent = error.message;
+  });
+});
 byId("attach-project-form").addEventListener("submit", attachProject);
 byId("attach-project-repository").addEventListener("change", applySelectedRepository);
 byId("project-repository-form").addEventListener("submit", saveProjectRepository);

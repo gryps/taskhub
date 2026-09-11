@@ -18,6 +18,7 @@ from taskhub_v2.api.host_routes import router as host_router
 from taskhub_v2.api.node_routes import router as node_router
 from taskhub_v2.api.onboarding_routes import router as onboarding_router
 from taskhub_v2.api.productization_routes import router as productization_router
+from taskhub_v2.api.project_contract_routes import router as project_contract_router
 from taskhub_v2.api.project_routes import router as project_router
 from taskhub_v2.api.provider_routes import router as provider_router
 from taskhub_v2.api.remote_node_routes import router as remote_node_router
@@ -45,6 +46,7 @@ from taskhub_v2.services.device_auth import CodexDeviceAuthService
 from taskhub_v2.services.hosts import PhysicalHostService
 from taskhub_v2.services.operational_log import OperationalLog
 from taskhub_v2.services.productization import ProductizationService
+from taskhub_v2.services.project_contracts import ProjectContractService
 from taskhub_v2.services.providers import ProviderCatalog
 from taskhub_v2.services.remote_nodes import RemoteNodeService
 from taskhub_v2.services.system_diagnostics import SystemDiagnosticsService
@@ -191,6 +193,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 local_coder,
                 token_resolver=node_credentials.resolve,
             )
+            app.state.project_contracts = ProjectContractService(
+                production_objects, projects, test_scheduler
+            )
             graph = build_main_graph(
                 provider,
                 build_worker(
@@ -201,7 +206,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 checkpointer,
                 build_publisher(effective_settings, test_scheduler),
-                build_acceptance(effective_settings, test_scheduler),
+                build_acceptance(
+                    effective_settings,
+                    test_scheduler,
+                    project_contracts=(
+                        app.state.project_contracts
+                        if effective_settings.production_orchestration_enabled
+                        else None
+                    ),
+                ),
             )
             app.state.run_service = RunService(
                 graph,
@@ -257,6 +270,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(host_router)
     app.include_router(remote_node_router)
     app.include_router(project_router)
+    app.include_router(project_contract_router)
     app.include_router(productization_router)
     app.include_router(node_router)
     app.include_router(onboarding_router)

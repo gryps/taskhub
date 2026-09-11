@@ -1,5 +1,6 @@
 import asyncio
 import shlex
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, status
@@ -18,6 +19,9 @@ class ProjectCreateRequest(BaseModel):
     test_commands: str = Field(default="", max_length=4000)
     acceptance_commands: str = Field(default="", max_length=4000)
     test_database: bool = False
+    profile_id: Literal[
+        "fullstack-web", "backend-api", "frontend-spa", "python-service", "worker-service"
+    ] = "python-service"
 
 
 class ProjectAttachRequest(BaseModel):
@@ -66,9 +70,7 @@ def project_view(item: ProjectDefinition, registry=None) -> dict:
         "test_environment": (
             item.test_environment.model_dump(mode="json") if item.test_environment else None
         ),
-        "repository_ready": (
-            repository_settings["ready"] if repository_settings else True
-        ),
+        "repository_ready": (repository_settings["ready"] if repository_settings else True),
         "repository_settings": repository_settings,
     }
 
@@ -103,6 +105,18 @@ async def create_project(payload: ProjectCreateRequest, request: Request) -> dic
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (ProjectProvisionError, ValueError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if request.app.state.production_orchestration_enabled:
+        try:
+            await request.app.state.project_contracts.create_draft(
+                created.id,
+                profile_id=payload.profile_id,
+                inferred=False,
+                actor=str(request.state.session.get("actor") or "system"),
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422, detail=f"项目已创建，但合同生成失败：{exc}"
+            ) from exc
     return project_view(created, request.app.state.projects)
 
 
@@ -121,6 +135,18 @@ async def attach_project(payload: ProjectAttachRequest, request: Request) -> dic
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (ProjectProvisionError, ValueError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if request.app.state.production_orchestration_enabled:
+        try:
+            await request.app.state.project_contracts.create_draft(
+                created.id,
+                profile_id=None,
+                inferred=True,
+                actor=str(request.state.session.get("actor") or "system"),
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422, detail=f"项目已接入，但合同扫描失败：{exc}"
+            ) from exc
     return project_view(created, request.app.state.projects)
 
 

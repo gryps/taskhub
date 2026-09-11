@@ -265,6 +265,8 @@ class StartRunRequest(BaseModel):
     production_line: str = Field(default="default", min_length=1, max_length=80)
     product_spec_id: str | None = Field(default=None, max_length=120)
     product_spec_version: int | None = Field(default=None, ge=1)
+    project_contract_id: str | None = Field(default=None, max_length=120)
+    project_contract_version: int | None = Field(default=None, ge=1)
 
 
 class LiteralDecision(StrEnum):
@@ -293,6 +295,8 @@ class RunView(BaseModel):
     production_line: str = "default"
     product_spec_id: str | None = None
     product_spec_version: int | None = None
+    project_contract_id: str | None = None
+    project_contract_version: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     stage: Stage
