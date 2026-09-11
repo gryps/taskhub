@@ -60,6 +60,9 @@ def test_release_compose_preloads_unified_node_reference():
     proxy = payload["services"]["docker-proxy"]
     assert "/var/run/docker.sock:/var/run/docker.sock" not in str(controller)
     assert controller["environment"]["TASKHUB_DOCKER_SOCKET"] == "http://docker-proxy:2375"
+    assert controller["environment"]["TASKHUB_DOCKER_NETWORK"] == (
+        "${TASKHUB_DOCKER_NETWORK:-taskhub_default}"
+    )
     assert "/var/run/docker.sock:/var/run/docker.sock:ro" in proxy["volumes"]
     assert "ports" not in proxy
     assert proxy["environment"]["AUTH"] == 0

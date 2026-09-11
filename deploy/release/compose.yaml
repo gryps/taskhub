@@ -60,7 +60,7 @@ services:
       TASKHUB_NODE_CREDENTIALS_FILE: /var/lib/taskhub/config/node-credentials.json
       TASKHUB_CONTAINER_PROVISIONING_ENABLED: "true"
       TASKHUB_DOCKER_SOCKET: http://docker-proxy:2375
-      TASKHUB_DOCKER_NETWORK: taskhub_default
+      TASKHUB_DOCKER_NETWORK: ${TASKHUB_DOCKER_NETWORK:-taskhub_default}
       TASKHUB_NODE_CONTAINER_IMAGE: ${TASKHUB_NODE_IMAGE:-taskhub-node:0.1.0-alpha}
       TASKHUB_PROVIDER_HEALTH_FILE: /var/lib/taskhub/state/provider-health.json
       TASKHUB_MANAGED_REPOSITORY_ROOT: /var/lib/taskhub/repositories
