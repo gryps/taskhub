@@ -51,9 +51,15 @@ if ! docker compose --project-directory "$root" --env-file "$root/.env" -f "$roo
 fi
 
 port=$(sed -n 's/^TASKHUB_PORT=//p' "$root/.env" | tail -n 1)
+scheme=http
+curl_flags=-fsS
+if [ "$(sed -n 's/^TASKHUB_ENFORCE_HTTPS=//p' "$root/.env" | tail -n 1)" = true ]; then
+  scheme=https
+  curl_flags=-fkSs
+fi
 attempts=0
 while [ "$attempts" -lt 60 ]; do
-  if curl -fsS "http://127.0.0.1:${port:-8200}/api/health" >/dev/null 2>&1; then
+  if curl $curl_flags "$scheme://127.0.0.1:${port:-8200}/api/health" >/dev/null 2>&1; then
     printf '升级完成: %s；恢复点: %s\n' "$version" "$backup"
     exit 0
   fi

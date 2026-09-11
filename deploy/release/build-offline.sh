@@ -11,6 +11,8 @@ output=${1:-"$repo_root/dist/taskhub-offline-${version}-${arch}"}
 TASKHUB_REGISTRY= TASKHUB_PUSH=false TASKHUB_VERSION="$version" \
   TASKHUB_PLATFORM="$platform" "$script_root/build-images.sh"
 docker image inspect postgres:16-alpine >/dev/null 2>&1 || docker pull --platform "$platform" postgres:16-alpine
+proxy_image=ghcr.io/tecnativa/docker-socket-proxy:v0.5.0
+docker image inspect "$proxy_image" >/dev/null 2>&1 || docker pull --platform "$platform" "$proxy_image"
 
 if [ -e "$output" ]; then
   printf '输出目录已存在，请移动或删除后重试: %s\n' "$output" >&2
@@ -23,11 +25,12 @@ cp "$repo_root/docs/deployment/ubuntu.md" "$repo_root/docs/deployment/windows-do
 
 archive="images/taskhub-images-${version}-${arch}.tar"
 docker save -o "$output/$archive" \
-  "taskhub-seed:${version}" "taskhub-node:${version}" postgres:16-alpine
+  "taskhub-seed:${version}" "taskhub-node:${version}" postgres:16-alpine "$proxy_image"
 
 seed_id=$(docker image inspect --format '{{.Id}}' "taskhub-seed:${version}")
 node_id=$(docker image inspect --format '{{.Id}}' "taskhub-node:${version}")
 postgres_id=$(docker image inspect --format '{{.Id}}' postgres:16-alpine)
+proxy_id=$(docker image inspect --format '{{.Id}}' "$proxy_image")
 cat >"$output/manifest.json" <<EOF
 {
   "product": "TaskHub",
@@ -36,7 +39,8 @@ cat >"$output/manifest.json" <<EOF
   "images": {
     "taskhub-seed:${version}": "$seed_id",
     "taskhub-node:${version}": "$node_id",
-    "postgres:16-alpine": "$postgres_id"
+    "postgres:16-alpine": "$postgres_id",
+    "$proxy_image": "$proxy_id"
   }
 }
 EOF

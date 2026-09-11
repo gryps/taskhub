@@ -27,7 +27,7 @@ RUN sed -i \
       -e "s|http://deb.debian.org/debian|${DEBIAN_MIRROR}|g" \
       /etc/apt/sources.list.d/debian.sources \
     && apt-get update -o Acquire::Retries=8 \
-    && apt-get install -y -o Acquire::Retries=8 --no-install-recommends ca-certificates curl openssh-client \
+    && apt-get install -y -o Acquire::Retries=8 --no-install-recommends ca-certificates curl openssh-client openssl \
     && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /opt/codex-home \
     && curl -fsSL --retry 5 https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh \
@@ -54,7 +54,7 @@ EXPOSE 8200
 VOLUME ["/var/lib/taskhub"]
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=6 \
-  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8200/api/health', timeout=2).read()"]
+  CMD-SHELL if [ -n "$TASKHUB_TLS_CERT_FILE" ]; then curl -fkSs https://127.0.0.1:8200/api/health >/dev/null; else curl -fSs http://127.0.0.1:8200/api/health >/dev/null; fi
 
 ENTRYPOINT ["/usr/local/bin/taskhub-entrypoint"]
 CMD ["python", "-m", "uvicorn", "taskhub_v2.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8200"]

@@ -25,6 +25,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      docker-proxy:
+        condition: service_started
     ports:
       - "${TASKHUB_PORT:-8200}:8200"
     environment:
@@ -36,7 +38,19 @@ services:
       TASKHUB_ADMIN_PASSWORD_FILE: /var/lib/taskhub/config/admin-password.json
       TASKHUB_SESSION_SECRET: ${TASKHUB_SESSION_SECRET:?TASKHUB_SESSION_SECRET is required}
       TASKHUB_CONFIG_ENCRYPTION_KEY: ${TASKHUB_CONFIG_ENCRYPTION_KEY:?TASKHUB_CONFIG_ENCRYPTION_KEY is required}
-      TASKHUB_COOKIE_SECURE: ${TASKHUB_COOKIE_SECURE:-false}
+      TASKHUB_COOKIE_SECURE: ${TASKHUB_COOKIE_SECURE:-true}
+      TASKHUB_ENFORCE_HTTPS: ${TASKHUB_ENFORCE_HTTPS:-true}
+      TASKHUB_TLS_CERT_FILE: ${TASKHUB_TLS_CERT_FILE:-/run/taskhub/tls/taskhub.crt}
+      TASKHUB_TLS_KEY_FILE: ${TASKHUB_TLS_KEY_FILE:-/run/taskhub/tls/taskhub.key}
+      TASKHUB_TRUSTED_HOSTS: ${TASKHUB_TRUSTED_HOSTS:-*}
+      TASKHUB_USERS_FILE: /var/lib/taskhub/config/users.json
+      TASKHUB_SESSION_STATE_FILE: /var/lib/taskhub/state/sessions.json
+      TASKHUB_SESSION_SIGNING_KEYS_FILE: /var/lib/taskhub/config/session-signing-keys.json
+      TASKHUB_SESSION_IDLE_SECONDS: ${TASKHUB_SESSION_IDLE_SECONDS:-1800}
+      TASKHUB_SESSION_ABSOLUTE_SECONDS: ${TASKHUB_SESSION_ABSOLUTE_SECONDS:-43200}
+      TASKHUB_LOGIN_MAX_FAILURES: ${TASKHUB_LOGIN_MAX_FAILURES:-5}
+      TASKHUB_LOGIN_WINDOW_SECONDS: ${TASKHUB_LOGIN_WINDOW_SECONDS:-900}
+      TASKHUB_LOGIN_LOCK_SECONDS: ${TASKHUB_LOGIN_LOCK_SECONDS:-900}
       TASKHUB_PROVIDER_SECRETS_FILE: /var/lib/taskhub/config/providers.env
       TASKHUB_PROVIDER_WORKDIR: /var/lib/taskhub/repositories
       TASKHUB_PROJECTS_FILE: /var/lib/taskhub/config/projects.json
@@ -45,7 +59,7 @@ services:
       TASKHUB_OPERATIONS_LOG_FILE: /var/lib/taskhub/state/operations.jsonl
       TASKHUB_NODE_CREDENTIALS_FILE: /var/lib/taskhub/config/node-credentials.json
       TASKHUB_CONTAINER_PROVISIONING_ENABLED: "true"
-      TASKHUB_DOCKER_SOCKET: /var/run/docker.sock
+      TASKHUB_DOCKER_SOCKET: http://docker-proxy:2375
       TASKHUB_DOCKER_NETWORK: taskhub_default
       TASKHUB_NODE_CONTAINER_IMAGE: ${TASKHUB_NODE_IMAGE:-taskhub-node:0.1.0-alpha}
       TASKHUB_PROVIDER_HEALTH_FILE: /var/lib/taskhub/state/provider-health.json
@@ -60,9 +74,43 @@ services:
       TASKHUB_SELF_DEPLOY_ENABLED: "false"
     volumes:
       - taskhub-data:/var/lib/taskhub
-      - /var/run/docker.sock:/var/run/docker.sock
-    group_add:
-      - "${TASKHUB_DOCKER_GID:-0}"
+      - ${TASKHUB_TLS_DIRECTORY:-./tls}:/run/taskhub/tls:ro
+
+  docker-proxy:
+    image: ${TASKHUB_DOCKER_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:v0.5.0}
+    pull_policy: never
+    restart: unless-stopped
+    privileged: true
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
+      INFO: 1
+      VERSION: 1
+      PING: 1
+      POST: 1
+      ALLOW_START: 1
+      ALLOW_STOP: 1
+      ALLOW_RESTARTS: 1
+      ALLOW_PAUSE: 0
+      ALLOW_UNPAUSE: 0
+      AUTH: 0
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      EXEC: 0
+      NODES: 0
+      PLUGINS: 0
+      SECRETS: 0
+      SERVICES: 0
+      SESSION: 0
+      SWARM: 0
+      SYSTEM: 0
+      TASKS: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
 volumes:
   postgres-data:

@@ -33,19 +33,23 @@ async def model_services(configuration: ConfigurationDep) -> dict:
 
 @router.put("/model-services")
 async def update_model_services(
-    payload: ModelServicesUpdate, configuration: ConfigurationDep
+    payload: ModelServicesUpdate, configuration: ConfigurationDep, request: Request
 ) -> dict:
     try:
-        return await configuration.update_model_services(payload)
+        return await configuration.update_model_services(
+            payload, operator=request.state.session["actor"]
+        )
     except ConfigurationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/model-services/test")
 async def test_model_service(
-    payload: ProviderConnectionTest, configuration: ConfigurationDep
+    payload: ProviderConnectionTest, configuration: ConfigurationDep, request: Request
 ) -> dict:
-    return await configuration.test_provider(payload.provider_id)
+    return await configuration.test_provider(
+        payload.provider_id, operator=request.state.session["actor"]
+    )
 
 
 @router.post("/model-services/device-auth")
@@ -84,10 +88,12 @@ async def platform_settings(configuration: ConfigurationDep) -> dict:
 
 @router.put("/platform")
 async def update_platform_settings(
-    payload: PlatformSettingsUpdate, configuration: ConfigurationDep
+    payload: PlatformSettingsUpdate, configuration: ConfigurationDep, request: Request
 ) -> dict:
     try:
-        return await configuration.update_platform_settings(payload)
+        return await configuration.update_platform_settings(
+            payload, operator=request.state.session["actor"]
+        )
     except ConfigurationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

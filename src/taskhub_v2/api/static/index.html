@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=27">
+  <link rel="stylesheet" href="/static/styles.css?v=31">
 </head>
 <body>
   <header class="app-header">
@@ -14,6 +14,7 @@
     </div>
     <div class="header-actions">
       <span id="health" class="badge health-badge"><i aria-hidden="true"></i>检查服务</span>
+      <span id="session-identity" class="badge hidden"></span>
       <button id="logout" class="header-button hidden">退出</button>
     </div>
   </header>
@@ -24,7 +25,10 @@
         <h1 id="login-title">登录控制台</h1>
         <p id="login-description">管理 AI 软件交付任务、运行节点与验收证据。</p>
       </div>
-      <label id="login-password-field">管理员密码<input id="admin-token" type="password" autocomplete="current-password" placeholder="输入管理员密码"></label>
+      <div id="login-credentials" class="login-credentials">
+        <label>用户名<input id="login-username" autocomplete="username" value="admin" maxlength="64"></label>
+        <label id="login-password-field">密码<input id="admin-token" type="password" autocomplete="current-password" placeholder="输入登录密码"></label>
+      </div>
       <div id="password-setup" class="login-setup hidden">
         <p>请使用部署时生成的初始化口令完成身份确认。密码至少 10 个字符，设置后初始化口令不再用于日常登录。</p>
         <label class="wide">初始化口令<input id="bootstrap-token" type="password" autocomplete="one-time-code" placeholder="输入部署初始化口令"></label>
@@ -33,7 +37,6 @@
       </div>
       <button id="login-button" type="button">安全登录</button>
       <p id="login-message" role="status"></p>
-      <div class="login-downloads" data-public-image-downloads></div>
     </section>
     <div id="workspace" class="hidden">
     <nav class="side-menu" aria-label="主菜单">
@@ -44,7 +47,7 @@
       <button id="nav-resources"><i aria-hidden="true">◇</i><span>系统配置</span></button>
     </nav>
     <section id="onboarding-page" class="onboarding-page hidden" aria-labelledby="onboarding-title">
-      <div class="page-head">
+    <div class="page-head">
         <div class="page-head-copy">
           <span class="eyebrow">FIRST RUN</span><h1 id="onboarding-title">Seed 首次启动向导</h1>
           <p>完成控制节点、模型、主机和第一个工作节点配置。</p>
@@ -454,14 +457,32 @@
       <summary class="resource-subsection-head"><strong>最近配置操作</strong><span>单管理员审计轨迹</span></summary>
       <div id="platform-config-audit" class="resource-table"></div>
       </details>
+      <details id="access-security-disclosure" class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>用户、权限与访问安全</strong><span>角色隔离、会话策略与签名密钥轮换</span></summary>
+      <div class="security-overview">
+        <div><strong>登录防护</strong><span>连续失败限流；会话具备空闲和绝对超时；注销立即撤销。</span></div>
+        <div><strong>浏览器安全</strong><span>全局 CSRF、SameSite Cookie、安全响应头；正式 TLS 启用 Secure Cookie。</span></div>
+        <div><strong>容器权限</strong><span>正式 Compose 通过受限 Socket Proxy 访问 Docker API，不向控制器直挂 Socket。</span></div>
+      </div>
+      <div id="user-inventory" class="resource-table"></div>
+      <form id="user-form" class="project-form resource-form configuration-form" data-permission="users:manage">
+        <div class="form-grid configuration-grid">
+          <label>用户名<input id="security-username" required minlength="2" maxlength="64" pattern="[a-zA-Z0-9_-]+"></label>
+          <label>角色<select id="security-role"><option value="project_owner">项目负责人</option><option value="developer">开发人员</option><option value="auditor">只读审计人员</option><option value="administrator">管理员</option></select></label>
+          <label>密码<input id="security-password" type="password" minlength="10" maxlength="256" autocomplete="new-password" placeholder="更新时留空表示不变"></label>
+          <label class="checkbox-field"><input id="security-enabled" type="checkbox" checked> 允许登录</label>
+        </div>
+        <div class="form-actions"><button type="submit">保存用户</button><button id="rotate-session-key" type="button" class="secondary">轮换会话签名密钥</button><span id="security-message" role="status"></span></div>
+      </form>
+      </details>
     </details>
     <button id="collapse-current-resource" type="button" class="secondary resource-collapse-shortcut hidden" aria-label="收起当前配置栏目">收起当前项 ↑</button>
     </section>
     </div>
   </main>
-  <script src="/static/app.js?v=8"></script>
+  <script src="/static/app.js?v=11"></script>
   <script src="/static/task-center.js?v=13"></script>
-  <script src="/static/resource-center.js?v=20"></script>
+  <script src="/static/resource-center.js?v=21"></script>
   <script src="/static/onboarding.js?v=2"></script>
 </body>
 </html>

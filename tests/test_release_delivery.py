@@ -55,8 +55,18 @@ def test_release_compose_preloads_unified_node_reference():
     text = (RELEASE / "compose.yaml").read_text(encoding="utf-8")
     assert "TASKHUB_NODE_CONTAINER_IMAGE: ${TASKHUB_NODE_IMAGE" in text
     assert "TASKHUB_CODEX_CLI_BIN: /usr/local/bin/codex" in text
-    assert "/var/run/docker.sock:/var/run/docker.sock" in text
+    payload = yaml.safe_load(text)
+    controller = payload["services"]["controller"]
+    proxy = payload["services"]["docker-proxy"]
+    assert "/var/run/docker.sock:/var/run/docker.sock" not in str(controller)
+    assert controller["environment"]["TASKHUB_DOCKER_SOCKET"] == "http://docker-proxy:2375"
+    assert "/var/run/docker.sock:/var/run/docker.sock:ro" in proxy["volumes"]
+    assert "ports" not in proxy
+    assert proxy["environment"]["AUTH"] == 0
+    assert proxy["environment"]["SECRETS"] == 0
     assert "TASKHUB_OPERATIONS_LOG_FILE: /var/lib/taskhub/state/operations.jsonl" in text
+    assert "TASKHUB_COOKIE_SECURE: ${TASKHUB_COOKIE_SECURE:-true}" in text
+    assert "TASKHUB_SESSION_STATE_FILE: /var/lib/taskhub/state/sessions.json" in text
 
 
 def test_backup_restore_binds_encryption_key_to_database_identity():
@@ -102,6 +112,7 @@ def test_offline_build_includes_all_runtime_images_and_checksums():
         assert "taskhub-seed" in text
         assert "taskhub-node" in text
         assert "postgres:16-alpine" in text
+        assert "ghcr.io/tecnativa/docker-socket-proxy:v0.5.0" in text
         assert "SHA256SUMS" in text
         assert "manifest.json" in text
         assert "Get-ChildItem" in text or "find . -type f" in text

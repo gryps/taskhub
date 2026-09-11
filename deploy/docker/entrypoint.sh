@@ -25,4 +25,12 @@ if [ ! -e "${providers_file}" ]; then
   chmod 0600 "${providers_file}"
 fi
 
+if [ -n "${TASKHUB_TLS_CERT_FILE:-}" ] || [ -n "${TASKHUB_TLS_KEY_FILE:-}" ]; then
+  if [ ! -r "${TASKHUB_TLS_CERT_FILE:-}" ] || [ ! -r "${TASKHUB_TLS_KEY_FILE:-}" ]; then
+    printf 'TLS certificate and key must both exist and be readable.\n' >&2
+    exit 1
+  fi
+  set -- "$@" --ssl-certfile "$TASKHUB_TLS_CERT_FILE" --ssl-keyfile "$TASKHUB_TLS_KEY_FILE"
+fi
+
 exec "$@"

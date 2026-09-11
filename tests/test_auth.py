@@ -21,12 +21,11 @@ def test_first_login_sets_durable_password_and_creates_session(tmp_path):
 
     with TestClient(app) as client:
         status = client.get("/api/auth/status").json()
-        assert status == {
-            "authenticated": False,
-            "configured": True,
-            "password_login": True,
-            "setup_required": True,
-        }
+        assert status["authenticated"] is False
+        assert status["configured"] is True
+        assert status["password_login"] is True
+        assert status["setup_required"] is True
+        assert status["permissions"] == []
         assert client.post(
             "/api/auth/login", json={"token": "bootstrap-secret"}
         ).status_code == 409

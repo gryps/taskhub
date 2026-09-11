@@ -79,10 +79,20 @@ Ensure-EnvValue "TASKHUB_PORT" "8200"
 Ensure-EnvValue "TASKHUB_SEED_IMAGE" "taskhub-seed:0.1.0-alpha"
 Ensure-EnvValue "TASKHUB_NODE_IMAGE" "taskhub-node:0.1.0-alpha"
 Ensure-EnvValue "TASKHUB_POSTGRES_IMAGE" "postgres:16-alpine"
+Ensure-EnvValue "TASKHUB_DOCKER_PROXY_IMAGE" "ghcr.io/tecnativa/docker-socket-proxy:v0.5.0"
 Ensure-EnvValue "TASKHUB_DATA_VOLUME" $DataVolume
 Ensure-EnvValue "TASKHUB_POSTGRES_VOLUME" $PostgresVolume
-Ensure-EnvValue "TASKHUB_DOCKER_GID" "0"
-Ensure-EnvValue "TASKHUB_COOKIE_SECURE" "false"
+Ensure-EnvValue "TASKHUB_COOKIE_SECURE" "true"
+Ensure-EnvValue "TASKHUB_ENFORCE_HTTPS" "true"
+Ensure-EnvValue "TASKHUB_TLS_DIRECTORY" "./tls"
+Ensure-EnvValue "TASKHUB_TLS_CERT_FILE" "/run/taskhub/tls/taskhub.crt"
+Ensure-EnvValue "TASKHUB_TLS_KEY_FILE" "/run/taskhub/tls/taskhub.key"
+Ensure-EnvValue "TASKHUB_TRUSTED_HOSTS" "*"
+Ensure-EnvValue "TASKHUB_SESSION_IDLE_SECONDS" "1800"
+Ensure-EnvValue "TASKHUB_SESSION_ABSOLUTE_SECONDS" "43200"
+Ensure-EnvValue "TASKHUB_LOGIN_MAX_FAILURES" "5"
+Ensure-EnvValue "TASKHUB_LOGIN_WINDOW_SECONDS" "900"
+Ensure-EnvValue "TASKHUB_LOGIN_LOCK_SECONDS" "900"
 Ensure-EnvValue "TASKHUB_OPENAI_PROXY_URL" ""
 Ensure-Secret "TASKHUB_POSTGRES_PASSWORD" (New-HexSecret 24)
 Ensure-Secret "TASKHUB_ADMIN_TOKEN" (New-HexSecret 24)
@@ -113,7 +123,8 @@ if ($Archive) {
     foreach ($Image in @(
         (Get-EnvValue "TASKHUB_SEED_IMAGE"),
         (Get-EnvValue "TASKHUB_NODE_IMAGE"),
-        (Get-EnvValue "TASKHUB_POSTGRES_IMAGE")
+        (Get-EnvValue "TASKHUB_POSTGRES_IMAGE"),
+        (Get-EnvValue "TASKHUB_DOCKER_PROXY_IMAGE")
     )) {
         docker image inspect $Image *> $null
         if ($LASTEXITCODE -ne 0) {
@@ -129,12 +140,25 @@ if ($ServerArch -eq "aarch64") { $ServerArch = "arm64" }
 foreach ($Image in @(
     (Get-EnvValue "TASKHUB_SEED_IMAGE"),
     (Get-EnvValue "TASKHUB_NODE_IMAGE"),
-    (Get-EnvValue "TASKHUB_POSTGRES_IMAGE")
+    (Get-EnvValue "TASKHUB_POSTGRES_IMAGE"),
+    (Get-EnvValue "TASKHUB_DOCKER_PROXY_IMAGE")
 )) {
     $Actual = docker image inspect --format '{{.Os}}/{{.Architecture}}' $Image
     if ($Actual -ne "linux/$ServerArch") {
         throw "镜像架构不匹配: $Image 是 $Actual，Docker 主机是 linux/$ServerArch。"
     }
+}
+
+$TlsDirectory = Join-Path $Root "tls"
+New-Item -ItemType Directory -Force $TlsDirectory | Out-Null
+$TlsCertificate = Join-Path $TlsDirectory "taskhub.crt"
+$TlsKey = Join-Path $TlsDirectory "taskhub.key"
+if (-not (Test-Path $TlsCertificate) -or -not (Test-Path $TlsKey)) {
+    $SeedImage = Get-EnvValue "TASKHUB_SEED_IMAGE"
+    docker run --rm --entrypoint openssl -v "${TlsDirectory}:/tls" $SeedImage req -x509 `
+        -newkey rsa:3072 -nodes -days 397 -keyout /tls/taskhub.key -out /tls/taskhub.crt `
+        -subj /CN=taskhub.local -addext "subjectAltName=DNS:taskhub.local,DNS:localhost,IP:127.0.0.1"
+    if ($LASTEXITCODE -ne 0) { throw "生成初始 TLS 证书失败。" }
 }
 
 docker compose --project-directory $Root --env-file $EnvFile -f $ComposeFile config *> $null
@@ -144,11 +168,13 @@ if ($LASTEXITCODE -ne 0) { throw "TaskHub Seed 启动失败。" }
 
 $Port = Get-EnvValue "TASKHUB_PORT"
 $Deadline = (Get-Date).AddMinutes(3)
+$Scheme = if ((Get-EnvValue "TASKHUB_ENFORCE_HTTPS") -eq "true") { "https" } else { "http" }
+if ($Scheme -eq "https") { [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true } }
 do {
     try {
-        $Health = Invoke-RestMethod "http://127.0.0.1:$Port/api/health" -TimeoutSec 5
+        $Health = Invoke-RestMethod "${Scheme}://127.0.0.1:$Port/api/health" -TimeoutSec 5
         if ($Health.status -eq "ok") {
-            Write-Host "TaskHub Seed 已启动: http://127.0.0.1:$Port"
+            Write-Host "TaskHub Seed 已启动: ${Scheme}://127.0.0.1:$Port"
             Write-Host "首次设置口令保存在 $EnvFile 的 TASKHUB_ADMIN_TOKEN。"
             exit 0
         }

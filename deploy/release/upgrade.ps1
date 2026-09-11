@@ -58,10 +58,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 $PortLine = Get-Content $EnvFile | Where-Object { $_ -match '^TASKHUB_PORT=' } | Select-Object -Last 1
 $Port = ($PortLine -split '=', 2)[1]
+$HttpsEnabled = (Get-Content $EnvFile | Where-Object { $_ -eq 'TASKHUB_ENFORCE_HTTPS=true' })
+$Scheme = if ($HttpsEnabled) { "https" } else { "http" }
+if ($HttpsEnabled) { [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true } }
 $Deadline = (Get-Date).AddMinutes(3)
 do {
     try {
-        if ((Invoke-RestMethod "http://127.0.0.1:$Port/api/health" -TimeoutSec 5).status -eq "ok") {
+        if ((Invoke-RestMethod "${Scheme}://127.0.0.1:$Port/api/health" -TimeoutSec 5).status -eq "ok") {
             Write-Host "升级完成: $Version；恢复点: $Backup"
             exit 0
         }

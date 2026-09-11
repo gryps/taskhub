@@ -63,7 +63,8 @@ verify_image_platforms() {
   for image in \
     "$(env_value TASKHUB_SEED_IMAGE)" \
     "$(env_value TASKHUB_NODE_IMAGE)" \
-    "$(env_value TASKHUB_POSTGRES_IMAGE)"; do
+    "$(env_value TASKHUB_POSTGRES_IMAGE)" \
+    "$(env_value TASKHUB_DOCKER_PROXY_IMAGE)"; do
     actual=$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")
     [ "$actual" = "$expected" ] || {
       printf '镜像架构不匹配: %s 是 %s，Docker 主机是 %s。\n' "$image" "$actual" "$expected" >&2
@@ -74,10 +75,16 @@ verify_image_platforms() {
 
 wait_for_health() {
   port=$(env_value TASKHUB_PORT)
+  scheme=http
+  curl_flags=-fsS
+  if [ "$(env_value TASKHUB_ENFORCE_HTTPS)" = true ]; then
+    scheme=https
+    curl_flags=-fkSs
+  fi
   attempts=0
   while [ "$attempts" -lt 60 ]; do
-    if curl -fsS "http://127.0.0.1:${port:-8200}/api/health" >/dev/null 2>&1; then
-      printf 'TaskHub Seed 已启动: http://127.0.0.1:%s\n' "${port:-8200}"
+    if curl $curl_flags "$scheme://127.0.0.1:${port:-8200}/api/health" >/dev/null 2>&1; then
+      printf 'TaskHub Seed 已启动: %s://127.0.0.1:%s\n' "$scheme" "${port:-8200}"
       printf '首次设置口令保存在 %s 的 TASKHUB_ADMIN_TOKEN。\n' "$env_file"
       return
     fi
@@ -102,10 +109,6 @@ docker compose version >/dev/null 2>&1 || {
   exit 1
 }
 
-docker_gid=0
-if [ -S /var/run/docker.sock ] && command -v stat >/dev/null 2>&1; then
-  docker_gid=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || printf '0')
-fi
 data_volume=taskhub-data
 postgres_volume=taskhub-postgres-data
 if ! docker volume inspect taskhub-data >/dev/null 2>&1 &&
@@ -129,8 +132,18 @@ ensure_env_value TASKHUB_NODE_IMAGE taskhub-node:0.1.0-alpha
 ensure_env_value TASKHUB_POSTGRES_IMAGE postgres:16-alpine
 ensure_env_value TASKHUB_DATA_VOLUME "$data_volume"
 ensure_env_value TASKHUB_POSTGRES_VOLUME "$postgres_volume"
-ensure_env_value TASKHUB_DOCKER_GID "$docker_gid"
-ensure_env_value TASKHUB_COOKIE_SECURE false
+ensure_env_value TASKHUB_COOKIE_SECURE true
+ensure_env_value TASKHUB_ENFORCE_HTTPS true
+ensure_env_value TASKHUB_TLS_DIRECTORY ./tls
+ensure_env_value TASKHUB_TLS_CERT_FILE /run/taskhub/tls/taskhub.crt
+ensure_env_value TASKHUB_TLS_KEY_FILE /run/taskhub/tls/taskhub.key
+ensure_env_value TASKHUB_TRUSTED_HOSTS '*'
+ensure_env_value TASKHUB_SESSION_IDLE_SECONDS 1800
+ensure_env_value TASKHUB_SESSION_ABSOLUTE_SECONDS 43200
+ensure_env_value TASKHUB_LOGIN_MAX_FAILURES 5
+ensure_env_value TASKHUB_LOGIN_WINDOW_SECONDS 900
+ensure_env_value TASKHUB_LOGIN_LOCK_SECONDS 900
+ensure_env_value TASKHUB_DOCKER_PROXY_IMAGE ghcr.io/tecnativa/docker-socket-proxy:v0.5.0
 ensure_env_value TASKHUB_OPENAI_PROXY_URL ""
 ensure_secret TASKHUB_POSTGRES_PASSWORD "$(random_hex 24)"
 ensure_secret TASKHUB_ADMIN_TOKEN "$(random_hex 24)"
@@ -156,13 +169,23 @@ else
   for image in \
     "$(env_value TASKHUB_SEED_IMAGE)" \
     "$(env_value TASKHUB_NODE_IMAGE)" \
-    "$(env_value TASKHUB_POSTGRES_IMAGE)"; do
+    "$(env_value TASKHUB_POSTGRES_IMAGE)" \
+    "$(env_value TASKHUB_DOCKER_PROXY_IMAGE)"; do
     if ! docker image inspect "$image" >/dev/null 2>&1; then
       docker pull "$image"
     fi
   done
 fi
 verify_image_platforms
+
+mkdir -p "$root/tls"
+if [ ! -s "$root/tls/taskhub.crt" ] || [ ! -s "$root/tls/taskhub.key" ]; then
+  openssl req -x509 -newkey rsa:3072 -nodes -days 397 \
+    -keyout "$root/tls/taskhub.key" -out "$root/tls/taskhub.crt" \
+    -subj '/CN=taskhub.local' \
+    -addext 'subjectAltName=DNS:taskhub.local,DNS:localhost,IP:127.0.0.1'
+  chmod 600 "$root/tls/taskhub.key"
+fi
 
 docker compose --project-directory "$root" --env-file "$env_file" -f "$compose_file" config >/dev/null
 docker compose --project-directory "$root" --env-file "$env_file" -f "$compose_file" up -d --no-build --pull never

@@ -669,6 +669,59 @@ async function savePlatformSettings(event) {
   }
 }
 
+const securityRoleNames = {
+  administrator: "管理员", project_owner: "项目负责人",
+  developer: "开发人员", auditor: "只读审计人员",
+};
+
+async function loadUsers() {
+  const inventory = byId("user-inventory");
+  try {
+    const data = await request("/api/auth/users");
+    inventory.innerHTML = `<div class="resource-row resource-header"><span>用户</span><span>角色</span><span>状态</span><span>操作</span></div>` +
+      data.users.map((item) => `<div class="resource-row">
+        <strong>${escapeHtml(item.username)}</strong><span>${escapeHtml(securityRoleNames[item.role] || item.role)}</span>
+        <span class="${item.enabled ? "ok" : "warn"}">${item.enabled ? "可登录" : "已停用"}</span>
+        <span>${item.built_in ? "内置账号" : `<button type="button" class="secondary edit-user" data-username="${escapeHtml(item.username)}" data-role="${escapeHtml(item.role)}" data-enabled="${item.enabled}">编辑</button> <button type="button" class="secondary delete-user" data-username="${escapeHtml(item.username)}">删除</button>`}</span>
+      </div>`).join("");
+  } catch (error) {
+    inventory.innerHTML = `<p class="muted">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function saveUser(event) {
+  event.preventDefault();
+  const username = byId("security-username").value.trim().toLowerCase();
+  byId("security-message").textContent = "正在保存用户";
+  try {
+    await request(`/api/auth/users/${encodeURIComponent(username)}`, {method: "PUT", body: JSON.stringify({
+      username, role: byId("security-role").value,
+      password: byId("security-password").value,
+      enabled: byId("security-enabled").checked,
+    })});
+    byId("security-password").value = "";
+    byId("security-message").textContent = "用户已保存";
+    await loadUsers();
+  } catch (error) { byId("security-message").textContent = error.message; }
+}
+
+async function deleteUser(username) {
+  if (!window.confirm(`确认删除用户 ${username}？该用户将不能再次登录。`)) return;
+  try {
+    await request(`/api/auth/users/${encodeURIComponent(username)}`, {method: "DELETE"});
+    byId("security-message").textContent = `用户 ${username} 已删除`;
+    await loadUsers();
+  } catch (error) { byId("security-message").textContent = error.message; }
+}
+
+async function rotateSessionKey() {
+  if (!window.confirm("轮换会话签名密钥会注销包括当前用户在内的全部会话，确认继续？")) return;
+  try {
+    await request("/api/auth/signing-key/rotate", {method: "POST"});
+    window.location.reload();
+  } catch (error) { byId("security-message").textContent = error.message; }
+}
+
 const containerRoleNames = {
   execution: "执行节点", test: "测试节点", preproduction: "预生产节点",
 };
@@ -1217,6 +1270,22 @@ byId("model-card-editor").addEventListener("change", (event) => {
   }
 });
 byId("platform-settings-form").addEventListener("submit", savePlatformSettings);
+byId("access-security-disclosure").addEventListener("toggle", (event) => {
+  if (event.currentTarget.open) loadUsers();
+});
+byId("user-form").addEventListener("submit", saveUser);
+byId("rotate-session-key").addEventListener("click", rotateSessionKey);
+byId("user-inventory").addEventListener("click", (event) => {
+  const edit = event.target.closest(".edit-user");
+  if (edit) {
+    byId("security-username").value = edit.dataset.username;
+    byId("security-role").value = edit.dataset.role;
+    byId("security-enabled").checked = edit.dataset.enabled === "true";
+    byId("security-password").value = "";
+  }
+  const remove = event.target.closest(".delete-user");
+  if (remove) deleteUser(remove.dataset.username);
+});
 byId("host-form").addEventListener("submit", savePhysicalHost);
 byId("host-rebuild-form").addEventListener("submit", rebuildHostNodes);
 byId("load-node-diagnostics").addEventListener("click", loadNodeDiagnostics);

@@ -4,6 +4,7 @@ import http.client
 import json
 import socket
 from typing import BinaryIO
+from urllib.parse import urlparse
 
 
 class DockerUnavailableError(RuntimeError):
@@ -24,6 +25,12 @@ class DockerSocketClient:
     def __init__(self, socket_path: str):
         self.socket_path = socket_path
 
+    def _connection(self) -> http.client.HTTPConnection:
+        if self.socket_path.startswith(("tcp://", "http://")):
+            parsed = urlparse(self.socket_path.replace("tcp://", "http://", 1))
+            return http.client.HTTPConnection(parsed.hostname, parsed.port or 2375, timeout=60)
+        return UnixSocketConnection(self.socket_path)
+
     def request(self, method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
         status, raw = self.request_bytes(method, path, payload)
         data = json.loads(raw) if raw else {}
@@ -32,7 +39,7 @@ class DockerSocketClient:
     def request_bytes(
         self, method: str, path: str, payload: dict | None = None
     ) -> tuple[int, bytes]:
-        connection = UnixSocketConnection(self.socket_path)
+        connection = self._connection()
         body = json.dumps(payload).encode() if payload is not None else None
         headers = {"Content-Type": "application/json"} if body is not None else {}
         try:
@@ -46,7 +53,7 @@ class DockerSocketClient:
         return response.status, raw
 
     def download(self, path: str, destination: BinaryIO) -> None:
-        connection = UnixSocketConnection(self.socket_path)
+        connection = self._connection()
         try:
             connection.request("GET", path)
             response = connection.getresponse()
@@ -65,7 +72,7 @@ class DockerSocketClient:
             connection.close()
 
     def upload(self, path: str, source: BinaryIO, length: int) -> list[dict]:
-        connection = UnixSocketConnection(self.socket_path)
+        connection = self._connection()
         try:
             connection.request(
                 "POST",

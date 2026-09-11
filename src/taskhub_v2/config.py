@@ -19,6 +19,16 @@ class Settings(BaseModel):
     session_secret: str = Field(default="", repr=False)
     config_encryption_key: str = Field(default="", repr=False)
     cookie_secure: bool = False
+    enforce_https: bool = False
+    users_file: str = ""
+    session_state_file: str = ""
+    session_signing_keys_file: str = ""
+    session_idle_seconds: int = 1800
+    session_absolute_seconds: int = 43200
+    login_max_failures: int = 5
+    login_window_seconds: int = 900
+    login_lock_seconds: int = 900
+    trusted_hosts: str = "*"
     projects_file: str = "/home/gryps/.config/taskhub-v2/projects.json"
     authority_git_host: str = "gryps@192.168.31.3"
     authority_git_root: str = "/home/gryps/git"
@@ -108,6 +118,17 @@ def get_settings() -> Settings:
         config_encryption_key=os.getenv("TASKHUB_CONFIG_ENCRYPTION_KEY", ""),
         cookie_secure=os.getenv("TASKHUB_COOKIE_SECURE", "false").lower()
         in {"1", "true", "yes", "on"},
+        enforce_https=os.getenv("TASKHUB_ENFORCE_HTTPS", "false").lower()
+        in {"1", "true", "yes", "on"},
+        users_file=os.getenv("TASKHUB_USERS_FILE", ""),
+        session_state_file=os.getenv("TASKHUB_SESSION_STATE_FILE", ""),
+        session_signing_keys_file=os.getenv("TASKHUB_SESSION_SIGNING_KEYS_FILE", ""),
+        session_idle_seconds=int(os.getenv("TASKHUB_SESSION_IDLE_SECONDS", "1800")),
+        session_absolute_seconds=int(os.getenv("TASKHUB_SESSION_ABSOLUTE_SECONDS", "43200")),
+        login_max_failures=int(os.getenv("TASKHUB_LOGIN_MAX_FAILURES", "5")),
+        login_window_seconds=int(os.getenv("TASKHUB_LOGIN_WINDOW_SECONDS", "900")),
+        login_lock_seconds=int(os.getenv("TASKHUB_LOGIN_LOCK_SECONDS", "900")),
+        trusted_hosts=os.getenv("TASKHUB_TRUSTED_HOSTS", "*"),
         projects_file=os.getenv(
             "TASKHUB_PROJECTS_FILE", "/home/gryps/.config/taskhub-v2/projects.json"
         ),
@@ -167,9 +188,7 @@ def get_settings() -> Settings:
         in {"1", "true", "yes", "on"},
         docker_socket=os.getenv("TASKHUB_DOCKER_SOCKET", "/var/run/docker.sock"),
         docker_network=os.getenv("TASKHUB_DOCKER_NETWORK", "taskhub-seed_default"),
-        node_container_image=os.getenv(
-            "TASKHUB_NODE_CONTAINER_IMAGE", "taskhub-node:0.1.0-alpha"
-        ),
+        node_container_image=os.getenv("TASKHUB_NODE_CONTAINER_IMAGE", "taskhub-node:0.1.0-alpha"),
         seed_public_url=os.getenv("TASKHUB_SEED_PUBLIC_URL", ""),
         node_callback_url=os.getenv("TASKHUB_NODE_CALLBACK_URL", ""),
         node_image_registry=os.getenv("TASKHUB_NODE_IMAGE_REGISTRY", ""),

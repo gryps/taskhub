@@ -127,9 +127,12 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert 'styles.css?v=27' in html
-        assert 'app.js?v=8' in html
-        assert 'resource-center.js?v=20' in html
+        assert 'styles.css?v=31' in html
+        assert 'app.js?v=11' in html
+        assert 'resource-center.js?v=21' in html
+        assert 'id="login-username"' in html
+        assert 'id="access-security-disclosure"' in html
+        assert 'id="user-form"' in html
         assert 'id="host-rebuild-form"' in html
         assert 'id="diagnostic-node"' in html
         assert 'id="export-diagnostics"' in html
@@ -139,7 +142,7 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'class="resource-subdisclosure"' in html
         assert 'id="platform-registry-username"' in html
         assert 'id="platform-registry-password"' in html
-        assert html.count('data-public-image-downloads') == 2
+        assert html.count('data-public-image-downloads') == 1
         assert all(
             f'id="{name}-disclosure"' in html
             for name in ("system", "providers", "hosts", "nodes", "platform")
@@ -171,10 +174,6 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert html.count('id="archive-task"') == 1
         assert '<details><summary>规划方案' in html
         script = client.get("/static/app.js").text
-        assert "ghcr.io/gryps/taskhub-seed:0.1.0-alpha" in script
-        assert "ghcr.io/gryps/taskhub-node:0.1.0-alpha" in script
-        assert "personal.cr.aliyuncs.com/taskhub-v2/taskhub-seed:0.1.0-alpha" in script
-        assert "personal.cr.aliyuncs.com/taskhub-v2/taskhub-node:0.1.0-alpha" in script
         assert "copy-image-reference" in script
         assert 'path = "/api/auth/setup"' in script
         assert "localStorage.setItem(\"taskhub_run_id\"" not in script

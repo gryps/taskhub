@@ -16,6 +16,8 @@ let pendingAction;
 let deploymentTimer;
 let registeredProjects = [];
 let passwordSetupRequired = false;
+let currentAuth = null;
+let permissionObserver = null;
 
 const publicImageRegistries = [
   {
@@ -37,6 +39,11 @@ const publicImageRegistries = [
 ];
 
 const byId = (id) => document.getElementById(id);
+const canPermission = (permission) => {
+  const permissions = new Set(currentAuth?.permissions || []);
+  return permissions.has("*") || permissions.has(permission);
+};
+window.taskhubCan = canPermission;
 const stageIndex = (name) => stages.findIndex(([id]) => id === (
   name === "implementation_blocked" ? "implementation" :
   name === "acceptance_blocked" ? "acceptance" :
@@ -391,7 +398,16 @@ async function request(path, options = {}) {
   const headers = {"Content-Type": "application/json", ...(options.headers || {})};
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers["X-CSRF-Token"] = cookie("taskhub_v2_csrf");
   const response = await fetch(path, {...options, headers});
-  if (!response.ok) throw new Error((await response.json()).detail || `HTTP ${response.status}`);
+  if (!response.ok) {
+    const detail = (await response.json()).detail || `HTTP ${response.status}`;
+    if (response.status === 401 && !path.startsWith("/api/auth/")) {
+      byId("login").classList.remove("hidden");
+      byId("workspace").classList.add("hidden");
+      byId("logout").classList.add("hidden");
+      byId("login-message").textContent = "会话已超时，请重新登录";
+    }
+    throw new Error(detail);
+  }
   return response.json();
 }
 
@@ -514,7 +530,7 @@ async function login() {
   const button = byId("login-button");
   message.textContent = "";
   let path = "/api/auth/login";
-  let payload = {token: byId("admin-token").value};
+  let payload = {username: byId("login-username").value.trim() || "admin", token: byId("admin-token").value};
   if (passwordSetupRequired) {
     const password = byId("new-admin-password").value;
     if (password.length < 10) {
@@ -549,6 +565,7 @@ function renderAuthentication(state) {
   passwordSetupRequired = Boolean(state.setup_required);
   byId("password-setup").classList.toggle("hidden", !passwordSetupRequired);
   byId("login-password-field").classList.toggle("hidden", passwordSetupRequired);
+  byId("login-credentials").classList.toggle("hidden", passwordSetupRequired);
   byId("login-title").textContent = passwordSetupRequired ? "设置管理员密码" : "登录控制台";
   byId("login-description").textContent = passwordSetupRequired
     ? "首次使用需要创建管理员密码，完成后将直接进入控制台。"
@@ -556,13 +573,39 @@ function renderAuthentication(state) {
   byId("login-button").textContent = passwordSetupRequired ? "设置密码并登录" : "安全登录";
 }
 
+function applyPermissions() {
+  document.querySelectorAll("[data-permission]").forEach((item) => {
+    item.classList.toggle("permission-hidden", !canPermission(item.dataset.permission));
+  });
+  const projectManager = canPermission("projects:manage");
+  for (const id of ["show-project-form", "show-attach-project-form", "project-form", "attach-project-form", "test-environment-form"]) {
+    byId(id)?.classList.toggle("permission-hidden", !projectManager);
+  }
+  byId("deploy-release")?.classList.toggle("permission-hidden", !canPermission("release:manage"));
+  const infrastructureManager = canPermission("infrastructure:manage");
+  document.body.classList.toggle("resource-readonly", !infrastructureManager);
+  for (const id of ["host-form", "host-rebuild-form", "container-form"]) {
+    byId(id)?.classList.toggle("permission-hidden", !infrastructureManager);
+  }
+  document.querySelectorAll("#model-services-form input, #model-services-form select, #model-services-form textarea, #platform-settings-form input, #platform-settings-form select, #platform-settings-form textarea").forEach((item) => {
+    item.disabled = !infrastructureManager;
+  });
+}
+
 async function bootstrap() {
   const state = await request("/api/auth/status");
+  currentAuth = state;
   renderAuthentication(state);
   byId("login").classList.toggle("hidden", state.authenticated);
   byId("workspace").classList.toggle("hidden", !state.authenticated);
   byId("logout").classList.toggle("hidden", !state.authenticated);
+  byId("session-identity").classList.toggle("hidden", !state.authenticated);
+  byId("session-identity").textContent = state.authenticated ? `${state.actor} · ${{administrator: "管理员", project_owner: "项目负责人", developer: "开发人员", auditor: "只读审计"}[state.role] || state.role}` : "";
   if (!state.authenticated) return;
+  applyPermissions();
+  permissionObserver?.disconnect();
+  permissionObserver = new MutationObserver(applyPermissions);
+  permissionObserver.observe(byId("workspace"), {childList: true, subtree: true});
   await loadProjects();
   const onboardingOpened = await window.loadOnboarding?.();
   if (!onboardingOpened) window.loadTaskCenter?.();
@@ -681,7 +724,7 @@ document.addEventListener("click", (event) => {
   const button = event.target.closest(".copy-image-reference");
   if (button) copyImageReference(button).catch(() => { button.textContent = "复制失败"; });
 });
-["admin-token", "bootstrap-token", "new-admin-password", "confirm-admin-password"].forEach((id) => {
+["login-username", "admin-token", "bootstrap-token", "new-admin-password", "confirm-admin-password"].forEach((id) => {
   byId(id).addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
 });
 byId("logout").addEventListener("click", async () => { await request("/api/auth/logout", {method: "POST"}); await bootstrap(); });

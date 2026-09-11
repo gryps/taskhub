@@ -221,8 +221,8 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   line-height: 1.6;
 }
 .login-setup .wide { grid-column: 1 / -1; }
+.login-credentials { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr; gap: 10px; }
 .login p[role="status"] { grid-column: 1 / -1; color: var(--danger); margin: 0; min-height: 18px; font-size: 12px; }
-.login-downloads { grid-column: 1 / -1; margin-top: 2px; }
 
 .public-image-downloads {
   margin-bottom: 12px;
@@ -232,7 +232,6 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   background: var(--surface);
   box-shadow: var(--shadow-sm);
 }
-.login .public-image-downloads { margin-bottom: 0; background: var(--surface-subtle); box-shadow: none; }
 .public-image-downloads > summary {
   min-height: 52px;
   padding: 10px 14px;
@@ -752,6 +751,7 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   #workspace { grid-template-columns: 136px minmax(0, 1fr); gap: 20px; }
   .side-menu button { padding: 0 9px; }
   .task-filters { grid-template-columns: 1fr 1fr; }
+  .image-registry-grid { grid-template-columns: 1fr; }
   .composer { grid-template-columns: 1fr; }
   .composer > * { grid-column: 1; }
   .flow { grid-template-columns: repeat(3, 1fr); }
@@ -800,7 +800,6 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .timeline li { grid-template-columns: 80px 1fr; }
   .timeline li span:last-child { grid-column: 1 / -1; }
   .task-filters { grid-template-columns: 1fr 1fr; }
-  .image-registry-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {
@@ -863,11 +862,27 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .backup-contract { padding: 12px 16px; }
 .backup-contract p { margin: 0 0 10px; }
 .backup-contract ul { margin: 0 0 10px; padding-left: 20px; }
+.security-overview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px 16px; }
+.security-overview div { display: grid; gap: 5px; padding: 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-subtle); }
+.security-overview strong { font-size: 14px; }
+.security-overview span { color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
+.checkbox-field { align-self: end; min-height: 38px; display: flex; align-items: center; }
+.permission-hidden { display: none !important; }
+.resource-readonly #add-model-card,
+.resource-readonly #save-model-settings,
+.resource-readonly #save-platform-settings,
+.resource-readonly .model-remove,
+.resource-readonly .model-test,
+.resource-readonly .model-device-auth,
+.resource-readonly .host-action,
+.resource-readonly .host-state-action,
+.resource-readonly .container-action { display: none !important; }
 
 @media (max-width: 680px) {
   .runtime-role-grid { grid-template-columns: 1fr; }
   .diagnostic-grid { grid-template-columns: 1fr; }
   .diagnostic-toolbar > * { width: 100%; }
+  .security-overview { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

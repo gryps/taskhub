@@ -6,6 +6,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from taskhub_v2.api.auth_routes import router as auth_router
 from taskhub_v2.api.configuration_routes import router as configuration_router
@@ -60,6 +62,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.admin_token,
         settings.session_secret,
         settings.admin_password_file,
+        users_file=settings.users_file,
+        session_state_file=settings.session_state_file,
+        signing_keys_file=settings.session_signing_keys_file,
+        session_idle_seconds=settings.session_idle_seconds,
+        session_absolute_seconds=settings.session_absolute_seconds,
+        login_max_failures=settings.login_max_failures,
+        login_window_seconds=settings.login_window_seconds,
+        login_lock_seconds=settings.login_lock_seconds,
     )
     projects = ProjectRegistry(settings.projects_file)
     project_provisioner = ProjectProvisioner(
@@ -229,6 +239,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.project_provisioner = project_provisioner
     app.state.deployment_manager = DeploymentManager(settings)
     app.state.container_manager = default_container_manager
+    app.state.operation_log = operation_log
     app.include_router(router)
     app.include_router(provider_router)
     app.include_router(auth_router)
@@ -242,6 +253,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(deployment_router)
     app.include_router(diagnostic_router)
     app.include_router(system_router)
+
+    if settings.enforce_https:
+        app.add_middleware(HTTPSRedirectMiddleware)
+    allowed_hosts = [item.strip() for item in settings.trusted_hosts.split(",") if item.strip()]
+    if allowed_hosts and allowed_hosts != ["*"]:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
     @app.middleware("http")
     async def require_authentication(request, call_next):
@@ -258,17 +275,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
         if public:
-            return await call_next(request)
+            response = await call_next(request)
+            return _secure_response(response)
         session = auth.read_session(request.cookies.get(SESSION_COOKIE))
         if not session:
             return JSONResponse({"detail": "authentication required"}, status_code=401)
+        request.state.session = session
+        permission = _required_permission(path, request.method)
+        if permission and not auth.allowed(session, permission):
+            operation_log.record(
+                "access_denied",
+                "forbidden",
+                actor=session.get("actor"),
+                role=session.get("role"),
+                method=request.method,
+                path=path,
+            )
+            return JSONResponse({"detail": "permission denied"}, status_code=403)
         if request.method not in {"GET", "HEAD", "OPTIONS"} and not auth.valid_csrf(
             session,
             request.headers.get("x-csrf-token", ""),
             request.cookies.get(CSRF_COOKIE, ""),
         ):
             return JSONResponse({"detail": "CSRF validation failed"}, status_code=403)
-        return await call_next(request)
+        response = await call_next(request)
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            operation_log.record(
+                "management_api",
+                "passed" if response.status_code < 400 else "failed",
+                actor=session.get("actor"),
+                role=session.get("role"),
+                method=request.method,
+                path=path,
+                status_code=response.status_code,
+            )
+        return _secure_response(response)
 
     static_dir = files("taskhub_v2.api").joinpath("static")
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -278,3 +319,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return FileResponse(str(static_dir.joinpath("index.html")))
 
     return app
+
+
+def _required_permission(path: str, method: str) -> str:
+    if path.startswith("/api/auth/users") or path == "/api/auth/signing-key/rotate":
+        return "users:manage" if "users" in path else "security:manage"
+    if method in {"GET", "HEAD", "OPTIONS"}:
+        return "read"
+    if path.startswith(
+        ("/api/hosts", "/api/remote-nodes", "/api/containers", "/api/settings", "/api/onboarding")
+    ):
+        return "infrastructure:manage"
+    if path.startswith("/api/deployment"):
+        return "release:manage"
+    if path.startswith("/api/projects"):
+        return "projects:manage"
+    if path.startswith("/api/runs"):
+        return "delivery:execute"
+    return "infrastructure:manage"
+
+
+def _secure_response(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+        "connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+    )
+    return response

@@ -65,12 +65,17 @@ class OperationalLog:
             "result": result,
             **sanitize(context),
         }
-        with self.lock:
-            self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            with self.path.open("a", encoding="utf-8") as stream:
-                stream.write(json.dumps(event, ensure_ascii=False) + "\n")
-            os.chmod(self.path, 0o600)
-            self._prune()
+        try:
+            with self.lock:
+                self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                with self.path.open("a", encoding="utf-8") as stream:
+                    stream.write(json.dumps(event, ensure_ascii=False) + "\n")
+                os.chmod(self.path, 0o600)
+                self._prune()
+        except OSError:
+            # Audit persistence must fail closed for secrets, but must not turn
+            # an otherwise valid authentication or management action into 500.
+            return
 
     def list(self, *, host_id: str = "", node_id: str = "", limit: int = 100) -> list[dict]:
         if not self.path.is_file():

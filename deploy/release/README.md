@@ -8,6 +8,7 @@ separate from `deploy/seed`, which remains the Windows rapid-development setup.
 - `taskhub-seed:<version>`: Web/API/LangGraph control plane.
 - `taskhub-node:<version>`: one role-gated image for execution, test and preproduction nodes.
 - `postgres:16-alpine`: private controller database and checkpoint store.
+- `ghcr.io/tecnativa/docker-socket-proxy:v0.5.0`: internal-only restricted Docker API gateway.
 
 TaskHub `0.1.0-alpha` is publicly available from either registry:
 
@@ -45,3 +46,8 @@ identity before clearing any TaskHub data volume; it refuses mismatched sets.
 
 Read `docs/deployment/ubuntu.md` and
 `docs/deployment/windows-docker-desktop.md` before operating a release.
+
+New installations start with HTTPS, Secure Cookie, session timeout/failure limiting and a
+restricted Docker Socket Proxy. The initializer creates a short-lived self-signed bootstrap
+certificate in `tls/`; replace it with an enterprise/public CA certificate before exposing Seed
+beyond a trusted setup network. The controller itself no longer mounts `/var/run/docker.sock`.

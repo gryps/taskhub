@@ -20,6 +20,12 @@ if ($LASTEXITCODE -ne 0) {
     docker pull --platform $Platform postgres:16-alpine
     if ($LASTEXITCODE -ne 0) { throw "PostgreSQL 镜像拉取失败。" }
 }
+$ProxyImage = "ghcr.io/tecnativa/docker-socket-proxy:v0.5.0"
+docker image inspect $ProxyImage *> $null
+if ($LASTEXITCODE -ne 0) {
+    docker pull --platform $Platform $ProxyImage
+    if ($LASTEXITCODE -ne 0) { throw "Docker Socket Proxy 镜像拉取失败。" }
+}
 
 if (Test-Path $OutputDirectory) { throw "输出目录已存在，请移动或删除后重试: $OutputDirectory" }
 $ImagesDirectory = Join-Path $OutputDirectory "images"
@@ -33,7 +39,7 @@ Copy-Item (Join-Path $RepoRoot "docs\deployment\ubuntu.md"), `
 
 $ArchiveName = "taskhub-images-$Version-$Arch.tar"
 $ArchivePath = Join-Path $ImagesDirectory $ArchiveName
-docker save -o $ArchivePath "taskhub-seed:$Version" "taskhub-node:$Version" postgres:16-alpine
+docker save -o $ArchivePath "taskhub-seed:$Version" "taskhub-node:$Version" postgres:16-alpine $ProxyImage
 if ($LASTEXITCODE -ne 0) { throw "离线镜像导出失败。" }
 
 $Manifest = @{
@@ -46,6 +52,7 @@ $Manifest = @{
         "postgres:16-alpine" = (docker image inspect --format '{{.Id}}' postgres:16-alpine)
     }
 }
+$Manifest.images[$ProxyImage] = (docker image inspect --format '{{.Id}}' $ProxyImage)
 $ManifestPath = Join-Path $OutputDirectory "manifest.json"
 $Manifest | ConvertTo-Json -Depth 4 | Set-Content $ManifestPath -Encoding utf8
 $ChecksumLines = foreach ($Path in Get-ChildItem $OutputDirectory -Recurse -File | Sort-Object FullName) {
