@@ -1,3 +1,10 @@
+FROM node:22-bookworm-slim AS web
+WORKDIR /web
+COPY taskhub-web/package.json taskhub-web/package-lock.json ./
+RUN npm ci
+COPY taskhub-web ./
+RUN npm run build
+
 FROM python:3.12-slim-bookworm AS runtime
 
 ARG TASKHUB_VERSION=0.1.0-alpha
@@ -38,6 +45,7 @@ RUN mkdir -p /opt/codex-home \
     && rm -f /tmp/install-codex.sh
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY --from=web /web/dist ./src/taskhub_v2/api/canvas
 RUN python -m pip install .
 
 LABEL org.opencontainers.image.title="TaskHub V2 Seed Controller" \

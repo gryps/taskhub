@@ -170,6 +170,7 @@ def test_verification_task_runs_on_test_scheduler_without_calling_coder(tmp_path
         async def run(self, *args, **kwargs):
             assert kwargs["workload"] == "test"
             assert kwargs["required_capabilities_override"] == {"python3", "pytest"}
+            assert kwargs["eligible_node_ids"] == {"test-node"}
             return ScheduledTests(
                 node_id="test-node",
                 tests=[CommandExecution(command=["pytest"], exit_code=0, output_tail="passed")],
@@ -180,6 +181,10 @@ def test_verification_task_runs_on_test_scheduler_without_calling_coder(tmp_path
             raise AssertionError("verification task must not invoke the coding worker")
 
     async def scenario():
+        async def topology_resolver(project_id, workload):
+            assert (project_id, workload) == ("demo", "test")
+            return {"test-node"}
+
         task = ProductionTask(
             project_id="demo",
             task_id="task_verify_only",
@@ -203,6 +208,7 @@ def test_verification_task_runs_on_test_scheduler_without_calling_coder(tmp_path
             Projects(),
             workspaces=Workspaces(),
             test_scheduler=Tests(),
+            topology_resolver=topology_resolver,
         )
         result = await executor.execute(task, attempt, base_commit="abc1234")
         assert result.execution_node == "test-node"

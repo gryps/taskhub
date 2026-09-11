@@ -10,6 +10,7 @@ from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from taskhub_v2.api.auth_routes import router as auth_router
+from taskhub_v2.api.canvas import mount_canvas
 from taskhub_v2.api.configuration_routes import router as configuration_router
 from taskhub_v2.api.container_routes import router as container_router
 from taskhub_v2.api.dag_routes import router as dag_router
@@ -25,6 +26,7 @@ from taskhub_v2.api.provider_routes import router as provider_router
 from taskhub_v2.api.remote_node_routes import router as remote_node_router
 from taskhub_v2.api.routes import router
 from taskhub_v2.api.system_routes import router as system_router
+from taskhub_v2.api.topology_routes import router as topology_router
 from taskhub_v2.config import Settings, get_settings
 from taskhub_v2.deployment import DeploymentManager
 from taskhub_v2.persistence.checkpoints import checkpoint_store
@@ -33,12 +35,15 @@ from taskhub_v2.persistence.hosts import physical_host_store
 from taskhub_v2.persistence.production import production_store
 from taskhub_v2.persistence.remote_nodes import remote_node_store
 from taskhub_v2.persistence.task_index import task_index_store
+from taskhub_v2.persistence.topologies import topology_store
 from taskhub_v2.projects import ProjectProvisioner, ProjectRegistry
 from taskhub_v2.providers import build_provider
 from taskhub_v2.providers.health import ProviderHealthStore
 from taskhub_v2.security.auth import CSRF_COOKIE, SESSION_COOKIE, AuthService
 from taskhub_v2.security.backup_identity import backup_key_fingerprint
 from taskhub_v2.security.encryption import SecretCipher
+from taskhub_v2.security.http import required_permission as _required_permission
+from taskhub_v2.security.http import secure_response as _secure_response
 from taskhub_v2.security.node_credentials import NodeCredentialVault
 from taskhub_v2.services import RunService
 from taskhub_v2.services.configuration import ManagedConfigurationService
@@ -52,6 +57,7 @@ from taskhub_v2.services.project_contracts import ProjectContractService
 from taskhub_v2.services.providers import ProviderCatalog
 from taskhub_v2.services.remote_nodes import RemoteNodeService
 from taskhub_v2.services.system_diagnostics import SystemDiagnosticsService
+from taskhub_v2.services.topologies import TopologyService
 from taskhub_v2.workers import (
     build_acceptance,
     build_coder,
@@ -114,6 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             production_store(settings) as production_objects,
             checkpoint_store(settings) as checkpointer,
             task_index_store(settings) as task_index,
+            topology_store(settings) as topologies,
         ):
             await managed_store.ensure_backup_identity(
                 backup_key_fingerprint(settings.config_encryption_key)
@@ -198,14 +205,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.project_contracts = ProjectContractService(
                 production_objects, projects, test_scheduler
             )
+            app.state.topologies = TopologyService(topologies, projects, test_scheduler)
             worker = build_worker(
                 effective_settings,
                 provider_health,
                 test_scheduler,
-                ScheduledCodingRouter(test_scheduler),
+                ScheduledCodingRouter(
+                    test_scheduler, app.state.topologies.eligible_node_ids
+                ),
             )
             app.state.dag_runtime = (
-                build_dag_runtime(production_objects, projects, worker, test_scheduler)
+                build_dag_runtime(
+                    production_objects,
+                    projects,
+                    worker,
+                    test_scheduler,
+                    app.state.topologies.eligible_node_ids,
+                )
                 if effective_settings.production_orchestration_enabled
                 else None
             )
@@ -287,6 +303,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(deployment_router)
     app.include_router(diagnostic_router)
     app.include_router(system_router)
+    app.include_router(topology_router)
+    mount_canvas(app)
 
     if settings.enforce_https:
         app.add_middleware(HTTPSRedirectMiddleware)
@@ -353,40 +371,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return FileResponse(str(static_dir.joinpath("index.html")))
 
     return app
-
-
-def _required_permission(path: str, method: str) -> str | None:
-    # Every authenticated session must be able to log out, including an
-    # obsolete or otherwise unrecognized role. CSRF validation still applies.
-    if path == "/api/auth/logout":
-        return None
-    if path.startswith("/api/auth/users") or path == "/api/auth/signing-key/rotate":
-        return "users:manage" if "users" in path else "security:manage"
-    if method in {"GET", "HEAD", "OPTIONS"}:
-        return "read"
-    if path.startswith(
-        ("/api/hosts", "/api/remote-nodes", "/api/containers", "/api/settings", "/api/onboarding")
-    ):
-        return "infrastructure:manage"
-    if path.startswith("/api/deployment"):
-        return "release:manage"
-    if path.startswith("/api/projects"):
-        return "projects:manage"
-    if path.startswith(("/api/requirements", "/api/product-specs")):
-        return "projects:manage"
-    if path.startswith("/api/runs"):
-        return "delivery:execute"
-    return "infrastructure:manage"
-
-
-def _secure_response(response):
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("X-Frame-Options", "DENY")
-    response.headers.setdefault("Referrer-Policy", "no-referrer")
-    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-    response.headers.setdefault(
-        "Content-Security-Policy",
-        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
-        "connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
-    )
-    return response

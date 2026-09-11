@@ -52,8 +52,9 @@ class CodexCodingRouter:
 
 
 class ScheduledCodingRouter:
-    def __init__(self, scheduler):
+    def __init__(self, scheduler, topology_resolver=None):
         self.scheduler = scheduler
+        self.topology_resolver = topology_resolver
 
     async def modify(
         self,
@@ -68,6 +69,11 @@ class ScheduledCodingRouter:
         context = task_context or {}
         task_id = str(context.get("task_id") or Path(workdir).name)
         job_id = f"{task_id}-code"
+        eligible = (
+            await self.topology_resolver(str(context.get("project_id") or ""), "coding")
+            if self.topology_resolver and context.get("project_id")
+            else None
+        )
         scheduled = await self.scheduler.run_coding(
             job_id,
             task_id,
@@ -77,6 +83,7 @@ class ScheduledCodingRouter:
             1200,
             workdir,
             required_capabilities_override=set(context.get("required_capabilities") or []),
+            eligible_node_ids=eligible,
         )
         scheduled.result.usage["coding_node"] = scheduled.node_id
         return scheduled.result

@@ -26,6 +26,7 @@ class WorkerDagExecutor:
         workspaces: GitWorkspaceManager | None = None,
         capability_resolver=None,
         test_scheduler=None,
+        topology_resolver=None,
     ):
         self.worker = worker
         self.store = store
@@ -33,12 +34,15 @@ class WorkerDagExecutor:
         self.workspaces = workspaces or getattr(worker, "workspaces", None)
         self.capability_resolver = capability_resolver
         self.test_scheduler = test_scheduler
+        self.topology_resolver = topology_resolver
 
     async def capability_reason(self, task) -> str:
         if self.workspaces is None or not self.capability_resolver:
             return ""
         workload = "test" if task.task_type == "verification" else "coding"
-        available = await self.capability_resolver(task.required_capabilities, workload)
+        available = await self.capability_resolver(
+            task.project_id, task.required_capabilities, workload
+        )
         return "" if available else "没有满足能力要求的健康节点"
 
     async def current_base(self, plan) -> str:
@@ -63,6 +67,7 @@ class WorkerDagExecutor:
         if not isinstance(spec, ProductSpec) or not isinstance(contract, ProjectContract):
             raise DagIntegrationError("任务的规格或项目契约快照不存在")
         context = {
+            "project_id": task.project_id,
             "task_id": task.task_id,
             "attempt_id": attempt.attempt_id,
             "objective": task.objective,
@@ -122,6 +127,11 @@ class WorkerDagExecutor:
             required_capabilities_override=set(task.required_capabilities),
             git_commit=base_commit,
             artifact_paths=task.expected_artifacts,
+            eligible_node_ids=(
+                await self.topology_resolver(task.project_id, "test")
+                if self.topology_resolver
+                else None
+            ),
         )
         failed = [item for item in scheduled.tests if item.exit_code]
         if failed:

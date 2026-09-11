@@ -56,6 +56,7 @@ class NodeScheduler:
         git_commit: str = "",
         artifact_paths: list[str] | None = None,
         execution_environment: dict[str, str] | None = None,
+        eligible_node_ids: set[str] | None = None,
     ) -> ScheduledTests:
         required = required_capabilities(commands)
         if workload == "browser_acceptance":
@@ -74,7 +75,9 @@ class NodeScheduler:
         failures = []
         while True:
             try:
-                node = await self._acquire(sticky_key, excluded, required, workload)
+                node = await self._acquire(
+                    sticky_key, excluded, required, workload, eligible_node_ids
+                )
             except NodeExecutionError:
                 if failures:
                     raise NodeExecutionError("; ".join(failures)) from None
@@ -112,7 +115,12 @@ class NodeScheduler:
                 self._save_assignments()
             finally:
                 await self._release(node.id)
-            enabled = [node for node in self.registry.list() if node.enabled]
+            enabled = [
+                node
+                for node in self.registry.list()
+                if node.enabled
+                and (eligible_node_ids is None or node.id in eligible_node_ids)
+            ]
             if not [node for node in enabled if node.id not in excluded]:
                 raise NodeExecutionError("; ".join(failures))
 
@@ -181,12 +189,15 @@ class NodeScheduler:
         workdir: str,
         *,
         required_capabilities_override: set[str] | None = None,
+        eligible_node_ids: set[str] | None = None,
     ) -> ScheduledCoding:
         excluded: set[str] = set()
         failures = []
         while True:
             required = {"coding"} | (required_capabilities_override or set())
-            node = await self._acquire(sticky_key, excluded, required, "coding")
+            node = await self._acquire(
+                sticky_key, excluded, required, "coding", eligible_node_ids
+            )
             try:
                 return await self.runner.run_coding(
                     node, job_id, requirement, plan, feedback, timeout, workdir
@@ -199,7 +210,12 @@ class NodeScheduler:
                 self._save_assignments()
             finally:
                 await self._release(node.id)
-            enabled = [node for node in self.registry.list() if node.enabled]
+            enabled = [
+                node
+                for node in self.registry.list()
+                if node.enabled
+                and (eligible_node_ids is None or node.id in eligible_node_ids)
+            ]
             if not [node for node in enabled if node.id not in excluded]:
                 raise NodeExecutionError("; ".join(failures))
 
@@ -209,6 +225,7 @@ class NodeScheduler:
         excluded: set[str],
         required: set[str],
         workload: str,
+        eligible_node_ids: set[str] | None = None,
     ) -> NodeDefinition:
         while True:
             now = time.time()
@@ -216,6 +233,7 @@ class NodeScheduler:
                 node
                 for node in self.registry.list()
                 if node.enabled
+                and (eligible_node_ids is None or node.id in eligible_node_ids)
                 and node.id not in excluded
                 and workload in node.workloads
                 and self.failed_until.get(node.id, 0) <= now

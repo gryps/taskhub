@@ -149,6 +149,21 @@ button {
   cursor: pointer;
   transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
 }
+
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
 button:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
 button:active:not(:disabled) { transform: translateY(1px); }
 button.secondary { background: var(--surface); border-color: var(--border-strong); color: #33423d; }

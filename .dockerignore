@@ -22,6 +22,8 @@ deploy/seed/.docker-cli
 providers.env
 build
 dist
+node_modules
+*.tsbuildinfo
 docs
 tests
 artifacts

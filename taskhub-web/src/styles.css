@@ -1,0 +1,376 @@
+:root {
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  color: #18202b;
+  background: #eef2f6;
+  font-synthesis: none;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button,
+select,
+input,
+textarea {
+  border: 1px solid #cbd3dd;
+  border-radius: 8px;
+  background: #fff;
+  color: #263241;
+}
+button {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 650;
+}
+button:hover:not(:disabled) {
+  border-color: #3c6f70;
+  background: #f4fafa;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.primary {
+  background: #285e5f;
+  color: #fff;
+  border-color: #285e5f;
+}
+.canvas-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+}
+.canvas-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 24px;
+  background: #fff;
+  border-bottom: 1px solid #dce2e9;
+}
+.canvas-header h1 {
+  font-size: 24px;
+  margin: 3px 0 0;
+}
+.canvas-header a {
+  font-size: 13px;
+  color: #3b6565;
+  text-decoration: none;
+  margin-right: 14px;
+}
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.13em;
+  color: #697787;
+  font-weight: 800;
+}
+.header-controls {
+  display: flex;
+  gap: 12px;
+}
+.header-controls label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #667483;
+}
+.header-controls select {
+  min-width: 180px;
+  padding: 8px;
+}
+.status-strip {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  padding: 9px 24px;
+  background: #f8fafb;
+  border-bottom: 1px solid #dce2e9;
+  font-size: 12px;
+  color: #657181;
+}
+.status {
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: #e4eaef;
+  font-weight: 750;
+}
+.status.active {
+  background: #dcefe8;
+  color: #226349;
+}
+.status.invalid {
+  background: #f9dfdd;
+  color: #9c3430;
+}
+.status.draft {
+  background: #e4eafa;
+  color: #405ba6;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: auto;
+  padding: 10px 24px;
+  background: #fff;
+  border-bottom: 1px solid #dce2e9;
+}
+.toolbar button {
+  white-space: nowrap;
+  font-size: 12px;
+}
+.view-tabs {
+  display: flex;
+  margin-left: auto;
+}
+.view-tabs .active {
+  background: #e1eeee;
+  border-color: #548080;
+}
+.workspace {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+}
+.flow-wrap {
+  height: calc(100vh - 180px);
+  min-height: 520px;
+  background: #f3f6f8;
+}
+.context-menu {
+  position: fixed;
+  z-index: 20;
+  display: grid;
+  min-width: 150px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #cbd3dd;
+  border-radius: 9px;
+  box-shadow: 0 12px 35px rgba(31, 43, 55, 0.2);
+}
+.context-menu button {
+  border: 0;
+  text-align: left;
+}
+.workspace aside {
+  background: #fff;
+  border-left: 1px solid #dce2e9;
+  padding: 18px;
+  overflow: auto;
+}
+.workspace aside h2,
+.list-editor h2 {
+  font-size: 14px;
+  margin: 8px 0;
+}
+.workspace aside textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 9px;
+}
+.wide {
+  width: 100%;
+  margin-top: 8px;
+}
+.muted {
+  color: #71808e;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.workspace dl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  margin: 14px 0 22px;
+}
+.workspace dl div {
+  padding: 9px;
+  background: #f4f7f9;
+  border-radius: 8px;
+}
+.workspace dt {
+  font-size: 11px;
+  color: #74818e;
+}
+.workspace dd {
+  font-size: 18px;
+  font-weight: 750;
+  margin: 3px 0 0;
+}
+.task-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -12px 0 20px;
+}
+.task-counts span {
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: #eef3f5;
+  color: #60707d;
+  font-size: 10px;
+}
+.topology-node {
+  width: 190px;
+  padding: 11px;
+  background: #fff;
+  border: 1px solid #ccd5de;
+  border-left: 4px solid #789;
+  border-radius: 10px;
+  box-shadow: 0 5px 18px rgba(37, 50, 63, 0.08);
+}
+.topology-node.selected {
+  outline: 3px solid rgba(47, 111, 112, 0.22);
+  border-color: #2f6f70;
+}
+.topology-node header,
+.topology-node footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: #6d7a88;
+}
+.topology-node strong,
+.topology-node small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topology-node strong {
+  font-size: 13px;
+  margin: 8px 0 3px;
+}
+.topology-node small {
+  font-size: 10px;
+  color: #778492;
+}
+.topology-node footer {
+  margin-top: 9px;
+  padding-top: 7px;
+  border-top: 1px solid #edf0f3;
+}
+.kind-project {
+  border-left-color: #425f9f;
+}
+.kind-controller {
+  border-left-color: #70549a;
+}
+.kind-execution {
+  border-left-color: #287070;
+}
+.kind-test {
+  border-left-color: #a26b2e;
+}
+.kind-preproduction {
+  border-left-color: #9b4857;
+}
+.kind-resource_pool {
+  border-left-color: #5b6b7b;
+}
+.health {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #aab2ba;
+}
+.health.ok {
+  background: #2e9a68;
+}
+.health.unavailable {
+  background: #c94b46;
+}
+.list-editor {
+  height: calc(100vh - 180px);
+  overflow: auto;
+  padding: 20px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+.list-card {
+  display: grid;
+  grid-template-columns: 1fr 110px minmax(220px, 1fr);
+  gap: 14px;
+  align-items: center;
+  background: #fff;
+  border: 1px solid #dbe1e7;
+  border-radius: 10px;
+  padding: 12px;
+}
+.list-card label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.list-card input,
+.list-card select {
+  padding: 7px;
+  min-width: 0;
+}
+.findings {
+  padding-left: 18px;
+  color: #963f3c;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .canvas-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .header-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .header-controls select {
+    min-width: 0;
+    width: 100%;
+  }
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+  .workspace aside {
+    border-left: 0;
+    border-top: 1px solid #dce2e9;
+  }
+  .flow-wrap,
+  .list-editor {
+    height: 58vh;
+    min-height: 420px;
+  }
+  .toolbar {
+    padding-inline: 12px;
+  }
+  .status-strip {
+    padding-inline: 12px;
+    overflow: auto;
+    white-space: nowrap;
+  }
+  .list-card {
+    grid-template-columns: 1fr;
+  }
+  .canvas-header {
+    padding: 14px;
+  }
+  .canvas-header h1 {
+    font-size: 20px;
+  }
+}

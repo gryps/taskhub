@@ -14,7 +14,7 @@ description: Maintain, refine, verify, and safely deploy the TaskHub V2 control-
 
 ## Inspect the Small Frontend Surface
 
-Read only the relevant files under `src/taskhub_v2/api/static/`:
+Read only the relevant files under `src/taskhub_v2/api/static/` for legacy pages:
 
 - `index.html` for semantic structure and stable DOM IDs.
 - `styles.css` for tokens, layout, component states, and responsive behavior.
@@ -23,6 +23,10 @@ Read only the relevant files under `src/taskhub_v2/api/static/`:
 - `resource-center.js` for runtime-resource views.
 
 Read the matching tests under `tests/` before changing a DOM contract. Do not introduce a build tool or framework for a local presentation fix.
+
+For the Phase 3A production canvas, inspect only the relevant source under `taskhub-web/` plus
+the topology API/domain files. This route intentionally uses React, TypeScript, Vite, React Flow
+and TanStack Query; do not copy its shared editable state back into legacy `app.js`.
 
 ## Apply the Design Contract
 
@@ -38,6 +42,7 @@ Read the matching tests under `tests/` before changing a DOM contract. Do not in
 - Keep one project repository card below the workflow project context. It is both the presentation and configuration surface for repository provider, Seed runtime authentication mode, remote name/URL, base branch and controller checkout. Never accept or display credentials inside a Git URL; validate the local repository, base branch and remote branch on save/test, restore the previous remote on a failed save, and block Git-mode runs before creation when repository preflight fails.
 - Keep one current-project selector in the workflow page header and make both new runs and project-scoped preproduction acceptance follow it. Do not repeat a visible project selector inside the acceptance card. Keep preproduction acceptance disabled by default; require only its access URL when enabled, and place optional gateway/origin variables under advanced configuration.
 - Keep the productized execution plan as a read-only workflow disclosure backed only by the server plan API. Show exact plan/spec/contract versions, status counts, dynamic batches, task dependencies, assigned nodes, resource locks and waiting reasons in 14/13/12px text cards. Do not calculate DAG or Ready state in the browser, let users edit batch numbers, or introduce a graph canvas before the Phase 3A frontend boundary.
+- Keep the Phase 3A production canvas at `/canvas/` as a separate `taskhub-web` route while the three legacy pages remain available. The saved topology and runtime overlay are separate layers. All edges are typed and server-validated; drafts must be saved and validated before activation. Right-click actions require toolbar, keyboard or list equivalents. Narrow screens must retain list editing, resource binding and validation without desktop drag wiring.
 - Keep system-configuration primary disclosures single-open, retain their summary text, and keep the open heading reachable with a sticky title plus a visible collapse-current shortcut for long content. Put low-frequency forms, audits, load, and prerequisite details behind secondary disclosures without changing their DOM IDs or business actions.
 - Treat system-configuration primary summaries as navigation rows: show a stable order, title, short responsibility, health pill and bounded expand control, with a clear accent on the open row. Render secondary disclosures as fully bordered rounded function cards, visually distinct from primary rows and content cards.
 - Keep system-configuration card typography on one hierarchy: 15px primary disclosure title, 14px card title, 13px fact value, and 12px description, label, metadata and monospace value. Do not introduce isolated 10–11px text for ordinary readable content.
@@ -65,11 +70,12 @@ Run, at minimum:
 node --check src/taskhub_v2/api/static/app.js
 node --check src/taskhub_v2/api/static/task-center.js
 node --check src/taskhub_v2/api/static/resource-center.js
+npm --prefix taskhub-web run build
 git diff --check
 .venv/bin/python -m pytest tests/test_task_center.py -q
 ```
 
-For structural or responsive changes, inspect 1440px and 680px browser views. Confirm that menu/content regions do not overlap and that horizontal overflow stays inside table/resource containers.
+For structural or responsive changes, inspect 1440px, 680px and 390px browser views. Confirm that menu/content regions do not overlap and that horizontal overflow stays inside table/resource containers. For canvas work, also exercise its real-browser test with `TASKHUB_TEST_BROWSER=1` and a known Chromium executable.
 
 ## Deploy Safely
 

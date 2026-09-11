@@ -92,6 +92,24 @@ def test_scheduler_routes_only_to_node_with_required_tool(tmp_path):
     assert runner.calls == [("job-npm", "node-b")]
 
 
+def test_scheduler_honors_active_topology_node_allowlist(tmp_path):
+    async def scenario():
+        runner = RecordingRunner()
+        scheduler = NodeScheduler(registry(tmp_path), runner, str(tmp_path / "state.json"))
+        return await scheduler.run(
+            "job-topology",
+            "run-topology",
+            [],
+            30,
+            str(tmp_path),
+            eligible_node_ids={"node-b"},
+        ), runner
+
+    result, runner = asyncio.run(scenario())
+    assert result.node_id == "node-b"
+    assert runner.calls == [("job-topology", "node-b")]
+
+
 def test_scheduler_treats_npx_as_npm_capability(tmp_path):
     async def scenario():
         runner = RecordingRunner(

@@ -156,7 +156,8 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert "styles.css?v=42" in html
+        assert "styles.css?v=43" in html
+        assert 'href="/canvas/"' in html and "打开生产画布" in html
         assert "app.js?v=16" in html
         assert html.count('class="resource-disclosure-heading"') == 5
         assert html.count('class="resource-order"') == 5

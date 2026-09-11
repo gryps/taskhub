@@ -9,27 +9,28 @@ Phase 完成后更新，用于在会话上下文压缩或新会话中恢复准�
 | Phase 1 | 已完成 | Requirement 原文与补充、ProductSpec 草稿/评审/批准/修订/差异、合并产品决策、运行版本绑定 |
 | Phase 2 | 已完成 | ProjectContract、五类官方项目模板、机器文档、可执行结构/命令/交付物门禁、运行精确绑定 |
 | Phase 3 | 已完成 | 版本化 DAG、计划不变量、Ready/资源锁、动态并行批次、公平预算、TaskAttempt、故障转移与幂等恢复 |
-| Phase 3A | 待开发 | 独立 taskhub-web、生产画布、拓扑验证/激活与运行叠加 |
+| Phase 3A | 已完成 | 独立 taskhub-web、版本化生产画布、类型连线、拓扑路由、资源池与运行叠加 |
 | Phase 4 | 待开发 | ChangeRequest、影响分析、增量修订和证据复用 |
 | Phase 5 | 待开发 | 能力包库存、信任、兼容、锁定及前端设计包 |
 | Phase 6 | 待开发 | 规模、配额、公平调度、预测、权限运维和前端渐进迁移 |
 
 ## 当前续接点
 
-下一阶段严格从 Phase 3A 开始。Phase 3 已把 Planner 输出编译为绑定 ProductSpec 与
-ProjectContract 明确版本的持久化 ExecutionPlan、ProductionTask、ExecutionBatch、
-TaskAttempt 和 DAG 快照。计划验证阻止非法依赖、循环、缺失验收、无来源输入、未消费的
-中间输出、危险并行范围、合同越界、不可验证大任务及无安装策略的能力缺口。调度器按依赖、
-冻结合同、治理状态、节点能力、资源锁与全局/项目预算计算动态批次，通过底层 NodeScheduler
-继续执行节点优先级、槽位、能力、任务粘性与故障转移；成功持久化的结果在恢复时不会再次
-执行命令。开发流程提供只读任务/批次卡片，API 提供分页计划视图。
+下一阶段严格从 Phase 4 开始。Phase 3A 已建立独立 `taskhub-web`，以 React、TypeScript、
+Vite、React Flow 和 TanStack Query 提供 `/canvas/` 生产画布。项目、Seed 控制器、执行、
+测试、预生产和资源池节点可保存布局；连线具有固定业务类型。拓扑按 draft、validating、
+active、superseded/invalid 持久化，同一项目只有一个活动版本，更新使用内容摘要防止并发覆盖。
+服务端校验节点/边唯一性、端点、类型、循环、唯一控制路径、执行/测试路径、资源健康、角色
+能力、资源重复绑定和同角色故障转移；Running 任务默认不迁移。
 
-功能开关 `TASKHUB_PRODUCTION_ORCHESTRATION_ENABLED` 默认保持 `false`，关闭时继续使用旧
-线性流程。Phase 3A 尚未开发独立 `taskhub-web`、可编辑生产画布、拓扑版本和拓扑路由。
+活动拓扑通过节点白名单限制后续 coding/test 调度；未激活拓扑时保持 Phase 3 调度行为。
+画布运行叠加层读取最新运行、DAG 任务以及节点健康/槽位，项目卡可提交需求进入既有产品化
+流程。工具栏、键盘上下文菜单、画布右键和节点/连线列表提供等价操作，窄屏保留列表配置。
+现有任务中心、开发流程和系统配置不迁移，开发流程仅增加通往独立画布的入口。
 
-Phase 3 验证：完整 Python 套件 `244 passed, 10 skipped`；真实 Google Chrome 在 1440、
-680 和 390 像素视口通过产品规格、项目契约与执行计划卡片布局、字体和页面横向溢出检查；
-JavaScript 语法、Ruff、架构文件行数与 Git diff 检查通过。
+Phase 3A 验证：完整 Python 套件 `249 passed, 13 skipped`、TypeScript/Vite 生产构建及真实 Google Chrome 1440、
+680、390 像素画布操作和页面横向溢出检查通过；拓扑生命周期、非法边、重启读取、调度
+白名单、原有产品化/调度/静态 DOM 回归均有自动化覆盖。具体最终计数见本阶段提交记录。
 
 开发发布约束：每阶段完成后只提交并推送 `.3 Git` 与 GitHub；暂不部署、不构建 Docker
 镜像、不上传镜像仓库。

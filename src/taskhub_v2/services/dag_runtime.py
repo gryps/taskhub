@@ -49,7 +49,9 @@ class ProductizedExecutionRuntime:
         }
 
 
-def build_dag_runtime(store, projects, worker, node_scheduler) -> ProductizedExecutionRuntime:
+def build_dag_runtime(
+    store, projects, worker, node_scheduler, topology_resolver=None
+) -> ProductizedExecutionRuntime:
     async def capability_inventory():
         statuses = await node_scheduler.status()
         return {
@@ -60,8 +62,11 @@ def build_dag_runtime(store, projects, worker, node_scheduler) -> ProductizedExe
             if available
         }
 
-    async def capability_resolver(required, workload):
+    async def capability_resolver(project_id, required, workload):
         statuses = await node_scheduler.status()
+        eligible = (
+            await topology_resolver(project_id, workload) if topology_resolver else None
+        )
         for item in statuses:
             workloads = set(item.get("workloads") or ["test"])
             available = {
@@ -71,6 +76,7 @@ def build_dag_runtime(store, projects, worker, node_scheduler) -> ProductizedExe
             }
             if (
                 item.get("status") == "ok"
+                and (eligible is None or item.get("node_id") in eligible)
                 and workload in workloads
                 and set(required).issubset(available)
             ):
@@ -84,6 +90,7 @@ def build_dag_runtime(store, projects, worker, node_scheduler) -> ProductizedExe
         projects,
         capability_resolver=capability_resolver,
         test_scheduler=node_scheduler,
+        topology_resolver=topology_resolver,
     )
     scheduler = PersistentDagScheduler(store, executor)
     return ProductizedExecutionRuntime(planner=planner, scheduler=scheduler, store=store)

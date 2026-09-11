@@ -295,3 +295,13 @@ Updated: 2026-09-11
 - The development flow adds a read-only text/card execution-plan view with counts, batches, task dependencies, node assignments, locks and waiting reasons. It deliberately does not introduce a graph canvas before Phase 3A.
 - Verification: full Python suite `244 passed, 10 skipped`; real Google Chrome passed at 1440, 680 and 390 pixels with no page-level horizontal overflow; Ruff, JavaScript syntax, architecture line limits and diff checks passed. Static assets are `styles.css?v=42` and `app.js?v=16`.
 - Continue strictly from Phase 3A. This phase is source-only: push `.3 Git` and GitHub; do not deploy, build Docker or publish registry images.
+
+## Productized Delivery Phase 3A
+
+- On 2026-09-12, Phase 3A established independent `taskhub-web` with React, TypeScript, Vite, React Flow and TanStack Query. FastAPI serves its production build at `/canvas/`; the legacy three-page frontend remains intact and links to the canvas from Development Workflow.
+- ProductionTopology has independent memory/PostgreSQL persistence, versioned draft/validating/invalid/active/superseded states, saved layout and viewport, typed edges, content-digest concurrency checks and one active version per project.
+- Server validation covers endpoint/type integrity, duplicate IDs/bindings, directed cycles, unique controller path, execution/test paths, resource health, role/capability compatibility and same-role fallback. Activation supersedes the previous version; new topology versions do not migrate running work.
+- Active topology execution and verification targets restrict NodeScheduler eligibility. Without an active topology, legacy scheduling remains unchanged. The canvas overlays the newest run, DAG task state and node health/slot occupancy, and can submit a requirement into the established productization flow.
+- Desktop operations include drag/connect, selection, pan/zoom, minimap, auto-layout, undo/redo and context menus. Toolbar, Shift+F10 and list editing provide equivalent non-pointer paths; the list owns inventory-backed resource binding and resource-pool membership on narrow screens.
+- Verification: full Python suite `249 passed, 13 skipped`; TypeScript/Vite production build passed; real Google Chrome passed canvas operations and page-overflow checks at 1440, 680 and 390 pixels. Changed-file Ruff, legacy JavaScript syntax, architecture line limits and diff checks passed.
+- Phase 3A is source-only: push `.3 Git` and GitHub. Do not deploy, build Docker or publish registry images. Continue strictly from Phase 4.
