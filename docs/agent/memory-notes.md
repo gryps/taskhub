@@ -2,6 +2,22 @@
 
 Updated: 2026-09-12
 
+## Production Canvas Empty-State Context Action Follow-up
+
+- On 2026-09-12, the first context-position fix was followed by the missing live empty-state fix:
+  `.31` had no stored production topology, while the context menu appeared actionable but the
+  client still required a draft. A context-menu add from an empty, active or other read-only view
+  now creates or selects the draft and appends the requested node as one operation.
+- The revised real-Chrome test begins with no topology and no prior **New version** action, then
+  right-clicks the canvas and verifies the draft, three visible nodes and the new card at the click
+  point at 1440, 680 and 390 pixels. The React build, 15 targeted tests and three browser cases pass.
+- Source commit `e9b5c65` is deployed at `192.168.31.31:8200`. The running Seed image is
+  `sha256:1df3103691a04f0f53072b139d6eb6ae3beb6f73cb74fc1a7d840e88bab7a625` and serves
+  `index-DFtnAf4z.js`; the controller and PostgreSQL are healthy with zero observed controller
+  restarts. The pre-update backup is
+  `C:\taskhub-seed\deploy\release\backups\20260912T155203Z`, and the prior image remains tagged
+  `taskhub-seed:rollback-pre-canvas-autodraft-20260912`. No registry image was pushed.
+
 ## Production Canvas Context-Menu Fix Deployment
 
 - On 2026-09-12, production-canvas context-menu node creation was fixed and deployed to the
