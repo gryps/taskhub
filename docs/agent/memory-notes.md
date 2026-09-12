@@ -2,6 +2,33 @@
 
 Updated: 2026-09-11
 
+## Productized Delivery Phase 0–6 Deployment
+
+- On 2026-09-12, the completed Phase 0–6 source was deployed to the existing Windows Docker
+  Desktop Seed at `192.168.31.31:8200`. The running Seed image is
+  `sha256:ce663471607c95b1dbf19caeb3fe60ef001d1298ca5f7b065e179a9f9bebd803`; the local unified
+  Node image is `sha256:6c98f55c41c5329917be45216aa96510b92a0242e434c5a7ff4a84581215c24a`.
+  Both carry source revision `43a6ef8a47720c01717b8b1ec8bd23b2f249c173`.
+- Docker Desktop's credential helper could not be used from its SSH logon session, so public base
+  image pulls failed before changing the runtime. Because Phase 0–6 added no image dependency, the
+  release used the previously complete Seed/Node images as verified bases, replaced only TaskHub
+  source plus the locally built React canvas, and recompiled the Node package. Both candidate
+  containers passed their own health checks before the controller was recreated.
+- The deployment retained PostgreSQL and named volumes `taskhub-seed_postgres-data` and
+  `taskhub-seed_taskhub-data`, including the configured administrator password. PostgreSQL exposes
+  14 expected public tables after migration. `TASKHUB_PRODUCTION_ORCHESTRATION_ENABLED=true` is now
+  explicit in the live Compose, so the Phase 0–6 UI/API is active rather than merely installed.
+- The live controller is healthy with zero restart failures and serves `styles.css?v=46`,
+  `app.js?v=19`, the capability center and the protected React canvas. The pre-release backup is
+  `C:\taskhub-seed\deploy\release\backups\20260912T040818Z`; all recorded SHA-256 checks pass and
+  its PostgreSQL dump contains `taskhub_backup_identity`.
+- Immediate rollback tags are `taskhub-seed:rollback-pre-phase6-20260912` and
+  `taskhub-node:rollback-pre-phase6-20260912`; the previous Compose is retained as
+  `compose.pre-phase6.yaml`. No registry image was pushed during this deployment.
+- This existing `.31` stack remains the trusted-LAN HTTP layout with a direct Docker Desktop socket
+  mount. Migrating it to the formal TLS + restricted Socket Proxy topology is a separate operator
+  change because it changes the access URL and certificate trust behavior.
+
 ## Productized Delivery Phase 6
 
 - On 2026-09-12, Phase 6 completed the source implementation for project concurrency, weighted
