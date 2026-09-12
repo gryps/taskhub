@@ -1,5 +1,7 @@
 # TaskHub V2
 
+[English](README.md) | [中文](README_ZH.md)
+
 TaskHub V2 is a LangGraph-native AI software delivery control plane. The graph,
 not an application-owned SQL state machine, controls workflow state and recovery.
 
