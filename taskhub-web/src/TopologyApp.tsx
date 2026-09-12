@@ -96,6 +96,24 @@ function inferEdge(source?: string, target?: string): EdgeKind {
       : "executes_on";
 }
 
+function newFlowNode(
+  kind: NodeKind,
+  index: number,
+  position?: XYPosition,
+): Node<TopologyNodeData> {
+  return {
+    id: `${kind}:${crypto.randomUUID().slice(0, 8)}`,
+    type: "topology",
+    position: position || { x: 220 + index * 35, y: 160 + index * 28 },
+    data: {
+      label: KINDS.find((item) => item.value === kind)?.label || kind,
+      kind,
+      resourceId: "",
+      memberIds: [],
+    },
+  };
+}
+
 export function TopologyApp() {
   const queryClient = useQueryClient();
   const [projectId, setProjectId] = useState("");
@@ -124,6 +142,9 @@ export function TopologyApp() {
     Edge
   > | null>(null);
   const flowWrap = useRef<HTMLDivElement | null>(null);
+  const pendingNode = useRef<{ kind: NodeKind; position?: XYPosition } | null>(
+    null,
+  );
   const projects = useQuery({ queryKey: ["projects"], queryFn: getProjects });
   const topologies = useQuery({
     queryKey: ["topologies", projectId],
@@ -148,10 +169,21 @@ export function TopologyApp() {
       setProjectId(projects.data.projects[0].id);
   }, [projectId, projects.data]);
   useEffect(() => {
-    setNodes(flowNodes(topology, runtime.data));
+    const loadedNodes = flowNodes(topology, runtime.data);
+    const pending = pendingNode.current;
+    if (pending && topology?.status === "draft") {
+      loadedNodes.push(
+        newFlowNode(pending.kind, loadedNodes.length, pending.position),
+      );
+      pendingNode.current = null;
+      setDirty(true);
+      setMessage("已创建草稿并添加节点，请配置后保存");
+    } else {
+      setDirty(false);
+    }
+    setNodes(loadedNodes);
     setEdges(flowEdges(topology));
     setViewport(topology?.viewport || { x: 0, y: 0, zoom: 1 });
-    setDirty(false);
     history.current = [];
     future.current = [];
   }, [topology?.content_digest, setNodes, setEdges]);
@@ -212,7 +244,10 @@ export function TopologyApp() {
       setMessage("操作已完成");
       await refresh();
     },
-    onError: (error) => setMessage(error.message),
+    onError: (error) => {
+      pendingNode.current = null;
+      setMessage(error.message);
+    },
   });
 
   const remember = () => {
@@ -246,25 +281,21 @@ export function TopologyApp() {
       return;
     }
     remember();
-    const id = `${kind}:${crypto.randomUUID().slice(0, 8)}`;
     setNodes((items) => [
       ...items,
-      {
-        id,
-        type: "topology",
-        position: requestedPosition || {
-          x: 220 + items.length * 35,
-          y: 160 + items.length * 28,
-        },
-        data: {
-          label: KINDS.find((item) => item.value === kind)?.label || kind,
-          kind,
-          resourceId: "",
-          memberIds: [],
-        },
-      },
+      newFlowNode(kind, items.length, requestedPosition),
     ]);
     changed();
+  };
+  const requestContextNode = (kind: NodeKind, position?: XYPosition) => {
+    setMenu(null);
+    if (topology?.status === "draft") {
+      addNode(kind, position);
+      return;
+    }
+    pendingNode.current = { kind, position };
+    setMessage("正在创建可编辑草稿版本…");
+    mutation.mutate("draft");
   };
   const deleteNode = (nodeId: string) => {
     remember();
@@ -506,8 +537,7 @@ export function TopologyApp() {
                               y: menu.flowPosition.y - 45,
                             }
                           : undefined;
-                        addNode(item.value, position);
-                        setMenu(null);
+                        requestContextNode(item.value, position);
                       }}
                     >
                       添加{item.label}
