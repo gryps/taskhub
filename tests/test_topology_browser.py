@@ -58,7 +58,10 @@ def test_topology_canvas_has_equivalent_controls_and_no_overflow(tmp_path, width
         page.goto(url, wait_until="networkidle")
         page.locator("#admin-token").fill("topology-browser-token")
         page.locator("#login-button").click()
-        page.goto(f"{url}/canvas/", wait_until="networkidle")
+        canvas_response = page.goto(f"{url}/canvas/", wait_until="networkidle")
+        assert canvas_response
+        assert canvas_response.status == 200
+        assert "no-store" in canvas_response.headers["cache-control"]
         expect(page.get_by_role("heading", name="项目生产画布")).to_be_visible()
         pane = page.locator(".react-flow__pane")
         pane.click(button="right", position={"x": 125, "y": 410})
