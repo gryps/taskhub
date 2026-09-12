@@ -1,6 +1,24 @@
 # TaskHub V2 Memory Notes
 
-Updated: 2026-09-11
+Updated: 2026-09-12
+
+## Production Canvas Context-Menu Fix Deployment
+
+- On 2026-09-12, production-canvas context-menu node creation was fixed and deployed to the
+  existing Windows Docker Desktop Seed at `192.168.31.31:8200` from source commit `7fa6101`.
+  React Flow now converts the right-click screen location through the current viewport before
+  creating the node, so panning or zooming cannot place the new card outside the visible area.
+  Context-menu mutations also enforce the same draft-only rule as the toolbar.
+- Verification passed with the React/TypeScript/Vite production build, 15 targeted topology/static
+  tests and real Google Chrome at 1440, 680 and 390 pixels. The browser test asserts both node count
+  and the rendered card's proximity to the right-click point.
+- The running Seed image is `sha256:2dc8a0e769125647688047e4efba66b2099409d349feb864fafa51e3d1296109`
+  and serves canvas bundle `index-B1F07eMi.js`. The controller and PostgreSQL are healthy, the
+  controller has zero observed restarts, and the LAN health endpoint passes.
+- The complete pre-update backup is
+  `C:\taskhub-seed\deploy\release\backups\20260912T154039Z`; the previous image remains tagged
+  `taskhub-seed:rollback-pre-canvas-context-20260912`. Existing configuration, administrator state,
+  PostgreSQL and named volumes were retained. No registry image was pushed.
 
 ## Productized Delivery Phase 0–6 Deployment
 
