@@ -62,9 +62,18 @@ def test_topology_canvas_has_equivalent_controls_and_no_overflow(tmp_path, width
         expect(page.get_by_role("heading", name="项目生产画布")).to_be_visible()
         page.get_by_role("button", name="新建版本").click()
         expect(page.locator(".topology-node")).to_have_count(2)
+        pane = page.locator(".react-flow__pane")
+        pane.click(button="right", position={"x": 125, "y": 410})
+        page.get_by_role("menuitem", name="添加执行节点").click()
+        expect(page.locator(".topology-node")).to_have_count(3)
+        added_box = page.locator(".topology-node").last.bounding_box()
+        pane_box = pane.bounding_box()
+        assert added_box and pane_box
+        assert abs((added_box["x"] + added_box["width"] / 2) - (pane_box["x"] + 125)) < 30
+        assert abs((added_box["y"] + added_box["height"] / 2) - (pane_box["y"] + 410)) < 30
         page.get_by_role("button", name="＋执行节点").click()
         page.get_by_role("button", name="列表").click()
-        expect(page.locator(".list-card")).to_have_count(3)
+        expect(page.locator(".list-card")).to_have_count(4)
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         assert not errors
         browser.close()

@@ -11,6 +11,8 @@ import {
   type Connection,
   type Edge,
   type Node,
+  type ReactFlowInstance,
+  type XYPosition,
 } from "@xyflow/react";
 import {
   createDraft,
@@ -106,6 +108,7 @@ export function TopologyApp() {
     x: number;
     y: number;
     nodeId?: string;
+    flowPosition?: XYPosition;
   } | null>(null);
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
   const [nodes, setNodes, onNodesChange] = useNodesState<
@@ -116,6 +119,11 @@ export function TopologyApp() {
     [],
   );
   const future = useRef<typeof history.current>([]);
+  const flowInstance = useRef<ReactFlowInstance<
+    Node<TopologyNodeData>,
+    Edge
+  > | null>(null);
+  const flowWrap = useRef<HTMLDivElement | null>(null);
   const projects = useQuery({ queryKey: ["projects"], queryFn: getProjects });
   const topologies = useQuery({
     queryKey: ["topologies", projectId],
@@ -231,7 +239,12 @@ export function TopologyApp() {
     );
     changed();
   };
-  const addNode = (kind: NodeKind) => {
+  const addNode = (kind: NodeKind, requestedPosition?: XYPosition) => {
+    if (topology?.status !== "draft") {
+      setMessage("请先新建或选择草稿版本");
+      setMenu(null);
+      return;
+    }
     remember();
     const id = `${kind}:${crypto.randomUUID().slice(0, 8)}`;
     setNodes((items) => [
@@ -239,7 +252,10 @@ export function TopologyApp() {
       {
         id,
         type: "topology",
-        position: { x: 220 + items.length * 35, y: 160 + items.length * 28 },
+        position: requestedPosition || {
+          x: 220 + items.length * 35,
+          y: 160 + items.length * 28,
+        },
         data: {
           label: KINDS.find((item) => item.value === kind)?.label || kind,
           kind,
@@ -399,10 +415,20 @@ export function TopologyApp() {
         {tab === "canvas" ? (
           <div
             className="flow-wrap"
+            ref={flowWrap}
             tabIndex={0}
             onKeyDown={(event) => {
-              if (event.shiftKey && event.key === "F10")
-                setMenu({ x: 24, y: 170 });
+              if (event.shiftKey && event.key === "F10") {
+                const bounds = flowWrap.current?.getBoundingClientRect();
+                const screenPosition = bounds
+                  ? { x: bounds.left + 150, y: bounds.top + 150 }
+                  : { x: 150, y: 250 };
+                setMenu({
+                  ...screenPosition,
+                  flowPosition:
+                    flowInstance.current?.screenToFlowPosition(screenPosition),
+                });
+              }
             }}
           >
             <ReactFlow
@@ -410,6 +436,9 @@ export function TopologyApp() {
               nodes={nodes}
               edges={edges}
               nodeTypes={nodeTypes}
+              onInit={(instance) => {
+                flowInstance.current = instance;
+              }}
               onNodesChange={(changes) => {
                 onNodesChange(changes);
                 if (changes.some((item) => item.type === "remove")) changed();
@@ -429,7 +458,12 @@ export function TopologyApp() {
               onPaneClick={() => setMenu(null)}
               onPaneContextMenu={(event) => {
                 event.preventDefault();
-                setMenu({ x: event.clientX, y: event.clientY });
+                const screenPosition = { x: event.clientX, y: event.clientY };
+                setMenu({
+                  ...screenPosition,
+                  flowPosition:
+                    flowInstance.current?.screenToFlowPosition(screenPosition),
+                });
               }}
               onNodeContextMenu={(event, node) => {
                 event.preventDefault();
@@ -466,7 +500,13 @@ export function TopologyApp() {
                       role="menuitem"
                       key={item.value}
                       onClick={() => {
-                        addNode(item.value);
+                        const position = menu.flowPosition
+                          ? {
+                              x: menu.flowPosition.x - 95,
+                              y: menu.flowPosition.y - 45,
+                            }
+                          : undefined;
+                        addNode(item.value, position);
                         setMenu(null);
                       }}
                     >
