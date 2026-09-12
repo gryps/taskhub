@@ -1,6 +1,22 @@
 # TaskHub V2 Memory Notes
 
-Updated: 2026-09-12
+Updated: 2026-09-13
+
+## Production Canvas Runtime-Package Correction
+
+- On 2026-09-13, live request logs proved that the two preceding frontend-only overlay images had
+  changed `/opt/taskhub/src/.../canvas` but not the installed package actually resolved by
+  `importlib.resources`. The browser therefore continued receiving old bundle
+  `index-CWwwJ0sY.js`, issued no draft-creation request, and could not show the node in either view.
+- Source commit `1cc5185` adds an explicit no-store `/canvas/` HTML route. The corrected overlay
+  updates both source and `/usr/local/lib/python3.12/site-packages/taskhub_v2/api` runtime paths.
+  The installed HTML and JS SHA-256 values now exactly match the locally verified Vite build, which
+  serves `index-DFtnAf4z.js`.
+- The running Seed at `192.168.31.31:8200` is
+  `sha256:f91f0c82da352882d58b33c17ff82d78f8b4747edcd5c087719c29908271eb21`.
+  The controller and PostgreSQL are healthy with zero observed controller restarts. The pre-update
+  backup is `C:\taskhub-seed\deploy\release\backups\20260912T175254Z`, and the previous image is
+  tagged `taskhub-seed:rollback-pre-canvas-runtime-path-20260913`. No registry image was pushed.
 
 ## Production Canvas Empty-State Context Action Follow-up
 
