@@ -2,6 +2,31 @@
 
 Updated: 2026-09-13
 
+## Production Canvas Formal Registry Release
+
+- On 2026-09-13, source commit `1cc5185` was formally released as `0.1.0-alpha` after correcting
+  canvas runtime-package deployment and cache behavior. Verification passed with the Vite/TypeScript
+  build, JavaScript syntax checks, `271 passed, 19 skipped`, and real Chrome canvas checks at 1440,
+  680 and 390 pixels.
+- Docker Desktop's SSH session still cannot access its GUI credential helper for public base-image
+  metadata. Because `pyproject.toml`, `taskhub-web/package.json` and the lock file are unchanged from
+  the verified Phase 0–6 environment, the release rebuilt the complete TaskHub application package
+  and React assets on those complete Seed/Node environments, compiled both Python package trees,
+  and recorded exact revision `1cc5185b5e210478a7f8c0bc8fac10c13bdfb9c2`.
+- The released `linux/amd64` Seed digest is
+  `sha256:13a00347fea5bb786bcaa3cb6cd8a47dbb488231eda6f84c7902fed46209488a`; the Node digest is
+  `sha256:0ff618dd695017d2db5a1e965afa517877e670043a522e255bbd8671ab2d70e9`.
+  GHCR and Aliyun ACR expose byte-identical digests for both images, and anonymous registry API
+  reads return HTTP 200 for all four public references.
+- Seed and Node candidate containers both reached healthy. The Node candidate retained Codex CLI
+  0.153.4, Git and Node.js. The controller at `192.168.31.31:8200` now runs the released Seed,
+  remains healthy with zero observed restarts, retains configured password login and all 14 public
+  PostgreSQL tables, and serves `index-DFtnAf4z.js` from the actual installed package path.
+- The validated pre-release recovery set is
+  `C:\taskhub-seed\deploy\release\backups\20260912T175254Z`. Registry credentials existed only in
+  a temporary Docker CLI directory on `.31`; the credential directory, build context, source
+  archive and helper scripts were removed after publication.
+
 ## Production Canvas Runtime-Package Correction
 
 - On 2026-09-13, live request logs proved that the two preceding frontend-only overlay images had
