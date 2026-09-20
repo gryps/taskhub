@@ -45,10 +45,15 @@ commit image tar files.
 
 | Action | Linux | Windows Docker Desktop |
 | --- | --- | --- |
+| Prepare host | `./prepare-ubuntu.sh` | `.\prepare-windows.ps1` |
+| Preflight | `./preflight.sh` | `.\preflight.ps1` |
 | Initialize | `./init.sh` | `.\init.ps1` |
+| Configure TLS | `./configure-tls.sh` | `.\configure-tls.ps1` |
+| Verify | `./verify.sh` | `.\verify.ps1` |
 | Back up | `./backup.sh` | `.\backup.ps1` |
 | Upgrade | `./upgrade.sh VERSION [BUNDLE]` | `.\upgrade.ps1 -Version VERSION [-OfflineBundle BUNDLE]` |
 | Restore | `./restore.sh BACKUP` | `.\restore.ps1 -BackupDirectory BACKUP` |
+| Package online kit | `./package-online.sh` | `.\package-online.ps1` |
 
 Backups contain the PostgreSQL database, TaskHub data volume, deployment
 configuration (including the encryption master key), and rollback images. Keep
@@ -58,6 +63,12 @@ identity before clearing any TaskHub data volume; it refuses mismatched sets.
 
 Read `docs/deployment/ubuntu.md` and
 `docs/deployment/windows-docker-desktop.md` before operating a release.
+
+Host preparation is intentionally separate from `init`: the preparation tools
+make operating-system changes only when the operator explicitly requests an
+installation flag. Preflight and verification are read-only. Online release
+packages contain Compose, lifecycle tools, examples, documentation and
+checksums, but never `.env`, backups, credentials or container images.
 
 New installations start with HTTPS, Secure Cookie, session timeout/failure limiting and a
 restricted Docker Socket Proxy. The initializer creates a short-lived self-signed bootstrap

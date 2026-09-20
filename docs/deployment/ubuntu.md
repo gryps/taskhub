@@ -9,6 +9,16 @@
 
 TaskHub 安装脚本不会询问 sudo 密码。如果 `docker info` 报权限错误，应由管理员配置 Docker 用户组或 rootless Docker，重新登录后再安装。不要把 sudo 密码填入 TaskHub。
 
+发布包提供显式的宿主机准备工具。它默认只检查；只有带参数时才会通过 Docker 官方 APT 仓库安装 Docker：
+
+```bash
+./prepare-ubuntu.sh
+# 全新主机确认变更窗口后：
+./prepare-ubuntu.sh --install-docker
+```
+
+安装会修改系统软件源、安装软件包并把当前用户加入 `docker` 组，因此完成后必须重新登录。脚本不会自动移除已有 Docker/containerd 软件包，也不会自动修改防火墙。
+
 ## 在线安装
 
 TaskHub 镜像已公开，可任选一组地址：
@@ -25,10 +35,26 @@ TaskHub 镜像已公开，可任选一组地址：
 ```bash
 cd /opt/taskhub
 chmod +x ./*.sh
+cp .env.example .env
+./preflight.sh
 ./init.sh
 ```
 
-脚本会生成权限受限的 `.env`，预拉取 Seed、Node、PostgreSQL 和 Socket Proxy 镜像，启动 Seed 控制面并等待 HTTPS 健康检查。工作节点随后由 Web 在 Seed 本机 Docker 中创建。首次访问 `https://主机IP:8200`，确认初始证书指纹后，从 `.env` 读取一次性的 `TASKHUB_ADMIN_TOKEN` 设置管理员密码。对外开放前应把 `tls/taskhub.crt` 和 `tls/taskhub.key` 替换为企业 CA 或公开 CA 证书。
+脚本会补齐权限受限的 `.env`，预拉取 Seed、Node、PostgreSQL 和 Socket Proxy 镜像，启动 Seed 控制面并等待 HTTPS 健康检查。工作节点随后由 Web 在 Seed 本机 Docker 中创建。首次访问 `https://主机IP:8200`，确认初始证书指纹后，从 `.env` 读取一次性的 `TASKHUB_ADMIN_TOKEN` 设置管理员密码。对外开放前应把 `tls/taskhub.crt` 和 `tls/taskhub.key` 替换为企业 CA 或公开 CA 证书。
+
+如需生成包含实际域名/IP 的初始化证书，应在首次 `init.sh` 前执行：
+
+```bash
+./configure-tls.sh --hostname taskhub.example.com --ip 192.0.2.10
+```
+
+也可导入已有证书；工具会验证证书与私钥匹配：
+
+```bash
+./configure-tls.sh --cert /secure/fullchain.pem --key /secure/privkey.pem
+```
+
+初始化或节点创建完成后运行 `./verify.sh`。验收会检查控制器、PostgreSQL、Docker Proxy、Web/API、前端入口、Node 镜像版本、健康状态及角色对应的编码开关；尚未创建节点时只给出警告。
 
 控制器不直接挂载 Docker Socket；内部 Socket Proxy 只开放容器、镜像、网络、卷和只读系统信息 API，并且不发布宿主机端口。
 
@@ -49,7 +75,17 @@ chmod +x ./*.sh
 ./init.sh
 ```
 
-初始化先用 `SHA256SUMS` 校验镜像包、清单和 Compose，再执行 `docker load`。离线包包含 Node 镜像，供 Seed 本机创建工作节点。ARM64 主机必须使用 `TASKHUB_PLATFORM=linux/arm64` 单独生成的包。
+初始化先用 `SHA256SUMS` 校验镜像包、清单和 Compose，再执行 `docker load`。离线包包含 Node 镜像，供 Seed 本机创建工作节点。ARM64 主机必须使用 `TASKHUB_PLATFORM=linux/arm64` 单独生成的包。当前公开的 `0.1.0-alpha` 镜像仅发布 `linux/amd64`；ARM64 构建能力不等于已经发布了 ARM64 正式镜像。
+
+## 制作在线交付包
+
+在线包不包含镜像和秘密，适合复制到另一台可联网主机：
+
+```bash
+./deploy/release/package-online.sh
+```
+
+输出位于 `dist/taskhub-release-<版本>.tar.gz`，包含 Compose、跨平台生命周期工具、文档及 `SHA256SUMS`。
 
 ## 升级
 

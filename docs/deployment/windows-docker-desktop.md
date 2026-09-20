@@ -9,6 +9,14 @@
 
 在普通 PowerShell 中运行 `docker info` 和 `docker compose version`。两条命令成功即可，不需要把 Windows 管理员密码、sudo 密码或 Docker Desktop 凭据提供给 TaskHub。
 
+宿主机准备工具默认只检查；明确传入安装参数时才调用 winget 安装 Docker Desktop。WSL 2 启用和可能的重启仍由管理员确认：
+
+```powershell
+.\prepare-windows.ps1
+# 全新主机确认安装后：
+.\prepare-windows.ps1 -InstallDockerDesktop
+```
+
 ## 在线安装
 
 TaskHub 镜像已公开，可任选一组地址：
@@ -24,6 +32,8 @@ TaskHub 镜像已公开，可任选一组地址：
 
 ```powershell
 Set-Location C:\taskhub
+Copy-Item .env.example .env
+.\preflight.ps1
 .\init.ps1
 ```
 
@@ -34,7 +44,21 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\init.ps1
 ```
 
-初始化脚本生成主机本地 `.env`，预拉取 Seed、Node、PostgreSQL 和 Socket Proxy 镜像，启动 Seed 控制面，创建初始自签名 TLS 证书并等待 HTTPS 健康检查。工作节点随后由 Web 在 Seed 本机 Docker 中创建。首次访问 `https://主机IP:8200`，确认初始证书指纹后，从 `.env` 读取一次性的 `TASKHUB_ADMIN_TOKEN` 设置管理员密码。对外开放前应把 `tls\taskhub.crt` 和 `tls\taskhub.key` 替换为企业 CA 或公开 CA 证书。
+初始化脚本补齐主机本地 `.env`，预拉取 Seed、Node、PostgreSQL 和 Socket Proxy 镜像，启动 Seed 控制面，创建初始自签名 TLS 证书并等待 HTTPS 健康检查。工作节点随后由 Web 在 Seed 本机 Docker 中创建。首次访问 `https://主机IP:8200`，确认初始证书指纹后，从 `.env` 读取一次性的 `TASKHUB_ADMIN_TOKEN` 设置管理员密码。对外开放前应把 `tls\taskhub.crt` 和 `tls\taskhub.key` 替换为企业 CA 或公开 CA 证书。
+
+如需让自签名证书包含实际访问域名/IP，应在首次初始化前执行：
+
+```powershell
+.\configure-tls.ps1 -Hostname "taskhub.example.com" -IpAddress "192.0.2.10"
+```
+
+导入已有证书：
+
+```powershell
+.\configure-tls.ps1 -Certificate "D:\certs\fullchain.pem" -PrivateKey "D:\certs\privkey.pem"
+```
+
+初始化或节点创建完成后运行 `.\verify.ps1`。验收覆盖控制器、PostgreSQL、Docker Proxy、Web/API、前端入口、Node 镜像版本、健康状态及角色编码开关。
 
 只有内部 Socket Proxy 挂载 Docker Socket；控制器不直接持有宿主机 Socket，Proxy 也不发布到 Windows 主机端口。
 
@@ -50,7 +74,15 @@ $env:TASKHUB_PLATFORM = "linux/amd64"
 .\deploy\release\build-offline.ps1
 ```
 
-把生成的整个 `dist\taskhub-offline-<version>-amd64` 复制到目标机，然后在该目录执行 `.\init.ps1`。脚本会验证 `SHA256SUMS` 后导入镜像；离线包包含 Node 镜像，供 Seed 本机创建工作节点。不要在 Intel/AMD 主机上导入 ARM64 包，反之亦然。
+把生成的整个 `dist\taskhub-offline-<version>-amd64` 复制到目标机，然后在该目录执行 `.\init.ps1`。脚本会验证 `SHA256SUMS` 后导入镜像；离线包包含 Node 镜像，供 Seed 本机创建工作节点。不要在 Intel/AMD 主机上导入 ARM64 包，反之亦然。当前公开的 `0.1.0-alpha` 镜像仅发布 `linux/amd64`。
+
+## 制作在线交付包
+
+```powershell
+.\deploy\release\package-online.ps1
+```
+
+输出 `dist\taskhub-release-<版本>.zip`，包含 Compose、跨平台生命周期工具、文档和校验文件，不包含镜像、`.env`、备份或凭据。
 
 ## 升级
 

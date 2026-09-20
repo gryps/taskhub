@@ -24,6 +24,16 @@ def test_release_kit_contains_cross_platform_lifecycle_assets():
         "upgrade.ps1",
         "restore.sh",
         "restore.ps1",
+        "prepare-ubuntu.sh",
+        "prepare-windows.ps1",
+        "preflight.sh",
+        "preflight.ps1",
+        "verify.sh",
+        "verify.ps1",
+        "configure-tls.sh",
+        "configure-tls.ps1",
+        "package-online.sh",
+        "package-online.ps1",
     }
     assert expected.issubset({path.name for path in RELEASE.iterdir()})
 
@@ -141,6 +151,54 @@ def test_initializers_never_request_sudo_credentials():
         assert "sudo -s" not in text
         assert "sudo_password" not in text
         assert "docker info" in text
+
+
+def test_host_preparation_requires_explicit_install_opt_in():
+    ubuntu = (RELEASE / "prepare-ubuntu.sh").read_text(encoding="utf-8")
+    windows = (RELEASE / "prepare-windows.ps1").read_text(encoding="utf-8-sig")
+    assert "--install-docker" in ubuntu
+    assert "download.docker.com/linux/ubuntu" in ubuntu
+    assert "sudo apt-get install" in ubuntu
+    assert "-InstallDockerDesktop" in windows
+    assert "Docker.DockerDesktop" in windows
+    assert "wsl.exe --status" in windows
+
+
+def test_preflight_and_verification_cover_images_runtime_and_nodes():
+    for name in ("preflight.sh", "preflight.ps1"):
+        text = (RELEASE / name).read_text(encoding="utf-8-sig")
+        assert "TASKHUB_SEED_IMAGE" in text
+        assert "TASKHUB_NODE_IMAGE" in text
+        assert "TASKHUB_DOCKER_PROXY_IMAGE" in text
+        assert "manifest inspect" in text
+    for name in ("verify.sh", "verify.ps1"):
+        text = (RELEASE / name).read_text(encoding="utf-8-sig")
+        assert "taskhub-controller-1" in text
+        assert "taskhub-postgres-1" in text
+        assert "io.taskhub.managed=true" in text
+        assert "TASKHUB_NODE_CODING_ENABLED" in text
+
+
+def test_online_packagers_include_checksums_and_exclude_runtime_secrets():
+    for name in ("package-online.sh", "package-online.ps1"):
+        text = (RELEASE / name).read_text(encoding="utf-8-sig")
+        assert "SHA256SUMS" in text
+        assert ".env.example" in text
+        assert "ubuntu.md" in text
+        assert "windows-docker-desktop.md" in text
+        assert "images.tar" not in text
+        assert "backups" not in text
+
+
+def test_tls_tools_support_generated_and_imported_certificates():
+    shell = (RELEASE / "configure-tls.sh").read_text(encoding="utf-8")
+    powershell = (RELEASE / "configure-tls.ps1").read_text(encoding="utf-8-sig")
+    for text in (shell, powershell):
+        assert "subjectAltName" in text
+        assert "taskhub.crt" in text
+        assert "taskhub.key" in text
+    assert "--cert" in shell and "--key" in shell
+    assert "Certificate" in powershell and "PrivateKey" in powershell
 
 
 def test_online_initializers_preload_seed_and_node_images():
