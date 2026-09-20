@@ -37,7 +37,6 @@ def build_worker(
 def build_coder(settings: Settings, health: ProviderHealthStore | None = None):
     common = {
         "codex_bin": settings.codex_cli_bin,
-        "proxy_url": settings.openai_proxy_url,
         "workdir": settings.provider_workdir,
         "timeout": 1200,
     }
@@ -55,6 +54,7 @@ def build_coder(settings: Settings, health: ProviderHealthStore | None = None):
                 codex_home=f"{settings.model_account_root}/{card['model_id']}",
                 model=card.get("model") or "account_default",
                 api_key=card.get("api_key", ""),
+                proxy_url=card.get("proxy_url") or settings.openai_proxy_url,
                 **common,
             )
             for _, card in assigned
@@ -62,16 +62,23 @@ def build_coder(settings: Settings, health: ProviderHealthStore | None = None):
     else:
         providers = [
             CodexAccountProvider(
-                "chatgpt_plus_account", codex_home=settings.codex_plus_home, **common
+                "chatgpt_plus_account",
+                codex_home=settings.codex_plus_home,
+                proxy_url=settings.openai_proxy_url,
+                **common,
             ),
             CodexAccountProvider(
-                "chatgpt_pro_account", codex_home=settings.codex_pro_home, **common
+                "chatgpt_pro_account",
+                codex_home=settings.codex_pro_home,
+                proxy_url=settings.openai_proxy_url,
+                **common,
             ),
             CodexAccountProvider(
                 "gpt_api",
                 codex_home=settings.codex_api_home,
                 model=settings.gpt_coder_model,
                 api_key=settings.gpt_api_key,
+                proxy_url=settings.openai_proxy_url,
                 **common,
             ),
         ]

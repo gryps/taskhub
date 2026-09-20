@@ -6,6 +6,7 @@ import tarfile
 import httpx
 from fastapi.testclient import TestClient
 
+from taskhub_v2.config import Settings
 from taskhub_v2.domain.models import NodeDefinition, Plan
 from taskhub_v2.execution.runner import NodeRunner
 from taskhub_v2.node_agent import create_node_app
@@ -400,6 +401,34 @@ def test_node_health_disables_coding_when_workspace_sandbox_fails(tmp_path, monk
     assert payload["capabilities"]["workspace_write_sandbox"] is False
     assert payload["capabilities"]["coding"] is False
     assert payload["system"]["checks"][0]["status"] == "fail"
+
+
+def test_coding_available_uses_enabled_account_model_card(tmp_path, monkeypatch):
+    import taskhub_v2.node_agent.coding as coding_module
+
+    account_root = tmp_path / "accounts"
+    auth_file = account_root / "coder-account" / "auth.json"
+    auth_file.parent.mkdir(parents=True)
+    auth_file.write_text("{}", encoding="utf-8")
+    codex = tmp_path / "codex"
+    codex.write_text("binary", encoding="utf-8")
+    settings = Settings(
+        codex_cli_bin=str(codex),
+        model_account_root=str(account_root),
+        model_cards=[
+            {
+                "model_id": "coder-account",
+                "service_type": "openai",
+                "auth_mode": "account",
+                "enabled": True,
+                "assignments": [{"role": "coder", "priority": 0}],
+            }
+        ],
+    )
+    monkeypatch.setenv("TASKHUB_NODE_CODING_ENABLED", "true")
+    monkeypatch.setattr(coding_module, "get_settings", lambda: settings)
+
+    assert coding_module.coding_available() is True
 
 
 def test_runtime_capabilities_include_acceptance_prerequisites(monkeypatch):

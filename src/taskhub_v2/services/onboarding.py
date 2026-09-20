@@ -118,8 +118,6 @@ async def onboarding_status(request) -> dict[str, Any]:
         models_ready = False
         models_detail = "模型配置已保存，等待重启 Seed 后生效"
 
-    hosts = (await request.app.state.physical_hosts.list())["hosts"]
-    available_hosts = [item for item in hosts if item["status"] == "available"]
     nodes = await request.app.state.node_scheduler.status()
     online_nodes = [item for item in nodes if item["status"] == "ok"]
     administrator_ready = not request.app.state.auth.setup_required()
@@ -174,24 +172,13 @@ async def onboarding_status(request) -> dict[str, Any]:
         ),
         _step("models", "模型服务", models_ready, models_detail, "providers"),
         _step(
-            "physical_host",
-            "第一台物理主机",
-            bool(available_hosts),
-            (
-                f"{len(available_hosts)} 台主机已通过准入"
-                if available_hosts
-                else "尚无通过准入的远程主机"
-            ),
-            "hosts",
-        ),
-        _step(
             "work_node",
-            "第一个工作节点",
+            "第一个本机工作节点",
             bool(online_nodes),
             (
                 f"{len(online_nodes)} 个节点在线并可调度"
                 if online_nodes
-                else "尚无健康且可调度的工作节点"
+                else "尚无健康且可调度的本机工作节点"
             ),
             "nodes",
         ),

@@ -77,16 +77,9 @@ async def post(task, route, payload=None):
 
 
 async def reach(task, stage):
-    if stage == "plan_approval":
-        return
-    response = await post(task, "/approval", {"decision": "approve"})
-    assert response.json()["stage"] == "implementation_blocked"
     if stage == "implementation_blocked":
         return
-    assert (await post(task, "/resume", {"decision": "retry"})).json()["stage"] == "merge_approval"
-    if stage == "merge_approval":
-        return
-    assert (await post(task, "/resume", {"decision": "approve"})).json()["stage"] == "merge_blocked"
+    assert (await post(task, "/resume", {"decision": "retry"})).json()["stage"] == "merge_blocked"
 
 
 @pytest.mark.parametrize("stage", ["implementation_blocked", "merge_blocked"])
@@ -123,10 +116,9 @@ async def test_orphan_retry_submits_no_command_and_rebind_recovers(lifecycle, st
     assert response.status_code == 200
     task.stream.assert_called_once()
     if stage == "implementation_blocked":
-        assert response.json()["stage"] == "merge_approval"
+        assert response.json()["stage"] == "merge_blocked"
         assert task.execute.call_args.args[1] == "replacement"
         assert task.worker.calls == 2
-        await post(task, "/resume", {"decision": "approve"})
         response = await post(task, "/resume", {"decision": "retry"})
     assert response.json()["status"] == "completed"
     assert response.json()["publication"]["project_id"] == "replacement"
@@ -135,17 +127,15 @@ async def test_orphan_retry_submits_no_command_and_rebind_recovers(lifecycle, st
 
 
 @pytest.mark.parametrize("stage,route,payload", [
-    ("plan_approval", "/approval", {"decision": "approve"}),
-    ("plan_approval", "/approval", {"decision": "reject"}),
     ("implementation_blocked", "/resume", {"decision": "retry"}),
     ("implementation_blocked", "/resume", {"decision": "cancel"}),
-    ("merge_approval", "/resume", {"decision": "approve"}),
     ("merge_blocked", "/resume", {"decision": "retry"}),
-    ("plan_approval", "/resume", {"decision": "reassess"}),
-    ("plan_approval", "/acceptance", EVIDENCE),
-    ("plan_approval", "/rebind", {"project_id": "replacement"}),
+    ("implementation_blocked", "/acceptance", EVIDENCE),
+    ("implementation_blocked", "/rebind", {"project_id": "replacement"}),
 ])
-async def test_archived_actions_are_rejected_before_graph_execution(lifecycle, stage, route, payload):
+async def test_archived_actions_are_rejected_before_graph_execution(
+    lifecycle, stage, route, payload
+):
     task = lifecycle
     await reach(task, stage)
     task.projects("replacement")
@@ -166,10 +156,9 @@ async def test_archived_actions_are_rejected_before_graph_execution(lifecycle, s
 
 
 @pytest.mark.parametrize("stage,route,payload", [
-    ("plan_approval", "/approval", {"decision": "approve"}),
-    ("merge_approval", "/resume", {"decision": "approve"}),
-    ("plan_approval", "/resume", {"decision": "reassess"}),
-    ("plan_approval", "/acceptance", EVIDENCE),
+    ("implementation_blocked", "/resume", {"decision": "retry"}),
+    ("implementation_blocked", "/acceptance", EVIDENCE),
+    ("merge_blocked", "/resume", {"decision": "retry"}),
 ])
 async def test_orphan_other_execution_entries_are_guarded(lifecycle, stage, route, payload):
     task = lifecycle
@@ -180,4 +169,3 @@ async def test_orphan_other_execution_entries_are_guarded(lifecycle, stage, rout
     assert response.status_code == 409
     assert "archive" in response.json()["detail"] and "rebind" in response.json()["detail"]
     task.stream.assert_not_called()
-

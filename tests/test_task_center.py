@@ -116,13 +116,13 @@ def test_task_center_lists_three_tasks_and_filters_production_lines():
             assert response.status_code == 201
         page = client.get("/api/runs").json()
         assert page["total"] == 3
-        filtered = client.get("/api/runs?production_line=A&status=waiting").json()
+        filtered = client.get("/api/runs?production_line=A&status=completed").json()
         assert filtered["total"] == 2
         assert {item["production_line"] for item in filtered["items"]} == {"A"}
-        assert all(item["pending_action"]["choices"] for item in filtered["items"])
+        assert all(item["pending_action"] is None for item in filtered["items"])
 
 
-def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
+def test_task_detail_exposes_automatic_nine_stage_ui():
     with TestClient(create_app(settings())) as client:
         headers = login(client)
         run = client.post(
@@ -131,9 +131,9 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
             json={"project_id": "demo", "requirement": "Build task details"},
         ).json()
         detail = client.get(f"/api/runs/{run['run_id']}").json()
-        assert detail["pending_action"]["choices"] == ["approve", "reject"]
-        assert len(detail["workflow_steps"]) == 11
-        assert detail["workflow_steps"][2]["state"] == "waiting_manual"
+        assert detail["pending_action"] is None
+        assert len(detail["workflow_steps"]) == 9
+        assert all(step["state"] == "completed" for step in detail["workflow_steps"])
         assert detail["created_at"] and detail["updated_at"]
         html = client.get("/").text
         assert html.count("任务中心") >= 1
@@ -147,8 +147,8 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert "<label>生产线" not in html
         assert 'class="composer-requirement"' in html
         assert 'class="composer-actions"' in html
-        assert html.count('class="providers-section resource-disclosure') == 5
-        assert 'id="hosts-disclosure"' in html
+        assert html.count('class="providers-section resource-disclosure') == 4
+        assert 'id="hosts-disclosure"' not in html
         assert 'id="platform-disclosure"' in html
         assert 'id="container-form"' in html
         assert 'id="model-services-form"' in html
@@ -156,28 +156,26 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert "styles.css?v=46" in html
+        assert "styles.css?v=56" in html
         assert 'href="/canvas/"' in html and "打开生产画布" in html
-        assert "app.js?v=19" in html
+        assert "app.js?v=26" in html
         assert "revision-center.js?v=1" in html
         assert "capability-center.js?v=1" in html
-        assert html.count('class="resource-disclosure-heading"') == 5
-        assert html.count('class="resource-order"') == 5
-        assert "resource-center.js?v=25" in html
-        assert html.count('class="configuration-card"') >= 9
-        assert html.count('class="management-card-grid"') >= 4
+        assert html.count('class="resource-disclosure-heading"') == 4
+        assert html.count('class="resource-order"') == 4
+        assert "resource-center.js?v=38" in html
+        assert html.count('class="configuration-card"') >= 6
+        assert html.count('class="management-card-grid"') >= 3
         assert 'id="login-username"' in html
         assert 'id="access-security-disclosure"' in html
         assert 'id="user-form"' in html
-        assert 'id="host-rebuild-form"' in html
+        assert 'id="host-rebuild-form"' not in html
         assert 'id="diagnostic-node"' in html
         assert 'id="export-diagnostics"' in html
-        assert 'id="node-upgrade-form"' in html
-        assert 'id="upgrade-node"' in html
-        assert 'id="upgrade-image"' in html
-        assert "失败时自动恢复原版本" in html
+        assert 'id="node-upgrade-form"' not in html
+        assert 'id="container-target"' not in html
         assert "Seed 备份与恢复" in html
-        assert "onboarding.js?v=2" in html
+        assert "onboarding.js?v=3" in html
         assert 'id="collapse-current-resource"' in html
         assert 'class="resource-subdisclosure"' in html
         assert 'id="platform-registry-username"' in html
@@ -185,13 +183,14 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert html.count("data-public-image-downloads") == 1
         assert all(
             f'id="{name}-disclosure"' in html
-            for name in ("system", "providers", "hosts", "nodes", "platform")
+            for name in ("system", "providers", "nodes", "platform")
         )
-        assert "<strong>运行概览</strong><small>角色环境与系统就绪状态</small>" in html
-        assert "<strong>模型服务</strong><small>认证、角色路由与主备切换</small>" in html
-        assert "<strong>物理主机</strong><small>SSH 准入、承载能力与维护状态</small>" in html
-        assert "<strong>工作节点</strong><small>调度、容器、负载与诊断</small>" in html
-        assert "<strong>平台设置</strong><small>镜像、网络、备份与访问安全</small>" in html
+        assert "<strong>Seed 状态</strong><small>控制器、持久化与运行就绪</small>" in html
+        assert "<strong>主机池</strong>" not in html
+        assert "<strong>TaskHub 节点</strong><small>Seed 本机 Docker 运行角色</small>" in html
+        assert "<strong>模型服务</strong><small>高级 · 认证、角色路由与主备切换</small>" in html
+        assert "<strong>高级设置</strong><small>镜像策略、安全、备份与平台参数</small>" in html
+        assert html.count('data-resource-target=') == 2
         assert "<strong>预生产验收</strong><small>按项目启用的访问与验收环境</small>" in html
         assert "<strong>代码仓库</strong><small>项目级 Git 来源、基准分支与发布目标</small>" in html
         assert "<strong>产品规格</strong><small>需求产品化、待决策事项与批准版本</small>" in html
@@ -208,14 +207,49 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         assert 'id="execution-tasks"' in html
         assert 'id="capability-disclosure"' in html
         assert 'id="capability-inventory-disclosure"' in html
-        assert "/static/app.js?v=19" in html
+        assert "/static/app.js?v=26" in html
+        assert 'id="project-remote-url" required' in html
+        assert 'id="project-local-path" required' in html
+        assert 'id="attach-project-remote-url" required' in html
+        assert 'id="attach-project-local-path" required' in html
+        assert 'id="project-git-service"' in html
+        assert 'id="attach-project-git-service"' in html
+        assert 'id="platform-git-service-card"' in html
+        assert 'id="platform-git-host" required' in html
+        assert 'id="platform-git-private-key"' in html
+        assert 'id="test-git-service"' in html
         assert 'id="project-repository-form"' in html
         assert 'id="check-project-repository"' in html
         assert 'id="save-project-repository"' in html
         assert 'id="workflow-project"' in html
+        app_script = client.get("/static/app.js").text
+        assert "projectProvisioningDefaults" in app_script
+        assert "responseText ? JSON.parse(responseText)" in app_script
+        assert 'remote_url: byId("project-remote-url")' in app_script
+        assert 'local_path: byId("attach-project-local-path")' in app_script
+        assert "openGitServiceSettings" in app_script
         resource_script = client.get("/static/resource-center.js").text
-        assert "/upgrade`" in resource_script
-        assert "prepare-node-upgrade" in resource_script
+        assert "/api/remote-nodes" not in resource_script
+        assert "prepare-node-upgrade" not in resource_script
+        assert "打开 OpenAI 官方登录页" in resource_script
+        assert "等待 Codex CLI 返回登录地址和验证码" in resource_script
+        assert "生成新的登录验证码" in resource_script
+        assert "授权目标：Seed 控制器" in resource_script
+        assert "五个角色各需一个主模型；其余卡片可设为备用" in resource_script
+        assert "validateEnabledModelRoutes" in resource_script
+        assert "测试并读取模型" in resource_script
+        assert "正在测试当前卡片并读取模型列表" in resource_script
+        assert "provider_id: draft.model_id, draft:" in resource_script
+        assert '"/api/settings/platform/git-test"' in resource_script
+        assert "model_id: draft.model_id, draft:" in resource_script
+        assert "modelCardCredentials[draft.model_id]" in resource_script
+        assert "model-catalog-select" in resource_script
+        assert 'class="model-card-lower"' in resource_script
+        assert 'class="model-card-action-buttons"' in resource_script
+        assert "可用模型（" in resource_script
+        assert 'class="secondary copy-device-code"' in resource_script
+        assert "复制设备验证码" in resource_script
+        assert 'button.textContent = "已复制"' in resource_script
         assert 'title: "执行节点"' in resource_script
         assert 'title: "测试节点"' in resource_script
         assert 'title: "预生产节点"' in resource_script
@@ -251,20 +285,20 @@ def test_task_detail_exposes_backend_action_and_eleven_stage_ui():
         for stage in (
             "intake",
             "planning",
-            "plan_approval",
             "implementation",
             "acceptance",
             "review",
             "risk",
             "supervision",
-            "merge_approval",
             "merging",
             "completed",
         ):
             assert f'"{stage}"' in script
+        assert 'id: "plan_approval"' not in script
+        assert 'id: "merge_approval"' not in script
 
 
-def test_task_center_approvals_and_recovery_do_not_repeat_completed_work():
+def test_task_center_publication_recovery_does_not_repeat_completed_work():
     app = create_app(settings())
     with TestClient(app) as client:
         provider, worker, publisher = RecordingProvider(), RecordingWorker(), RecoveringPublisher()
@@ -285,17 +319,10 @@ def test_task_center_approvals_and_recovery_do_not_repeat_completed_work():
         run_id = client.get("/api/runs").json()["items"][0]["run_id"]
         assert run_id == run["run_id"]
         base = f"/api/runs/{run_id}"
-        assert client.get(base).json()["workflow_steps"][2]["state"] == "waiting_manual"
-        approved = client.post(
-            base + "/approval", headers=headers, json={"decision": "approve"}
-        ).json()
-        assert approved["workflow_steps"][8]["state"] == "waiting_manual"
-        blocked = client.post(
-            base + "/resume", headers=headers, json={"decision": "approve"}
-        ).json()
+        blocked = client.get(base).json()
         assert blocked["blocking_reason"]["detail"] == "temporary publication failure"
         assert blocked["pending_action"]["choices"] == ["retry", "cancel"]
-        assert blocked["workflow_steps"][9]["state"] == "blocked"
+        assert blocked["workflow_steps"][7]["state"] == "blocked"
         assert client.get("/api/runs?status=blocked").json()["total"] == 1
         assert (
             client.post(base + "/resume", headers=headers, json={"decision": "approve"}).status_code
@@ -308,7 +335,8 @@ def test_task_center_approvals_and_recovery_do_not_repeat_completed_work():
         assert provider.plan_calls == provider.review_calls == provider.risk_calls == 1
         assert provider.supervisor_calls == worker.calls == 1
         assert publisher.calls == 2
-        assert sum(e["title"] == "Plan approved" for e in completed["timeline"]) == 1
+        assert all(e["title"] != "Plan approved" for e in completed["timeline"])
+        assert all(e["title"] != "Publication approved" for e in completed["timeline"])
 
 
 def test_running_checkpoint_can_replay_current_stage():
@@ -367,7 +395,9 @@ def test_running_checkpoint_can_replay_current_stage():
 def test_replay_rejects_tasks_waiting_for_owner_action():
     async def scenario():
         service = RunService(
-            build_main_graph(RecordingProvider(), RecordingWorker(), InMemorySaver()),
+            build_main_graph(
+                RecordingProvider(), RecordingWorker(), InMemorySaver(), RecoveringPublisher()
+            ),
             task_index=MemoryTaskIndex(),
         )
         waiting = await service.start(StartRunRequest(project_id="demo", requirement="wait"))
@@ -433,7 +463,7 @@ def test_live_index_failure_and_stale_backfill():
 def test_terminal_steps_and_pagination():
     for stage in ("failed", "rejected"):
         steps = workflow_steps(
-            dict(current_stage=stage, status=stage, timeline=[{"stage": "plan_approval"}])
+            dict(current_stage=stage, status=stage, timeline=[{"stage": "implementation"}])
         )
         assert steps[2]["state"] == "blocked"
         assert all(step["state"] == "not_started" for step in steps[3:])

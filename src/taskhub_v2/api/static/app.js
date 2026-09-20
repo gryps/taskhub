@@ -1,10 +1,9 @@
 const stages = [
   ["intake", "需求", "自动"], ["planning", "规划", "自动"],
-  ["plan_approval", "计划审批", "人工"], ["implementation", "实施", "自动"],
+  ["implementation", "实施", "自动"],
   ["acceptance", "验收", "自动"], ["review", "审查", "自动"],
-  ["browser_acceptance", "浏览器验收", "自动"],
   ["risk", "风险", "自动"],
-  ["supervision", "监督", "自动"], ["merge_approval", "发布审批", "人工"],
+  ["supervision", "监督", "自动"],
   ["merging", "发布", "自动"], ["completed", "完成", "终态"],
 ];
 let currentRun = null;
@@ -25,6 +24,7 @@ let productizationEnabled = false;
 let currentProductSpecDetail = null;
 let currentProjectContract = null;
 let activeProject = null;
+let projectProvisioningDefaults = {};
 
 const publicImageRegistries = [
   {
@@ -54,6 +54,7 @@ window.taskhubCan = canPermission;
 const stageIndex = (name) => stages.findIndex(([id]) => id === (
   name === "implementation_blocked" ? "implementation" :
   name === "acceptance_blocked" ? "acceptance" :
+  name === "browser_acceptance" ? "acceptance" :
   name === "merge_blocked" ? "merging" : name
 ));
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({
@@ -61,21 +62,27 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character
 })[character]);
 
 function renderPublicImageDownloads() {
-  const groups = publicImageRegistries.map((registry) => `
-    <section class="image-registry-group">
-      <div><strong>${escapeHtml(registry.name)}</strong><span>${escapeHtml(registry.shortName)}</span></div>
-      ${registry.images.map(([role, reference]) => `
+  document.querySelectorAll("[data-public-image-downloads]").forEach((host) => {
+    const requestedRole = host.dataset.imageRole;
+    const groups = publicImageRegistries.map((registry) => `
+      <section class="image-registry-group">
+        <div><strong>${escapeHtml(registry.name)}</strong><span>${escapeHtml(registry.shortName)}</span></div>
+        ${registry.images.filter(([role]) => !requestedRole || role.toLowerCase() === requestedRole)
+          .map(([role, reference]) => `
         <div class="image-download-row">
           <span>${escapeHtml(role)}</span>
           <code>${escapeHtml(reference)}</code>
           <button type="button" class="secondary copy-image-reference" data-image-reference="${escapeHtml(reference)}" aria-label="复制 ${escapeHtml(role)} 镜像拉取命令" aria-live="polite">复制 pull</button>
         </div>`).join("")}
-    </section>`).join("");
-  document.querySelectorAll("[data-public-image-downloads]").forEach((host) => {
+      </section>`).join("");
+    const title = requestedRole === "node" ? "公开工作节点镜像" : "公开镜像下载";
+    const description = requestedRole === "node"
+      ? "初始化时由 Seed 拉取，创建本机节点时直接使用；国内网络可改用阿里云 ACR 地址。"
+      : "两个镜像仓库均支持匿名拉取。国内网络优先使用阿里云 ACR。";
     host.innerHTML = `<details class="public-image-downloads">
-      <summary><span><strong>公开镜像下载</strong><small>0.1.0-alpha · linux/amd64</small></span><span>GHCR · 阿里云 ACR</span></summary>
+      <summary><span><strong>${title}</strong><small>0.1.0-alpha · linux/amd64</small></span><span>GHCR · 阿里云 ACR</span></summary>
       <div class="image-download-content">
-        <p>两个镜像仓库均支持匿名拉取。国内网络优先使用阿里云 ACR。</p>
+        <p>${description}</p>
         <div class="image-registry-grid">${groups}</div>
       </div>
     </details>`;
@@ -158,6 +165,7 @@ function render(run) {
   renderFlow(run.stage, run.status, run.workflow_steps);
   const normalizedStage = run.stage === "implementation_blocked" ? "implementation"
     : run.stage === "acceptance_blocked" ? "acceptance"
+    : run.stage === "browser_acceptance" ? "acceptance"
     : run.stage === "merge_blocked" ? "merging" : run.stage;
   byId("current-stage").textContent = stages.find(([id]) => id === normalizedStage)?.[1] || run.stage;
   const completed = (run.workflow_steps || []).filter((item) => item.state === "completed").length;
@@ -195,27 +203,21 @@ function render(run) {
   byId("acceptance-submit").classList.toggle(
     "hidden", pendingAction?.type !== "manual_intervention"
   );
-  const actionStages = {plan_approval: "plan_approval", implementation_recovery: "implementation",
-    acceptance_recovery: "acceptance", merge_approval: "merge_approval",
+  const actionStages = {implementation_recovery: "implementation",
+    acceptance_recovery: "acceptance",
     publication_recovery: "merging", revision_limit: "supervision",
     manual_intervention: "supervision", supervision_recovery: "supervision",
     risk_recovery: "risk"};
   action.dataset.stage = actionStages[pendingAction?.type] || normalizedStage;
   action.classList.toggle("hidden", !waiting);
-  if (pendingAction?.type === "plan_approval") {
-    byId("action-stage").textContent = "第 3 环 · 计划审批";
-    byId("action-title").textContent = "需要你审批计划";
-    byId("action-detail").textContent = run.plan?.summary || "规划已经完成";
-    byId("approve").textContent = "批准计划";
-    byId("reject").textContent = "拒绝";
-  } else if (pendingAction?.type === "implementation_recovery") {
-    byId("action-stage").textContent = "第 4 环 · 实施";
+  if (pendingAction?.type === "implementation_recovery") {
+    byId("action-stage").textContent = "第 3 环 · 实施";
     byId("action-title").textContent = "实施已阻塞";
     byId("action-detail").textContent = run.blocking_reason?.detail || "实施节点需要处理";
     byId("approve").textContent = "重试";
     byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "acceptance_recovery") {
-    byId("action-stage").textContent = "第 5 环 · 验收";
+    byId("action-stage").textContent = "第 4 环 · 验收";
     const browserEvidence = run.blocking_reason?.code === "browser_evidence_missing";
     const contractMissing = run.blocking_reason?.code === "acceptance_contract_missing";
     byId("action-title").textContent = browserEvidence
@@ -228,21 +230,15 @@ function render(run) {
       ? "自动执行浏览器验收" : "重新执行验收";
     byId("revise").textContent = limitReached ? "批准额外返工" : "退回实施";
     byId("reject").textContent = "取消任务";
-  } else if (pendingAction?.type === "merge_approval") {
-    byId("action-stage").textContent = "第 9 环 · 发布审批";
-    byId("action-title").textContent = "需要你批准发布";
-    byId("action-detail").textContent = run.supervision?.summary || "监督角色已批准代码变更";
-    byId("approve").textContent = "合并到权威分支";
-    byId("reject").textContent = "拒绝发布";
   } else if (pendingAction?.type === "publication_recovery") {
-    byId("action-stage").textContent = "第 10 环 · 发布";
+    byId("action-stage").textContent = "第 8 环 · 发布";
     byId("action-title").textContent = "发布已阻塞";
     byId("action-detail").textContent = run.blocking_reason?.detail || "发布环境需要处理";
     byId("approve").textContent = "重新检查并发布";
     byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "revision_limit") {
     const missing = run.supervision?.missing_evidence || [];
-    byId("action-stage").textContent = "第 8 环 · 监督";
+    byId("action-stage").textContent = "第 7 环 · 监督";
     byId("action-title").textContent = missing.length
       ? "关键验收证据不足" : "返工次数已达上限";
     byId("action-detail").textContent = [
@@ -253,13 +249,13 @@ function render(run) {
     if (missing.length) byId("approve").textContent = "重新采集验收证据";
     byId("reject").textContent = "终止任务";
   } else if (["supervision_recovery", "risk_recovery"].includes(pendingAction?.type)) {
-    byId("action-stage").textContent = "第 8 环 · 监督";
+    byId("action-stage").textContent = "第 7 环 · 监督";
     byId("action-title").textContent = "监督模型资源暂不可用";
     byId("action-detail").textContent = run.blocking_reason?.detail || "等待模型资源恢复后重试";
     byId("approve").textContent = "重试监督";
     byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "manual_intervention") {
-    byId("action-stage").textContent = "第 8 环 · 平台处置";
+    byId("action-stage").textContent = "第 7 环 · 平台处置";
     byId("action-title").textContent = "修复平台、节点环境或配置后重试，禁止人工代改业务项目";
     byId("action-detail").textContent = "平台将重新检测基础资源，并自动执行部署与验收";
     byId("approve").textContent = "返回自动返工";
@@ -528,7 +524,17 @@ async function request(path, options = {}) {
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers["X-CSRF-Token"] = cookie("taskhub_v2_csrf");
   const response = await fetch(path, {...options, headers});
   if (!response.ok) {
-    const detail = (await response.json()).detail || `HTTP ${response.status}`;
+    const responseText = await response.text();
+    let payload = {};
+    try {
+      payload = responseText ? JSON.parse(responseText) : {};
+    } catch (_error) {
+      payload = {};
+    }
+    const rawDetail = payload.detail || `HTTP ${response.status}`;
+    const detail = Array.isArray(rawDetail)
+      ? rawDetail.map((item) => item?.msg || item?.detail || String(item)).join("；")
+      : typeof rawDetail === "object" ? rawDetail.message || JSON.stringify(rawDetail) : rawDetail;
     if (response.status === 401 && !path.startsWith("/api/auth/")) {
       byId("login").classList.remove("hidden");
       byId("workspace").classList.add("hidden");
@@ -934,6 +940,8 @@ async function createProject(event) {
     const project = await request("/api/projects", {method: "POST", body: JSON.stringify({
       name: byId("project-name").value,
       project_id: byId("project-id").value,
+      remote_url: byId("project-remote-url").value.trim(),
+      local_path: byId("project-local-path").value.trim(),
       base_ref: byId("project-branch").value,
       test_commands: byId("project-tests").value,
       acceptance_commands: byId("project-acceptance").value,
@@ -956,6 +964,18 @@ function generatedProjectId(name) {
   return slug.length >= 2 ? slug : `project-${Date.now().toString(36)}`;
 }
 
+function applyProjectLocationDefaults() {
+  const projectId = byId("project-id").value;
+  if (!projectId || !projectProvisioningDefaults.authority_url_prefix) return;
+  const remote = `${projectProvisioningDefaults.authority_url_prefix}/${projectId}.git`;
+  const local = `${projectProvisioningDefaults.managed_repository_root}/${projectId}`;
+  for (const [id, value] of [["project-remote-url", remote], ["project-local-path", local]]) {
+    const input = byId(id);
+    if (!input.value || input.value === input.dataset.suggestedValue) input.value = value;
+    input.dataset.suggestedValue = value;
+  }
+}
+
 function applyProjectPreset() {
   const commands = {
     "fullstack-web": "python3 -m pytest -q\nnpm test",
@@ -974,7 +994,8 @@ async function attachProject(event) {
   try {
     const project = await request("/api/projects/attach", {method: "POST", body: JSON.stringify({
       name: byId("attach-project-name").value,
-      repository: byId("attach-project-repository").value,
+      remote_url: byId("attach-project-remote-url").value.trim(),
+      local_path: byId("attach-project-local-path").value.trim(),
       base_ref: byId("attach-project-branch").value,
       test_commands: byId("attach-project-tests").value,
       acceptance_commands: byId("attach-project-acceptance").value,
@@ -998,19 +1019,39 @@ async function loadAvailableProjects() {
   message.textContent = "";
   try {
     const data = await request("/api/projects/available");
+    projectProvisioningDefaults = data.defaults || {};
+    const service = projectProvisioningDefaults.authority_service || "尚未配置";
+    byId("project-git-service").textContent = service;
+    byId("attach-project-git-service").textContent = service;
+    applyProjectLocationDefaults();
     select.innerHTML = data.repositories.length
       ? data.repositories.map((item) => `<option value="${escapeHtml(item.repository)}"
-          data-name="${escapeHtml(item.name)}" data-branch="${escapeHtml(item.default_branch)}">
+          data-name="${escapeHtml(item.name)}" data-branch="${escapeHtml(item.default_branch)}"
+          data-remote-url="${escapeHtml(item.remote_url)}" data-local-path="${escapeHtml(item.local_path)}">
           ${escapeHtml(item.name)}${item.attached ? "（已接入）" : ""}
         </option>`).join("")
-      : '<option value="">Git 仓库中没有项目</option>';
+      : `<option value="">${data.discovery_error ? "仓库发现失败，可手工填写" : "Git 仓库中没有项目"}</option>`;
     select.disabled = data.repositories.length === 0;
-    byId("attach-project").disabled = data.repositories.length === 0;
+    byId("attach-project").disabled = false;
+    message.textContent = data.discovery_error || "";
     applySelectedRepository();
   } catch (error) {
     select.innerHTML = '<option value="">读取失败</option>';
+    byId("attach-project").disabled = false;
     message.textContent = error.message;
   }
+}
+
+function openGitServiceSettings() {
+  showPage("resources");
+  const platform = byId("platform-disclosure");
+  const configuration = byId("platform-config-disclosure");
+  platform.open = true;
+  configuration.open = true;
+  window.setTimeout(() => {
+    byId("platform-git-service-card").scrollIntoView({behavior: "smooth", block: "start"});
+    byId("platform-git-host").focus();
+  }, 100);
 }
 
 function applySelectedRepository() {
@@ -1018,6 +1059,8 @@ function applySelectedRepository() {
   if (!option?.value) return;
   byId("attach-project-name").value = option.dataset.name;
   byId("attach-project-branch").value = option.dataset.branch || "main";
+  byId("attach-project-remote-url").value = option.dataset.remoteUrl || "";
+  byId("attach-project-local-path").value = option.dataset.localPath || "";
 }
 
 async function login() {
@@ -1079,7 +1122,7 @@ function applyPermissions() {
   byId("deploy-release")?.classList.toggle("permission-hidden", !canPermission("release:manage"));
   const infrastructureManager = canPermission("infrastructure:manage");
   document.body.classList.toggle("resource-readonly", !infrastructureManager);
-  for (const id of ["host-form", "host-rebuild-form", "container-form"]) {
+  for (const id of ["container-form", "configure-project-git-service", "configure-attach-git-service"]) {
     byId(id)?.classList.toggle("permission-hidden", !infrastructureManager);
   }
   document.querySelectorAll("#model-services-form input, #model-services-form select, #model-services-form textarea, #platform-settings-form input, #platform-settings-form select, #platform-settings-form textarea").forEach((item) => {
@@ -1145,8 +1188,7 @@ byId("start").addEventListener("click", async () => {
 });
 
 async function decide(decision) {
-  const planApproval = pendingAction?.type === "plan_approval";
-  const endpoint = planApproval ? "approval" : "resume";
+  const endpoint = "resume";
   const recovery = ["implementation_recovery", "acceptance_recovery", "publication_recovery", "supervision_recovery", "risk_recovery", "revision_limit", "manual_intervention"].includes(pendingAction?.type);
   const resolved = recovery
     ? (decision === "manual" ? "manual" : decision === "approve"
@@ -1243,6 +1285,7 @@ byId("logout").addEventListener("click", async () => { await request("/api/auth/
 byId("show-project-form").addEventListener("click", () => {
   byId("attach-project-form").classList.add("hidden");
   byId("project-form").classList.remove("hidden");
+  loadAvailableProjects();
 });
 byId("close-project-form").addEventListener("click", () => byId("project-form").classList.add("hidden"));
 byId("show-attach-project-form").addEventListener("click", () => {
@@ -1250,10 +1293,13 @@ byId("show-attach-project-form").addEventListener("click", () => {
   byId("attach-project-form").classList.remove("hidden");
   loadAvailableProjects();
 });
+byId("configure-project-git-service").addEventListener("click", openGitServiceSettings);
+byId("configure-attach-git-service").addEventListener("click", openGitServiceSettings);
 byId("close-attach-project-form").addEventListener("click", () => byId("attach-project-form").classList.add("hidden"));
 byId("project-form").addEventListener("submit", createProject);
 byId("project-name").addEventListener("input", () => {
   byId("project-id").value = generatedProjectId(byId("project-name").value);
+  applyProjectLocationDefaults();
 });
 byId("project-type").addEventListener("change", applyProjectPreset);
 byId("create-project-contract").addEventListener("click", () => {

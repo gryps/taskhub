@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from taskhub_v2.domain.configuration import (
+    GitRepositoryConnectionTest,
+    ModelCardConnectionDraft,
     ModelServicesUpdate,
     PlatformSettingsUpdate,
     ProviderConnectionTest,
@@ -24,6 +26,13 @@ ConfigurationDep = Annotated[ManagedConfigurationService, Depends(get_configurat
 class DeviceAuthStart(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model_id: str = Field(min_length=2, max_length=48, pattern=r"^[a-z0-9][a-z0-9_-]+$")
+    draft: ModelCardConnectionDraft | None = None
+
+    @property
+    def selected_draft(self) -> dict | None:
+        if not self.draft or self.draft.model_id != self.model_id:
+            return None
+        return self.draft.model_dump(exclude={"api_key"})
 
 
 @router.get("/model-services")
@@ -48,7 +57,9 @@ async def test_model_service(
     payload: ProviderConnectionTest, configuration: ConfigurationDep, request: Request
 ) -> dict:
     return await configuration.test_provider(
-        payload.provider_id, operator=request.state.session["actor"]
+        payload.provider_id,
+        draft=payload.draft.model_dump() if payload.draft else None,
+        operator=request.state.session["actor"],
     )
 
 
@@ -65,10 +76,13 @@ async def start_model_device_auth(
         ),
         None,
     )
+    card = payload.selected_draft or card
     if not card or card["auth_mode"] != "account":
-        raise HTTPException(status_code=409, detail="请先保存 ChatGPT 账号模式的模型卡片")
+        raise HTTPException(status_code=409, detail="当前卡片不是 ChatGPT 账号模式")
     try:
-        return await request.app.state.device_auth.start(payload.model_id)
+        return await request.app.state.device_auth.start(
+            payload.model_id, proxy_url=card.get("proxy_url", "")
+        )
     except DeviceAuthError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -96,6 +110,17 @@ async def update_platform_settings(
         )
     except ConfigurationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/platform/git-test")
+async def test_git_repository(
+    payload: GitRepositoryConnectionTest,
+    configuration: ConfigurationDep,
+    request: Request,
+) -> dict:
+    return await configuration.test_git_repository(
+        payload, operator=request.state.session["actor"]
+    )
 
 
 @router.get("/audit")

@@ -21,6 +21,23 @@ def coding_available() -> bool:
     settings = get_settings()
     if os.getenv("TASKHUB_NODE_CODING_ENABLED", "false").lower() != "true":
         return False
+    if settings.model_cards:
+        coder_cards = [
+            card
+            for card in settings.model_cards
+            if card.get("enabled")
+            and card.get("service_type") == "openai"
+            and any(item.get("role") == "coder" for item in card.get("assignments", []))
+        ]
+        credentials_available = any(
+            (
+                card.get("auth_mode") == "account"
+                and Path(settings.model_account_root, card["model_id"], "auth.json").is_file()
+            )
+            or (card.get("auth_mode") == "api" and bool(card.get("api_key")))
+            for card in coder_cards
+        )
+        return Path(settings.codex_cli_bin).is_file() and credentials_available
     return Path(settings.codex_cli_bin).is_file() and (
         Path(settings.codex_plus_home, "auth.json").is_file()
         or Path(settings.codex_pro_home, "auth.json").is_file()

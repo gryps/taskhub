@@ -41,7 +41,7 @@ def serve(app, port):
         assert not thread.is_alive(), "Acceptance server did not stop"
 
 
-def test_browser_history_approvals_and_recovery(monkeypatch, tmp_path, postgres_dsn):
+def test_browser_history_and_publication_recovery(monkeypatch, tmp_path, postgres_dsn):
     from playwright.sync_api import expect, sync_playwright
 
     app_module = importlib.import_module("taskhub_v2.api.app")
@@ -122,14 +122,12 @@ def test_browser_history_approvals_and_recovery(monkeypatch, tmp_path, postgres_
             rows(page, 1)
             expect(page.locator("#task-rows")).to_contain_text(ids[1])
             page.locator("#filter-line").fill("A")
-            page.locator("#filter-status").select_option("waiting")
-            page.locator("#filter-stage").select_option("plan_approval")
-            rows(page, 2)
+            page.locator("#filter-status").select_option("blocked")
+            page.locator("#filter-stage").select_option("merging")
+            rows(page, 1)
             page.locator(f'tr[data-run-id="{ids[0]}"]').click()
-            expect(page.locator("#flow .step")).to_have_count(11)
+            expect(page.locator("#flow .step")).to_have_count(9)
             expect(page.locator(".composer")).to_be_hidden()
-            action(page, "plan_approval", "批准计划")
-            action(page, "merge_approval", "合并到权威分支")
             expect(page.locator("#status")).to_have_text("已阻塞")
             expect(page.locator('[data-step-id="merging"]')).to_have_class("step blocked")
             expect(page.locator("#action-detail")).to_have_text("temporary publication failure")
@@ -154,12 +152,12 @@ def test_browser_history_approvals_and_recovery(monkeypatch, tmp_path, postgres_
             page.locator(f'tr[data-run-id="{ids[0]}"]').click()
             action(page, "merging", "重新检查并发布")
             expect(page.locator("#status")).to_have_text("已完成")
-            expect(page.locator("#flow .step.done")).to_have_count(11)
+            expect(page.locator("#flow .step.done")).to_have_count(9)
             expect(page.locator("#approve")).to_be_hidden()
             completed = context.request.get(f"{url}/api/runs/{ids[0]}").json()
             assert completed["timeline"][:len(timeline)] == timeline
-            assert worker.calls == provider.review_calls == provider.supervisor_calls == 1
-            assert provider.plan_calls == 3 and publisher.calls == 2
+            assert worker.calls == provider.review_calls == provider.supervisor_calls == 3
+            assert provider.plan_calls == 3 and publisher.calls == 4
             page.screenshot(path=str(tmp_path / "task-recovered.png"), full_page=True)
             page.locator("#nav-tasks").click()
             rows(page, 3)

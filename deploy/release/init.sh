@@ -127,8 +127,8 @@ fi
 chmod 600 "$env_file"
 ensure_env_value TASKHUB_VERSION 0.1.0-alpha
 ensure_env_value TASKHUB_PORT 8200
-ensure_env_value TASKHUB_SEED_IMAGE taskhub-seed:0.1.0-alpha
-ensure_env_value TASKHUB_NODE_IMAGE taskhub-node:0.1.0-alpha
+ensure_env_value TASKHUB_SEED_IMAGE ghcr.io/gryps/taskhub-seed:0.1.0-alpha
+ensure_env_value TASKHUB_NODE_IMAGE ghcr.io/gryps/taskhub-node:0.1.0-alpha
 ensure_env_value TASKHUB_POSTGRES_IMAGE postgres:16-alpine
 ensure_env_value TASKHUB_DATA_VOLUME "$data_volume"
 ensure_env_value TASKHUB_POSTGRES_VOLUME "$postgres_volume"
@@ -145,6 +145,7 @@ ensure_env_value TASKHUB_LOGIN_WINDOW_SECONDS 900
 ensure_env_value TASKHUB_LOGIN_LOCK_SECONDS 900
 ensure_env_value TASKHUB_DOCKER_PROXY_IMAGE ghcr.io/tecnativa/docker-socket-proxy:v0.5.0
 ensure_env_value TASKHUB_OPENAI_PROXY_URL ""
+ensure_env_value TASKHUB_WORKER_MODE "git"
 ensure_secret TASKHUB_POSTGRES_PASSWORD "$(random_hex 24)"
 ensure_secret TASKHUB_ADMIN_TOKEN "$(random_hex 24)"
 ensure_secret TASKHUB_SESSION_SECRET "$(random_hex 48)"
@@ -154,6 +155,9 @@ archive=$(find "$root/images" -maxdepth 1 -type f -name 'taskhub-images-*.tar' 2
 if [ -n "$archive" ]; then
   require sha256sum
   (cd "$root" && sha256sum -c SHA256SUMS)
+  offline_version=$(env_value TASKHUB_VERSION)
+  put_env_value TASKHUB_SEED_IMAGE "taskhub-seed:$offline_version"
+  put_env_value TASKHUB_NODE_IMAGE "taskhub-node:$offline_version"
   bundle_platform=$(sed -n 's/.*"platform": "\([^"]*\)".*/\1/p' "$root/manifest.json" | head -n 1)
   server_arch=$(docker version --format '{{.Server.Arch}}')
   case "$server_arch" in

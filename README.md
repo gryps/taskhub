@@ -9,7 +9,7 @@ not an application-owned SQL state machine, controls workflow state and recovery
 
 - One durable workflow thread per development run.
 - Intake, planning, implementation, review, risk, and supervisor subgraphs.
-- Native `interrupt()` plan approval and `Command(resume=...)` continuation.
+- Automatic planning-to-implementation and supervision-to-publication transitions, with `Command(resume=...)` reserved for genuine recovery decisions.
 - Memory checkpointer for development and PostgreSQL checkpointer for deployment.
 - Plus/Pro device-auth accounts and GPT/DeepSeek/MiniMax API adapters.
 - Ordered fallback with persisted cooldown, quota visibility, and preferred-provider recovery.
@@ -17,7 +17,7 @@ not an application-owned SQL state machine, controls workflow state and recovery
   and commits.
 - One-step project creation provisions a bare authority repository, clones a controller
   checkout, creates the initial commit, and registers the project.
-- Human-approved publication, stale-base rebase, publication tests, fast-forward authority
+- Automatic supervised publication, stale-base rebase, publication tests, fast-forward authority
   merge, and recoverable conflict reporting.
 - Automatic supervisor-to-worker revision loops with bounded retries, durable revision
   commits, and an owner override at the configured limit.
@@ -78,7 +78,7 @@ managed checkout on the controller, and adds it to the project selector. Attachi
 existing controller checkout remains available as an advanced operation.
 
 Managed projects record an `authority_remote`. Publication fetches that remote,
-rebases and retests when necessary, then pushes with a lease after owner approval.
+rebases and retests when necessary, then pushes with a lease after supervision succeeds.
 A rejected push is a visible recoverable block and is never reported as successful.
 
 ## Governed Self Deployment
@@ -116,8 +116,8 @@ internal PostgreSQL service. On Windows Docker Desktop run:
 
 See `docs/deployment/seed-node.md` for scope, credentials, persistence, and
 acceptance checks. The alpha Web console can create role-selected containers on
-the Seed Docker host. SSH-based creation on additional physical hosts is specified
-in `docs/requirements/seed-ssh-multihost.md` and is not yet implemented.
+the Seed Docker host. SSH-based creation on additional physical hosts has been retired;
+`docs/requirements/seed-ssh-multihost.md` is retained only as a historical record.
 
 For PostgreSQL persistence:
 

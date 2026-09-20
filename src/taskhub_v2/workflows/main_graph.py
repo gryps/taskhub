@@ -242,7 +242,7 @@ def build_main_graph(
             return "recovery"
         supervision = state.get("supervision") or {}
         if supervision.get("decision") == "approve":
-            return "merge_approval"
+            return "publication"
         missing_evidence = supervision.get("missing_evidence", [])
         if missing_evidence == ["browser"]:
             return "browser_acceptance"
@@ -311,7 +311,7 @@ def build_main_graph(
 
     builder.add_edge(START, "intake")
     builder.add_edge("intake", "planning")
-    builder.add_edge("planning", "plan_approval")
+    builder.add_edge("planning", "implementation")
     builder.add_conditional_edges(
         "plan_approval", route_approval, {"implementation": "implementation", "reject": "reject"}
     )
@@ -358,7 +358,7 @@ def build_main_graph(
         route_supervisor,
         {
             "recovery": "supervision_recovery",
-            "merge_approval": "merge_approval",
+            "publication": "publication",
             "browser_acceptance": "browser_acceptance",
             "revision": "revision",
             "revision_limit": "revision_limit",

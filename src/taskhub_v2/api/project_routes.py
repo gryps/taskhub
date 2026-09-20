@@ -19,6 +19,8 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 class ProjectCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     project_id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{1,63}$")
+    remote_url: str = Field(min_length=1, max_length=1000)
+    local_path: str = Field(min_length=1, max_length=1000)
     base_ref: str = Field(default="main", pattern=r"^[A-Za-z0-9._/-]{1,200}$")
     test_commands: str = Field(default="", max_length=4000)
     acceptance_commands: str = Field(default="", max_length=4000)
@@ -30,7 +32,8 @@ class ProjectCreateRequest(BaseModel):
 
 class ProjectAttachRequest(BaseModel):
     name: str = Field(default="", max_length=100)
-    repository: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.git$")
+    remote_url: str = Field(min_length=1, max_length=1000)
+    local_path: str = Field(min_length=1, max_length=1000)
     base_ref: str = Field(default="main", pattern=r"^[A-Za-z0-9._/-]{1,200}$")
     test_commands: str = Field(default="", max_length=4000)
     acceptance_commands: str = Field(default="", max_length=4000)
@@ -92,11 +95,20 @@ async def projects(request: Request) -> dict:
 
 @router.get("/available")
 async def available_projects(request: Request) -> dict:
+    provisioner = request.app.state.project_provisioner
     try:
-        repositories = await request.app.state.project_provisioner.available()
+        repositories = await provisioner.available()
     except (ProjectProvisionError, OSError) as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return {"repositories": repositories}
+        return {
+            "repositories": [],
+            "defaults": provisioner.defaults(),
+            "discovery_error": str(exc),
+        }
+    return {
+        "repositories": repositories,
+        "defaults": provisioner.defaults(),
+        "discovery_error": None,
+    }
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -105,6 +117,8 @@ async def create_project(payload: ProjectCreateRequest, request: Request) -> dic
         created = await request.app.state.project_provisioner.create(
             payload.name.strip(),
             payload.project_id,
+            payload.remote_url,
+            payload.local_path,
             payload.base_ref,
             parse_test_commands(payload.test_commands),
             parse_test_commands(payload.acceptance_commands),
@@ -133,8 +147,9 @@ async def create_project(payload: ProjectCreateRequest, request: Request) -> dic
 async def attach_project(payload: ProjectAttachRequest, request: Request) -> dict:
     try:
         created = await request.app.state.project_provisioner.attach(
-            payload.repository,
             payload.name,
+            payload.remote_url,
+            payload.local_path,
             payload.base_ref,
             parse_test_commands(payload.test_commands),
             parse_test_commands(payload.acceptance_commands),

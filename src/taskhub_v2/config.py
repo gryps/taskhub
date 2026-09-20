@@ -1,5 +1,7 @@
+import json
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -32,7 +34,9 @@ class Settings(BaseModel):
     trusted_hosts: str = "*"
     projects_file: str = "/home/gryps/.config/taskhub-v2/projects.json"
     authority_git_host: str = "gryps@192.168.31.3"
+    authority_git_port: int = 22
     authority_git_root: str = "/home/gryps/git"
+    authority_git_private_key: str = ""
     managed_repository_root: str = "/home/gryps/repos/taskhub-projects"
     self_deploy_enabled: bool = False
     self_deploy_project_id: str = ""
@@ -59,6 +63,8 @@ class Settings(BaseModel):
     container_provisioning_enabled: bool = False
     docker_socket: str = "/var/run/docker.sock"
     docker_network: str = "taskhub-seed_default"
+    data_volume_name: str = ""
+    model_accounts_volume_subpath: str = ""
     node_container_image: str = "taskhub-node:0.1.0-alpha"
     seed_public_url: str = ""
     node_callback_url: str = ""
@@ -137,7 +143,9 @@ def get_settings() -> Settings:
             "TASKHUB_PROJECTS_FILE", "/home/gryps/.config/taskhub-v2/projects.json"
         ),
         authority_git_host=os.getenv("TASKHUB_AUTHORITY_GIT_HOST", "gryps@192.168.31.3"),
+        authority_git_port=int(os.getenv("TASKHUB_AUTHORITY_GIT_PORT", "22")),
         authority_git_root=os.getenv("TASKHUB_AUTHORITY_GIT_ROOT", "/home/gryps/git"),
+        authority_git_private_key=os.getenv("TASKHUB_AUTHORITY_GIT_PRIVATE_KEY", ""),
         managed_repository_root=os.getenv(
             "TASKHUB_MANAGED_REPOSITORY_ROOT",
             "/home/gryps/repos/taskhub-projects",
@@ -192,6 +200,10 @@ def get_settings() -> Settings:
         in {"1", "true", "yes", "on"},
         docker_socket=os.getenv("TASKHUB_DOCKER_SOCKET", "/var/run/docker.sock"),
         docker_network=os.getenv("TASKHUB_DOCKER_NETWORK", "taskhub-seed_default"),
+        data_volume_name=os.getenv("TASKHUB_DATA_VOLUME_NAME", ""),
+        model_accounts_volume_subpath=os.getenv(
+            "TASKHUB_MODEL_ACCOUNTS_VOLUME_SUBPATH", ""
+        ),
         node_container_image=os.getenv("TASKHUB_NODE_CONTAINER_IMAGE", "taskhub-node:0.1.0-alpha"),
         seed_public_url=os.getenv("TASKHUB_SEED_PUBLIC_URL", ""),
         node_callback_url=os.getenv("TASKHUB_NODE_CALLBACK_URL", ""),
@@ -233,4 +245,15 @@ def get_settings() -> Settings:
         model_account_root=os.getenv(
             "TASKHUB_MODEL_ACCOUNT_ROOT", "/var/lib/taskhub/config/model-accounts"
         ),
+        model_cards=_model_cards_from_file(),
     )
+
+
+def _model_cards_from_file() -> list[dict]:
+    path = os.getenv("TASKHUB_MODEL_CARDS_FILE", "")
+    if not path:
+        return []
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError("TASKHUB_MODEL_CARDS_FILE must contain a JSON list")
+    return payload

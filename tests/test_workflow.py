@@ -200,8 +200,11 @@ def test_startup_recovery_replays_running_checkpoint():
     async def scenario():
         class Index:
             async def list(self, **filters):
-                assert filters["status"] == RunStatus.RUNNING
-                return SimpleNamespace(items=[SimpleNamespace(run_id="run-1")])
+                items = (
+                    [SimpleNamespace(run_id="run-1")]
+                    if filters["status"] == RunStatus.RUNNING else []
+                )
+                return SimpleNamespace(items=items)
 
         service, _, _ = make_service()
         service.task_index = Index()
@@ -224,37 +227,57 @@ def test_startup_recovery_replays_running_checkpoint():
     asyncio.run(scenario())
 
 
-def test_run_pauses_for_plan_approval_then_completes():
+def test_startup_recovery_advances_retired_approval_checkpoints():
+    async def scenario():
+        class Index:
+            async def list(self, **filters):
+                items = []
+                if filters["status"] == RunStatus.WAITING:
+                    items = [
+                        SimpleNamespace(run_id="old-plan"),
+                        SimpleNamespace(run_id="old-publication"),
+                    ]
+                return SimpleNamespace(items=items)
+
+        service, _, _ = make_service()
+        service.task_index = Index()
+        advanced = []
+
+        async def get(run_id):
+            action = "plan_approval" if run_id == "old-plan" else "merge_approval"
+            return SimpleNamespace(pending_action={"type": action})
+
+        async def approve(run_id, request):
+            advanced.append((run_id, request.decision))
+
+        async def resume(run_id, request):
+            advanced.append((run_id, request.decision))
+
+        service.get = get
+        service.approve = approve
+        service.resume = resume
+        await service.recover_interrupted()
+        assert advanced == [("old-plan", "approve"), ("old-publication", "approve")]
+
+    asyncio.run(scenario())
+
+
+def test_run_automatically_implements_and_publishes():
     async def scenario():
         service, provider, worker = make_service()
 
-        waiting = await service.start(
+        completed = await service.start(
             StartRunRequest(project_id="shop", requirement="Add product search")
         )
 
-        assert waiting.stage == Stage.PLAN_APPROVAL
-        assert waiting.status == RunStatus.WAITING
-        assert waiting.next_nodes == ["plan_approval"]
-        assert waiting.pending_action["type"] == "plan_approval"
-        assert provider.plan_calls == 1
-        assert worker.calls == 0
-        assert waiting.model_runs[0].role == "planner"
-        assert waiting.model_runs[0].provider == "recording"
-
-        publication_waiting = await service.approve(
-            waiting.run_id, ApprovalRequest(decision="approve", comment="Proceed")
-        )
-
-        assert publication_waiting.stage == Stage.MERGE_APPROVAL
-        assert publication_waiting.status == RunStatus.WAITING
-        assert publication_waiting.pending_action["type"] == "merge_approval"
-        completed = await service.resume(
-            waiting.run_id, ResumeRequest(decision="approve", comment="Publish")
-        )
         assert completed.stage == Stage.COMPLETED
         assert completed.status == RunStatus.COMPLETED
         assert completed.next_nodes == []
+        assert completed.pending_action is None
+        assert provider.plan_calls == 1
         assert worker.calls == 1
+        assert completed.model_runs[0].role == "planner"
+        assert completed.model_runs[0].provider == "recording"
         assert provider.review_calls == 1
         assert provider.risk_calls == 1
         assert provider.supervisor_calls == 1
@@ -265,13 +288,11 @@ def test_run_pauses_for_plan_approval_then_completes():
         assert [item.title for item in completed.timeline] == [
             "Requirement accepted",
             "Plan created",
-            "Plan approved",
             "Worker completed",
             "Acceptance evidence collected",
             "Review completed",
             "Risk assessed",
             "Change accepted",
-            "Publication approved",
             "Published to authority",
         ]
 
@@ -281,19 +302,17 @@ def test_run_pauses_for_plan_approval_then_completes():
     asyncio.run(scenario())
 
 
-def test_rejected_plan_never_reaches_worker():
+def test_obsolete_plan_approval_cannot_interrupt_completed_run():
     async def scenario():
         service, _, worker = make_service()
-        waiting = await service.start(
+        completed = await service.start(
             StartRunRequest(project_id="shop", requirement="Delete data")
         )
-        rejected = await service.approve(
-            waiting.run_id, ApprovalRequest(decision="reject", comment="Unsafe")
-        )
-
-        assert rejected.stage == Stage.REJECTED
-        assert rejected.status == RunStatus.REJECTED
-        assert worker.calls == 0
+        with pytest.raises(RunConflictError):
+            await service.approve(
+                completed.run_id, ApprovalRequest(decision="reject", comment="Unsafe")
+            )
+        assert worker.calls == 1
 
     asyncio.run(scenario())
 
@@ -315,11 +334,8 @@ def test_implementation_block_preserves_failed_coder_runs():
         provider = RecordingProvider()
         worker = DiagnosticWorker()
         service = RunService(build_main_graph(provider, worker, InMemorySaver()))
-        run = await service.start(
+        blocked = await service.start(
             StartRunRequest(project_id="shop", requirement="Implement shop model")
-        )
-        blocked = await service.approve(
-            run.run_id, ApprovalRequest(decision="approve", comment="Proceed")
         )
         assert blocked.stage == Stage.IMPLEMENTATION_BLOCKED
         assert blocked.blocking_reason["code"] == "no_changes"
@@ -345,14 +361,11 @@ def test_test_failure_automatically_returns_diagnostics_to_coder():
         provider = RecordingProvider()
         worker = FailureRecoveringWorker()
         service = RunService(build_main_graph(provider, worker, InMemorySaver()))
-        run = await service.start(
+        completed = await service.start(
             StartRunRequest(project_id="shop", requirement="Implement shop isolation")
         )
-        completed = await service.approve(
-            run.run_id, ApprovalRequest(decision="approve")
-        )
 
-        assert completed.stage == Stage.MERGE_APPROVAL
+        assert completed.stage == Stage.COMPLETED
         assert completed.revision_count == 1
         assert worker.calls == 2
         assert "npm run api:test" in worker.feedback[1]
@@ -369,35 +382,31 @@ def test_new_graph_instance_resumes_same_checkpoint():
     async def scenario():
         checkpointer = InMemorySaver()
         first_service, _, first_worker = make_service(checkpointer)
-        waiting = await first_service.start(
+        completed = await first_service.start(
             StartRunRequest(project_id="shop", requirement="Resume after restart")
         )
 
         second_service, second_provider, second_worker = make_service(checkpointer)
-        publication_waiting = await second_service.approve(
-            waiting.run_id, ApprovalRequest(decision="approve")
-        )
-        completed = await second_service.resume(
-            publication_waiting.run_id, ResumeRequest(decision="approve")
-        )
+        restored = await second_service.get(completed.run_id)
 
-        assert completed.status == RunStatus.COMPLETED
-        assert first_worker.calls == 0
-        assert second_worker.calls == 1
+        assert restored.status == RunStatus.COMPLETED
+        assert first_worker.calls == 1
+        assert second_worker.calls == 0
         assert second_provider.plan_calls == 0
 
     asyncio.run(scenario())
 
 
-def test_checkpoint_history_exposes_waiting_boundary():
+def test_checkpoint_history_exposes_automatic_boundary():
     async def scenario():
         service, _, _ = make_service()
-        waiting = await service.start(
+        completed = await service.start(
             StartRunRequest(project_id="shop", requirement="Inspect checkpoint history")
         )
-        history = await service.history(waiting.run_id)
+        history = await service.history(completed.run_id)
 
-        assert any(item["next_nodes"] == ["plan_approval"] for item in history)
+        assert not any(item["next_nodes"] == ["plan_approval"] for item in history)
+        assert any(item["next_nodes"] == ["implementation"] for item in history)
         assert any(item["stage"] == Stage.INTAKE for item in history)
 
     asyncio.run(scenario())
@@ -408,43 +417,36 @@ def test_worker_failure_blocks_with_reason_and_can_retry():
         provider = RecordingProvider()
         worker = RecoveringWorker()
         service = RunService(build_main_graph(provider, worker, InMemorySaver()))
-        waiting = await service.start(
+        blocked = await service.start(
             StartRunRequest(project_id="shop", requirement="Recover implementation")
         )
-        blocked = await service.approve(waiting.run_id, ApprovalRequest(decision="approve"))
 
         assert blocked.status == RunStatus.BLOCKED
         assert blocked.stage == Stage.IMPLEMENTATION_BLOCKED
         assert blocked.blocking_reason["code"] == "RuntimeError"
         assert blocked.pending_action["choices"] == ["retry", "cancel"]
 
-        publication_waiting = await service.resume(
+        completed = await service.resume(
             blocked.run_id, ResumeRequest(decision="retry")
         )
-        assert publication_waiting.stage == Stage.MERGE_APPROVAL
-        completed = await service.resume(
-            blocked.run_id, ResumeRequest(decision="approve")
-        )
+        assert completed.stage == Stage.COMPLETED
         assert completed.status == RunStatus.COMPLETED
         assert worker.calls == 2
 
     asyncio.run(scenario())
 
 
-def test_publication_can_be_rejected_after_supervision():
+def test_obsolete_publication_decision_cannot_interrupt_completed_run():
     async def scenario():
         service, _, _ = make_service()
-        waiting = await service.start(
+        completed = await service.start(
             StartRunRequest(project_id="shop", requirement="Prepare but do not publish")
         )
-        publication_waiting = await service.approve(
-            waiting.run_id, ApprovalRequest(decision="approve")
-        )
-        rejected = await service.resume(
-            publication_waiting.run_id, ResumeRequest(decision="reject", comment="Hold")
-        )
-        assert rejected.status == RunStatus.REJECTED
-        assert rejected.publication is None
+        with pytest.raises(RunConflictError):
+            await service.resume(
+                completed.run_id, ResumeRequest(decision="reject", comment="Hold")
+            )
+        assert completed.publication is not None
 
     asyncio.run(scenario())
 
@@ -456,14 +458,8 @@ def test_publication_failure_blocks_with_reason_and_can_retry():
         publisher = RecoveringPublisher()
         graph = build_main_graph(provider, worker, InMemorySaver(), publisher)
         service = RunService(graph)
-        waiting = await service.start(
+        blocked = await service.start(
             StartRunRequest(project_id="shop", requirement="Recover publication")
-        )
-        publication_waiting = await service.approve(
-            waiting.run_id, ApprovalRequest(decision="approve")
-        )
-        blocked = await service.resume(
-            publication_waiting.run_id, ResumeRequest(decision="approve")
         )
 
         assert blocked.stage == Stage.MERGE_BLOCKED
@@ -483,16 +479,11 @@ def test_supervisor_rejection_automatically_returns_to_worker():
         worker = RevisionRecordingWorker()
         graph = build_main_graph(provider, worker, InMemorySaver())
         service = RunService(graph)
-        waiting = await service.start(
+        completed = await service.start(
             StartRunRequest(project_id="shop", requirement="Handle a boundary")
         )
-
-        publication_waiting = await service.approve(
-            waiting.run_id, ApprovalRequest(decision="approve")
-        )
-
-        assert publication_waiting.stage == Stage.MERGE_APPROVAL
-        assert publication_waiting.revision_count == 1
+        assert completed.stage == Stage.COMPLETED
+        assert completed.revision_count == 1
         assert worker.calls == 2
         assert worker.revisions[0] == (0, "")
         assert worker.revisions[1][0] == 1
@@ -508,11 +499,8 @@ def test_supervisor_model_exhaustion_blocks_and_retries_only_supervision():
         provider = RecoveringSupervisorProvider()
         worker = RecordingWorker()
         service = RunService(build_main_graph(provider, worker, InMemorySaver()))
-        waiting = await service.start(
+        blocked = await service.start(
             StartRunRequest(project_id="shop", requirement="Preserve acceptance evidence")
-        )
-        blocked = await service.approve(
-            waiting.run_id, ApprovalRequest(decision="approve")
         )
 
         assert blocked.status == RunStatus.BLOCKED
@@ -525,13 +513,12 @@ def test_supervisor_model_exhaustion_blocks_and_retries_only_supervision():
         implementation = blocked.implementation
         acceptance = blocked.acceptance
 
-        publishing = await service.resume(
+        completed = await service.resume(
             blocked.run_id, ResumeRequest(decision="retry")
         )
-        assert publishing.stage == Stage.MERGE_APPROVAL
-        assert publishing.status == RunStatus.WAITING
-        assert publishing.implementation == implementation
-        assert publishing.acceptance == acceptance
+        assert completed.stage == Stage.COMPLETED
+        assert completed.implementation == implementation
+        assert completed.acceptance == acceptance
         assert worker.calls == 1
         assert provider.review_calls == 1
         assert provider.risk_calls == 1
@@ -545,11 +532,8 @@ def test_risk_model_exhaustion_blocks_and_retries_only_risk():
         provider = RecoveringRiskProvider()
         worker = RecordingWorker()
         service = RunService(build_main_graph(provider, worker, InMemorySaver()))
-        waiting = await service.start(
+        blocked = await service.start(
             StartRunRequest(project_id="shop", requirement="Preserve acceptance evidence")
-        )
-        blocked = await service.approve(
-            waiting.run_id, ApprovalRequest(decision="approve")
         )
 
         assert blocked.status == RunStatus.BLOCKED
@@ -558,11 +542,10 @@ def test_risk_model_exhaustion_blocks_and_retries_only_risk():
         assert blocked.pending_action["type"] == "risk_recovery"
         assert blocked.blocking_reason["code"] == "model_resources_unavailable"
 
-        publishing = await service.resume(
+        completed = await service.resume(
             blocked.run_id, ResumeRequest(decision="retry")
         )
-        assert publishing.stage == Stage.MERGE_APPROVAL
-        assert publishing.status == RunStatus.WAITING
+        assert completed.stage == Stage.COMPLETED
         assert worker.calls == 1
         assert provider.review_calls == 1
         assert provider.risk_calls == 2
@@ -577,12 +560,8 @@ def test_revision_limit_requires_owner_decision():
         worker = RevisionRecordingWorker()
         graph = build_main_graph(provider, worker, InMemorySaver())
         service = RunService(graph)
-        waiting = await service.start(
+        limited = await service.start(
             StartRunRequest(project_id="shop", requirement="Bound an unsafe loop")
-        )
-
-        limited = await service.approve(
-            waiting.run_id, ApprovalRequest(decision="approve")
         )
 
         assert limited.status == RunStatus.WAITING
@@ -618,19 +597,16 @@ def test_acceptance_failure_has_its_own_recovery_without_rerunning_worker():
                 provider, worker, InMemorySaver(), acceptance=acceptance
             )
         )
-        waiting = await service.start(
+        blocked = await service.start(
             StartRunRequest(project_id="shop", requirement="Verify in Edge")
-        )
-        blocked = await service.approve(
-            waiting.run_id, ApprovalRequest(decision="approve")
         )
         assert blocked.stage == Stage.ACCEPTANCE_BLOCKED
         assert blocked.pending_action["type"] == "acceptance_recovery"
 
-        publishing = await service.resume(
+        completed = await service.resume(
             blocked.run_id, ResumeRequest(decision="retry")
         )
-        assert publishing.stage == Stage.MERGE_APPROVAL
+        assert completed.stage == Stage.COMPLETED
         assert acceptance.calls == 2
         assert worker.calls == 1
 
@@ -646,12 +622,9 @@ def test_invalid_acceptance_contract_only_returns_to_implementation(reason):
             RecordingProvider(), RecordingWorker(), InMemorySaver(),
             acceptance=InvalidContractAcceptance(reason),
         ))
-        waiting = await service.start(StartRunRequest(
+        blocked = await service.start(StartRunRequest(
             project_id="shop", requirement="Create browser acceptance contract"
         ))
-        blocked = await service.approve(
-            waiting.run_id, ApprovalRequest(decision="approve")
-        )
 
         assert blocked.stage == Stage.ACCEPTANCE_BLOCKED
         assert blocked.blocking_reason["code"] == reason
@@ -671,11 +644,8 @@ def test_acceptance_failure_can_return_to_worker_from_legacy_checkpoint_at_limit
             provider, worker, checkpointer, acceptance=acceptance
         )
         service = RunService(graph, task_index=MemoryTaskIndex())
-        waiting = await service.start(
+        blocked = await service.start(
             StartRunRequest(project_id="shop", requirement="Repair acceptance defect")
-        )
-        blocked = await service.approve(
-            waiting.run_id, ApprovalRequest(decision="approve")
         )
         assert blocked.stage == Stage.ACCEPTANCE_BLOCKED
         assert blocked.pending_action["choices"] == ["retry", "revise", "cancel"]
@@ -694,25 +664,25 @@ def test_acceptance_failure_can_return_to_worker_from_legacy_checkpoint_at_limit
                 },
             },
         )
-        publishing = await service.resume(
+        completed = await service.resume(
             blocked.run_id,
             ResumeRequest(decision="revise", comment="Approve one extra revision"),
         )
 
-        assert publishing.stage == Stage.MERGE_APPROVAL
-        assert publishing.revision_count == 3
-        assert publishing.max_revision_attempts == 3
+        assert completed.stage == Stage.COMPLETED
+        assert completed.revision_count == 3
+        assert completed.max_revision_attempts == 3
         assert worker.calls == 2
         assert worker.revisions[-1][0] == 3
         assert "RuntimeError: browser unavailable" in worker.revisions[-1][1]
         assert acceptance.calls == 2
         assert any(
             item.title == "Acceptance returned to implementation"
-            for item in publishing.timeline
+            for item in completed.timeline
         )
         assert any(
             item.title == "Acceptance revision 3 started"
-            for item in publishing.timeline
+            for item in completed.timeline
         )
 
     asyncio.run(scenario())
@@ -723,11 +693,8 @@ def test_submitted_acceptance_evidence_reassesses_without_coding_revision():
         provider = EvidenceAwareProvider()
         worker = RecordingWorker()
         service = RunService(build_main_graph(provider, worker, InMemorySaver()))
-        waiting = await service.start(
+        limited = await service.start(
             StartRunRequest(project_id="shop", requirement="Require browser evidence")
-        )
-        limited = await service.approve(
-            waiting.run_id, ApprovalRequest(decision="approve")
         )
         # Two automatic revisions are expected before the configured limit.
         calls_at_limit = worker.calls
@@ -747,7 +714,7 @@ def test_submitted_acceptance_evidence_reassesses_without_coding_revision():
                 ]
             ),
         )
-        assert reassessed.stage == Stage.MERGE_APPROVAL
+        assert reassessed.stage == Stage.COMPLETED
         assert reassessed.acceptance.evidence[-1].source == "windows-gui-34"
         assert worker.calls == calls_at_limit
 
@@ -794,8 +761,7 @@ def test_structured_browser_rejection_never_consumes_revision(tmp_path, offline)
         worker, provider, acceptance = Worker(), Provider(), Acceptance()
         service = RunService(build_main_graph(provider, worker, InMemorySaver(),
                                               acceptance=acceptance))
-        run = await service.start(StartRunRequest(project_id="shop", requirement="Browser flow"))
-        result = await service.approve(run.run_id, ApprovalRequest(decision="approve"))
+        result = await service.start(StartRunRequest(project_id="shop", requirement="Browser flow"))
         assert result.revision_count == 0
         assert worker.calls == 1
         assert acceptance.calls == 2
@@ -803,7 +769,7 @@ def test_structured_browser_rejection_never_consumes_revision(tmp_path, offline)
             assert result.status == RunStatus.BLOCKED
             assert result.blocking_reason["detail"] == "Windows 验收节点离线"
         else:
-            assert result.stage == Stage.MERGE_APPROVAL
+            assert result.stage == Stage.COMPLETED
             assert provider.supervisor_calls == 2
     asyncio.run(scenario())
 
@@ -823,12 +789,9 @@ def test_non_browser_evidence_gap_does_not_consume_coding_revision():
         provider = Provider()
         worker = RecordingWorker()
         service = RunService(build_main_graph(provider, worker, InMemorySaver()))
-        waiting = await service.start(StartRunRequest(
+        result = await service.start(StartRunRequest(
             project_id="shop", requirement="Preserve production data counts"
         ))
-        result = await service.approve(
-            waiting.run_id, ApprovalRequest(decision="approve")
-        )
 
         assert result.stage == Stage.SUPERVISION
         assert result.status == RunStatus.WAITING

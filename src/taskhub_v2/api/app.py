@@ -38,7 +38,7 @@ from taskhub_v2.persistence.production import production_store
 from taskhub_v2.persistence.remote_nodes import remote_node_store
 from taskhub_v2.persistence.task_index import task_index_store
 from taskhub_v2.persistence.topologies import topology_store
-from taskhub_v2.projects import ProjectProvisioner, ProjectRegistry
+from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.providers import build_provider
 from taskhub_v2.providers.health import ProviderHealthStore
 from taskhub_v2.security.auth import CSRF_COOKIE, SESSION_COOKIE, AuthService
@@ -53,7 +53,9 @@ from taskhub_v2.services.configuration import ManagedConfigurationService
 from taskhub_v2.services.containers import ContainerManager
 from taskhub_v2.services.dag_runtime import build_dag_runtime
 from taskhub_v2.services.device_auth import CodexDeviceAuthService
+from taskhub_v2.services.git_authority import build_project_provisioner
 from taskhub_v2.services.hosts import PhysicalHostService
+from taskhub_v2.services.node_model_config import write_node_model_configuration
 from taskhub_v2.services.operational_log import OperationalLog
 from taskhub_v2.services.productization import ProductizationService
 from taskhub_v2.services.project_contracts import ProjectContractService
@@ -89,12 +91,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         login_lock_seconds=settings.login_lock_seconds,
     )
     projects = ProjectRegistry(settings.projects_file)
-    project_provisioner = ProjectProvisioner(
-        projects,
-        settings.authority_git_host,
-        settings.authority_git_root,
-        settings.managed_repository_root,
-    )
+    default_project_provisioner = build_project_provisioner(settings, projects)
     provider_health = ProviderHealthStore(
         settings.provider_health_file,
         settings.provider_quota_cooldown_seconds,
@@ -112,9 +109,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         image=settings.node_container_image,
         node_token=settings.node_token,
         nodes_file=settings.nodes_file,
+        data_volume_name=settings.data_volume_name,
+        model_accounts_volume_subpath=settings.model_accounts_volume_subpath,
+        openai_proxy_url=settings.openai_proxy_url,
         operation_log=operation_log,
     )
-
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         async with (
@@ -152,6 +151,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             provider_health.switch_lock_seconds = effective_settings.provider_switch_lock_seconds
             app.state.settings = effective_settings
+            write_node_model_configuration(effective_settings)
+            if app.state.project_provisioner is default_project_provisioner:
+                app.state.project_provisioner = build_project_provisioner(
+                    effective_settings, projects
+                )
             app.state.production_objects = production_objects
             app.state.production_orchestration_enabled = (
                 effective_settings.production_orchestration_enabled
@@ -178,6 +182,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     image=effective_settings.node_container_image,
                     node_token=effective_settings.node_token,
                     nodes_file=effective_settings.nodes_file,
+                    data_volume_name=effective_settings.data_volume_name,
+                    model_accounts_volume_subpath=(
+                        effective_settings.model_accounts_volume_subpath
+                    ),
+                    openai_proxy_url=effective_settings.openai_proxy_url,
                     credentials=node_credentials,
                     operation_log=operation_log,
                 )
@@ -297,7 +306,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.auth = auth
     app.state.projects = projects
-    app.state.project_provisioner = project_provisioner
+    app.state.project_provisioner = default_project_provisioner
     app.state.deployment_manager = DeploymentManager(settings)
     app.state.container_manager = default_container_manager
     app.state.operation_log = operation_log

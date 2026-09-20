@@ -15,6 +15,9 @@ mirror_args=""
 if [ -n "$registry" ]; then
   prefix="${registry%/}/"
 fi
+if [ -n "${NPM_REGISTRY:-}" ]; then
+  mirror_args="$mirror_args --build-arg NPM_REGISTRY=${NPM_REGISTRY}"
+fi
 if [ -n "${DEBIAN_MIRROR:-}" ]; then
   mirror_args="$mirror_args --build-arg DEBIAN_MIRROR=${DEBIAN_MIRROR}"
 fi

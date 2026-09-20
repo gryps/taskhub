@@ -62,8 +62,7 @@ def test_postgres_index_history_repair_and_resume_after_restart(postgres_dsn):
                 project_id='pg-history', requirement=f'Persistent feature {n}', production_line=line
             )) for n, line in enumerate(('A', 'B', 'A'))]
             target = runs[0].run_id
-            await service.approve(target, ApprovalRequest(decision='approve'))
-            blocked = await service.resume(target, ResumeRequest(decision='approve'))
+            blocked = runs[0]
             assert blocked.blocking_reason['detail'] == 'temporary publication failure'
             created_at = (await index.get(target)).created_at
             # Simulate a stale row and an absent row after an interrupted index write.
@@ -91,8 +90,8 @@ def test_postgres_index_history_repair_and_resume_after_restart(postgres_dsn):
             assert target in {item.run_id for item in filtered.items}
             completed = await service.resume(target, ResumeRequest(decision='retry'))
             assert completed.status == 'completed'
-            assert worker.calls == provider.review_calls == provider.supervisor_calls == 1
-            assert provider.plan_calls == 3 and publisher.calls == 2
+            assert worker.calls == provider.review_calls == provider.supervisor_calls == 3
+            assert provider.plan_calls == 3 and publisher.calls == 4
 
         async with task_index_store(settings) as index:
             assert (await index.get(target)).status == 'completed'
@@ -109,16 +108,17 @@ def test_postgres_archive_and_rebind_survive_checkpoint_backfill(postgres_dsn, t
         ]}))
         projects = ProjectRegistry(str(path))
         settings = Settings(checkpointer='postgres', postgres_dsn=postgres_dsn)
-        provider, worker, publisher = RecordingProvider(), RecordingWorker(), RecoveringPublisher()
+        provider, worker = RecordingProvider(), RecordingWorker()
         async with checkpoint_store(settings) as saver, task_index_store(settings) as index:
-            service = RunService(build_main_graph(provider, worker, saver, publisher),
+            service = RunService(build_main_graph(provider, worker, saver),
                                  projects, index)
             archived_run = await service.start(StartRunRequest(
                 project_id='original', requirement='Archive before restart'))
+            publisher = RecoveringPublisher()
+            service = RunService(build_main_graph(provider, worker, saver, publisher),
+                                 projects, index)
             rebound_run = await service.start(StartRunRequest(
                 project_id='original', requirement='Rebind before restart'))
-            await service.approve(rebound_run.run_id, ApprovalRequest(decision='approve'))
-            await service.resume(rebound_run.run_id, ResumeRequest(decision='approve'))
             archived = await service.archive(archived_run.run_id)
             await service.rebind(rebound_run.run_id, 'replacement')
             # Delete the archived index row: its independent tombstone must prevent revival.
@@ -146,7 +146,7 @@ def test_postgres_archive_and_rebind_survive_checkpoint_backfill(postgres_dsn, t
             assert page.total == 2
             restored = await service.get(archived_run.run_id, sync=True)
             assert restored.archived_at == archived.archived_at
-            assert restored.stage == 'plan_approval' and restored.project_missing
+            assert restored.stage == 'completed' and restored.project_missing
             assert (await index.get(archived_run.run_id)).requirement_summary != 'stale'
             assert (await saver.aget(service._config(archived_run.run_id))) is not None
             with pytest.raises(RunConflictError, match='archived'):
@@ -160,7 +160,7 @@ def test_postgres_archive_and_rebind_survive_checkpoint_backfill(postgres_dsn, t
             completed = await service.resume(rebound_run.run_id, ResumeRequest(decision='retry'))
             assert completed.status == 'completed'
             assert completed.publication.project_id == 'replacement'
-            assert worker.calls == provider.review_calls == provider.supervisor_calls == 1
+            assert worker.calls == provider.review_calls == provider.supervisor_calls == 2
             assert publisher.calls == 2
 
         async with task_index_store(settings) as index:
@@ -192,7 +192,8 @@ def test_postgres_namespaces_isolate_index_checkpoints_and_cleanup(postgres_name
             assert await saver.aget(service._config(run.run_id)) is not None
 
     with postgres_namespace() as (outer_dsn, outer_schema):
-        with pytest.raises(RuntimeError, match='simulated test failure'):
+        # The outer namespace must remain open for the cleanup assertions below.
+        with pytest.raises(RuntimeError, match='simulated test failure'):  # noqa: SIM117
             with postgres_namespace() as (inner_dsn, inner_schema):
                 assert outer_schema != inner_schema
                 asyncio.run(write_and_check(outer_dsn, inner_dsn))

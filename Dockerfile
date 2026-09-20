@@ -1,7 +1,8 @@
 FROM node:22-bookworm-slim AS web
+ARG NPM_REGISTRY=https://registry.npmjs.org
 WORKDIR /web
 COPY taskhub-web/package.json taskhub-web/package-lock.json ./
-RUN npm ci
+RUN npm config set registry "${NPM_REGISTRY}" && npm ci
 COPY taskhub-web ./
 RUN npm run build
 

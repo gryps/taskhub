@@ -36,6 +36,12 @@ Copy-Item (Join-Path $ScriptRoot "README.md"), (Join-Path $ScriptRoot "compose.y
 Copy-Item (Join-Path $ScriptRoot "*.sh"), (Join-Path $ScriptRoot "*.ps1") $OutputDirectory
 Copy-Item (Join-Path $RepoRoot "docs\deployment\ubuntu.md"), `
     (Join-Path $RepoRoot "docs\deployment\windows-docker-desktop.md") $DocsDirectory
+$OfflineEnv = Join-Path $OutputDirectory ".env.example"
+(Get-Content $OfflineEnv) | ForEach-Object {
+    if ($_ -match '^TASKHUB_SEED_IMAGE=') { "TASKHUB_SEED_IMAGE=taskhub-seed:$Version" }
+    elseif ($_ -match '^TASKHUB_NODE_IMAGE=') { "TASKHUB_NODE_IMAGE=taskhub-node:$Version" }
+    else { $_ }
+} | Set-Content $OfflineEnv -Encoding ascii
 
 $ArchiveName = "taskhub-images-$Version-$Arch.tar"
 $ArchivePath = Join-Path $ImagesDirectory $ArchiveName

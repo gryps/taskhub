@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import yaml
@@ -63,6 +64,15 @@ def test_release_compose_preloads_unified_node_reference():
     assert controller["environment"]["TASKHUB_DOCKER_NETWORK"] == (
         "${TASKHUB_DOCKER_NETWORK:-taskhub_default}"
     )
+    assert controller["environment"]["TASKHUB_WORKER_MODE"] == (
+        "${TASKHUB_WORKER_MODE:-git}"
+    )
+    assert controller["environment"]["TASKHUB_DATA_VOLUME_NAME"] == (
+        "${TASKHUB_DATA_VOLUME:-taskhub-data}"
+    )
+    assert controller["environment"]["TASKHUB_MODEL_ACCOUNTS_VOLUME_SUBPATH"] == (
+        "config/model-accounts/node-runtime"
+    )
     assert "/var/run/docker.sock:/var/run/docker.sock:ro" in proxy["volumes"]
     assert "ports" not in proxy
     assert proxy["environment"]["AUTH"] == 0
@@ -94,6 +104,8 @@ def test_release_images_pin_codex_and_node_has_common_role_tools():
     assert "ARG CODEX_VERSION=" in seed
     assert "CODEX_RELEASE=\"${CODEX_VERSION}\"" in seed
     assert "TASKHUB_CODEX_CLI_BIN=/usr/local/bin/codex" in seed
+    assert "ARG NPM_REGISTRY=" in seed
+    assert "npm config set registry" in seed
     assert "ARG DEBIAN_MIRROR=" in seed
     assert "ARG DEBIAN_SECURITY_MIRROR=" in seed
     assert "HEALTHCHECK" in seed and "  CMD if [ -n" in seed
@@ -105,6 +117,7 @@ def test_release_images_pin_codex_and_node_has_common_role_tools():
     for name in ("build-images.sh", "build-images.ps1"):
         build_script = (RELEASE / name).read_text(encoding="utf-8-sig")
         assert "TASKHUB_COMMIT" in build_script
+        assert "NPM_REGISTRY" in build_script
         assert "--provenance=false" in build_script
         assert "DEBIAN_MIRROR" in build_script
         assert "DEBIAN_SECURITY_MIRROR" in build_script
@@ -128,6 +141,27 @@ def test_initializers_never_request_sudo_credentials():
         assert "sudo -s" not in text
         assert "sudo_password" not in text
         assert "docker info" in text
+
+
+def test_online_initializers_preload_seed_and_node_images():
+    shell = (RELEASE / "init.sh").read_text(encoding="utf-8")
+    shell_online = shell.split("else\n  for image in \\", 1)[1].split(
+        "fi\nverify_image_platforms", 1
+    )[0]
+    assert "TASKHUB_NODE_IMAGE" in shell_online
+
+    powershell = (RELEASE / "init.ps1").read_text(encoding="utf-8-sig")
+    powershell_online = powershell.split("} else {\n    foreach ($Image in @(", 1)[1].split(
+        "    )) {", 1
+    )[0]
+    assert "TASKHUB_NODE_IMAGE" in powershell_online
+
+    env_example = (RELEASE / ".env.example").read_text(encoding="utf-8")
+    assert re.search(r"^TASKHUB_SEED_IMAGE=ghcr\.io/gryps/taskhub-seed:", env_example, re.M)
+    assert re.search(r"^TASKHUB_NODE_IMAGE=ghcr\.io/gryps/taskhub-node:", env_example, re.M)
+
+    assert 'put_env_value TASKHUB_NODE_IMAGE "taskhub-node:$offline_version"' in shell
+    assert 'Set-EnvValue "TASKHUB_NODE_IMAGE" "taskhub-node:$OfflineVersion"' in powershell
 
 
 def test_release_kit_has_no_site_specific_paths_or_addresses():

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=46">
+  <link rel="stylesheet" href="/static/styles.css?v=56">
 </head>
 <body>
   <header class="app-header">
@@ -59,7 +59,7 @@
       </div>
       <div id="onboarding-result" class="onboarding-result" role="status">
         <div><span class="eyebrow">SYSTEM READINESS</span><h2 id="onboarding-message">正在检测初始化状态</h2></div>
-        <strong id="onboarding-progress">0/7</strong>
+        <strong id="onboarding-progress">0/6</strong>
       </div>
       <div id="onboarding-seed-facts" class="onboarding-facts"></div>
       <div id="onboarding-steps" class="onboarding-steps"></div>
@@ -113,7 +113,8 @@
           <h2>创建项目</h2>
           <button id="close-project-form" type="button" class="icon-button secondary" title="关闭" aria-label="关闭">×</button>
         </div>
-        <p class="form-note">TaskHub 将自动创建权威 Git 仓库、控制中心工作副本并完成接入。</p>
+        <p class="form-note">先确认权威 Git 远端地址和 Seed 控制中心工作副本位置；TaskHub 验证边界后创建仓库并完成接入。</p>
+        <div class="git-service-context"><span><strong>Git 仓库服务</strong><small id="project-git-service">正在读取当前服务</small></span><button id="configure-project-git-service" type="button" class="secondary">配置 Git 服务</button></div>
         <div class="form-grid">
           <label>项目名称<input id="project-name" required maxlength="100" placeholder="例如：移动电商平台"></label>
           <label>项目类型<select id="project-type">
@@ -125,6 +126,8 @@
           </select></label>
           <label>项目编号（自动生成）<input id="project-id" required readonly></label>
           <label>基准分支<input id="project-branch" required value="main" maxlength="200"></label>
+          <label class="wide">Git 远端地址<input id="project-remote-url" required maxlength="1000" autocomplete="off" spellcheck="false" placeholder="ssh://git@example.com/srv/git/project.git"><span class="field-help">创建位置必须位于 Seed 配置的权威 Git 根目录，地址中不得包含密码或令牌。</span></label>
+          <label class="wide">控制中心工作副本位置<input id="project-local-path" required maxlength="1000" autocomplete="off" spellcheck="false" placeholder="/var/lib/taskhub/repositories/project"><span class="field-help">必须位于 Seed 的托管项目目录内，不能与现有目录重复。</span></label>
           <label class="wide">测试命令（每行一条）<textarea id="project-tests" rows="3" placeholder="python3 -m pytest -q"></textarea></label>
           <label class="wide">验收命令（每行一条，可选）<textarea id="project-acceptance" rows="3" placeholder="python3 -m pytest tests/acceptance -q"></textarea></label>
           <label class="wide"><input id="project-test-database" type="checkbox"> 验收需要隔离 PostgreSQL 测试数据库</label>
@@ -139,11 +142,14 @@
           <h2>接入项目</h2>
           <button id="close-attach-project-form" type="button" class="icon-button secondary" title="关闭" aria-label="关闭">×</button>
         </div>
-        <p class="form-note">从 192.168.31.3 权威 Git 仓库选择项目，TaskHub 将自动创建控制中心工作副本。</p>
+        <p class="form-note">填写已有 Git 远端地址和 Seed 控制中心工作副本位置；可从发现列表选择后再确认或修改。</p>
+        <div class="git-service-context"><span><strong>Git 仓库服务</strong><small id="attach-project-git-service">正在读取当前服务</small></span><button id="configure-attach-git-service" type="button" class="secondary">配置 Git 服务</button></div>
         <div class="form-grid">
-          <label>Git 项目<select id="attach-project-repository" required></select></label>
+          <label>发现的 Git 仓库（可选）<select id="attach-project-repository"></select></label>
           <label>基准分支<input id="attach-project-branch" required value="main" maxlength="200"></label>
           <label class="wide">项目名称<input id="attach-project-name" required maxlength="100"></label>
+          <label class="wide">Git 远端地址<input id="attach-project-remote-url" required maxlength="1000" autocomplete="off" spellcheck="false" placeholder="ssh://git@example.com/srv/git/project.git"><span class="field-help">必须指向 Seed 权威 Git 根目录内已存在的裸仓库。</span></label>
+          <label class="wide">控制中心工作副本位置<input id="attach-project-local-path" required maxlength="1000" autocomplete="off" spellcheck="false" placeholder="/var/lib/taskhub/repositories/project"><span class="field-help">TaskHub 将把远端仓库克隆到此位置；目录必须尚不存在。</span></label>
           <label class="wide">测试命令（每行一条）<textarea id="attach-project-tests" rows="3"></textarea></label>
           <label class="wide">验收命令（每行一条，可选）<textarea id="attach-project-acceptance" rows="3"></textarea></label>
           <label class="wide"><input id="attach-project-test-database" type="checkbox"> 验收需要隔离 PostgreSQL 测试数据库</label>
@@ -424,7 +430,7 @@
           <div><dt>建议操作</dt><dd id="blocking-action"></dd></div>
         </dl>
         <div class="actions">
-          <button id="approve">批准计划</button>
+          <button id="approve">继续</button>
           <button id="configure-resources" type="button" class="secondary hidden">更换节点/模型</button>
           <button id="add-evidence" type="button" class="secondary hidden">补充证据</button>
           <button id="manual" class="secondary hidden">平台处置</button>
@@ -467,14 +473,17 @@
     <section id="resource-page" class="resource-page hidden">
     <div class="resource-title page-head">
       <div class="page-head-copy">
-        <span class="eyebrow">CONTROL PLANE</span><h1>系统配置</h1>
-        <p>管理模型、物理主机、工作节点和平台运行条件。</p>
+        <span class="eyebrow">SEED CONTROL PLANE</span><h1>系统配置</h1>
+        <p>确认 Seed 运行状态，并在 Seed 本机 Docker 中创建和管理 TaskHub 节点。</p>
       </div>
       <div class="page-actions"><button id="open-onboarding" type="button" class="secondary">首次启动向导</button></div>
     </div>
-    <div data-public-image-downloads></div>
-    <details id="system-disclosure" class="providers-section resource-disclosure" open>
-      <summary><span class="resource-disclosure-heading"><span class="resource-order">01</span><span><strong>运行概览</strong><small>角色环境与系统就绪状态</small></span></span><span id="system-summary" class="muted">正在检查</span></summary>
+    <nav class="system-setup-flow" aria-label="TaskHub 节点配置流程">
+      <button type="button" data-resource-target="system-disclosure"><span>01</span><strong>确认 Seed</strong><small>控制面与持久化</small></button>
+      <button type="button" data-resource-target="nodes-disclosure"><span>02</span><strong>部署本机节点</strong><small>角色与运行配额</small></button>
+    </nav>
+    <details id="system-disclosure" class="providers-section resource-disclosure primary-resource" open>
+      <summary><span class="resource-disclosure-heading"><span class="resource-order">01</span><span><strong>Seed 状态</strong><small>控制器、持久化与运行就绪</small></span></span><span id="system-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
         <span class="resource-caption">Seed 控制面、持久化和关键运行条件</span>
         <button id="refresh-system" class="secondary resource-refresh" title="刷新运行概览">↻ 刷新</button>
@@ -482,10 +491,61 @@
       <div id="system-readiness-banner" class="system-readiness-banner" role="status">正在判断任务运行条件</div>
       <div id="system-checks" class="resource-table"></div>
     </details>
-    <details id="providers-disclosure" class="providers-section resource-disclosure">
-      <summary><span class="resource-disclosure-heading"><span class="resource-order">02</span><span><strong>模型服务</strong><small>认证、角色路由与主备切换</small></span></span><span id="provider-summary" class="muted">正在检查</span></summary>
+    <details id="nodes-disclosure" class="providers-section resource-disclosure primary-resource">
+      <summary><span class="resource-disclosure-heading"><span class="resource-order">02</span><span><strong>TaskHub 节点</strong><small>Seed 本机 Docker 运行角色</small></span></span><span id="node-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
-        <span class="resource-caption">模型卡片同时呈现状态并管理认证、角色与主备路由</span>
+        <span class="resource-caption">统一查看节点注册、容器生命周期、负载和能力</span>
+        <button id="refresh-nodes" class="secondary resource-refresh" title="刷新工作节点">↻ 刷新</button>
+      </div>
+      <div class="resource-subsection-head"><strong>调度与 Agent 状态</strong><span>容器运行不等于节点可调度</span></div>
+      <div id="nodes" class="management-card-grid"></div>
+      <details id="create-node-disclosure" class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>创建节点</strong><span id="container-summary" class="muted">正在检查</span></summary>
+      <form id="container-form" class="project-form resource-form">
+        <div class="management-form-grid node-configuration-grid">
+          <section class="configuration-card"><header><div><h3>节点身份</h3><p>节点固定运行在 Seed 本机</p></div></header><div class="configuration-card-fields">
+            <label>节点 ID<input id="container-node-id" required minlength="2" maxlength="32" pattern="[a-z0-9][a-z0-9_-]{1,31}" placeholder="worker-01"></label>
+            <label>节点角色<select id="container-role" required>
+              <option value="execution">执行节点</option>
+              <option value="test">测试节点</option>
+              <option value="preproduction">预生产节点</option>
+            </select></label>
+          </div></section>
+          <section class="configuration-card"><header><div><h3>运行配额</h3><p>控制并发能力和容器资源上限</p></div></header><div class="configuration-card-fields">
+            <label>并发任务数<input id="container-slots" type="number" min="1" max="16" value="1" required></label>
+          </div></section>
+        </div>
+        <p class="form-help">节点使用高级设置中的统一工作镜像，并由 Seed 本机 Docker 创建和管理。</p>
+        <div class="form-actions">
+          <button id="create-container" type="submit">创建并启动</button>
+          <span id="container-message" role="status"></span>
+        </div>
+      </form>
+      </details>
+      <div id="managed-containers" class="management-card-grid"></div>
+      <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>资源负载</strong><span id="load-summary" class="muted">正在检查</span></summary>
+      <div id="node-load" class="resource-table"></div>
+      </details>
+      <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>日志与诊断</strong><span>节点日志、最后错误、资源和槽位占用</span></summary>
+      <div class="diagnostic-toolbar">
+        <label>工作节点<select id="diagnostic-node"><option value="">请选择节点</option></select></label>
+        <button id="load-node-diagnostics" type="button" class="secondary">读取诊断</button>
+        <a id="export-diagnostics" class="button-link secondary" href="/api/diagnostics/export" download>导出脱敏诊断包</a>
+        <span id="diagnostic-message" role="status"></span>
+      </div>
+      <div id="node-diagnostics" class="diagnostic-grid"><p class="muted">选择节点后读取最近日志和资源状态。</p></div>
+      </details>
+      <details class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>能力与前置条件</strong><span id="acceptance-prerequisites-summary" class="muted">正在检查</span></summary>
+      <div id="acceptance-prerequisites" class="resource-table"></div>
+      </details>
+    </details>
+    <details id="providers-disclosure" class="providers-section resource-disclosure advanced-resource">
+      <summary><span class="resource-disclosure-heading"><span class="resource-order">03</span><span><strong>模型服务</strong><small>高级 · 认证、角色路由与主备切换</small></span></span><span id="provider-summary" class="muted">正在检查</span></summary>
+      <div class="section-head resource-actions">
+        <span class="resource-caption">节点基础设施就绪后，再配置任务使用的模型和路由</span>
         <button id="refresh-providers" class="secondary resource-refresh" title="刷新模型状态">↻ 刷新</button>
       </div>
       <form id="model-services-form" class="project-form resource-form configuration-form">
@@ -507,149 +567,17 @@
       <div id="model-config-audit" class="resource-table"></div>
       </details>
     </details>
-    <details id="hosts-disclosure" class="providers-section resource-disclosure">
-      <summary><span class="resource-disclosure-heading"><span class="resource-order">03</span><span><strong>物理主机</strong><small>SSH 准入、承载能力与维护状态</small></span></span><span id="host-summary" class="muted">正在检查</span></summary>
+    <details id="platform-disclosure" class="providers-section resource-disclosure advanced-resource">
+      <summary><span class="resource-disclosure-heading"><span class="resource-order">04</span><span><strong>高级设置</strong><small>镜像策略、安全、备份与平台参数</small></span></span><span id="platform-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">
-        <span class="resource-caption">承载工作节点的 Docker 主机</span>
-        <button id="refresh-hosts" class="secondary resource-refresh" title="刷新物理主机">↻ 刷新</button>
-      </div>
-      <details class="resource-subdisclosure">
-      <summary class="resource-subsection-head"><strong>登记远程 SSH 主机</strong><span>先检测并确认指纹，再加密保存凭据</span></summary>
-      <form id="host-form" class="project-form resource-form configuration-form">
-        <p class="form-note">使用专用 SSH 私钥。私钥只用于本次请求，保存时由 Seed 加密；API 和页面不会回显。当前支持 Linux Docker 主机。</p>
-        <div class="management-form-grid">
-          <section class="configuration-card"><header><div><h3>主机标识</h3><p>节点库存中的唯一身份</p></div></header><div class="configuration-card-fields">
-            <label>主机 ID<input id="host-id" required minlength="2" maxlength="32" pattern="[a-z0-9][a-z0-9_-]{1,31}" placeholder="worker-host-01"></label>
-            <label>显示名称<input id="host-name" required maxlength="100" placeholder="测试服务器"></label>
-            <label class="wide">标签<input id="host-labels" maxlength="300" placeholder="linux,ssd,internal"></label>
-            <label class="wide">备注<textarea id="host-notes" maxlength="1000" rows="2"></textarea></label>
-          </div></section>
-          <section class="configuration-card"><header><div><h3>SSH 与 Docker</h3><p>Seed 连接和执行容器操作的方式</p></div></header><div class="configuration-card-fields">
-            <label>IP 或主机名<input id="host-address" required maxlength="253" placeholder="192.168.31.60"></label>
-            <label>SSH 端口<input id="host-port" type="number" min="1" max="65535" value="22" required></label>
-            <label>SSH 用户<input id="host-user" required maxlength="32" pattern="[a-z_][a-z0-9_-]{0,31}" placeholder="taskhub"></label>
-            <label>Docker 权限<select id="host-docker-access">
-              <option value="direct">用户直接执行 Docker</option>
-              <option value="sudo">免密 sudo 执行 Docker</option>
-            </select></label>
-            <label class="wide">SSH 私钥<textarea id="host-private-key" required maxlength="32768" rows="5" autocomplete="off" spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></label>
-          </div></section>
-          <section class="configuration-card"><header><div><h3>承载角色</h3><p>限制该主机允许创建的节点类型</p></div></header><div class="configuration-card-fields">
-            <fieldset class="wide role-selector"><legend>允许承载的节点角色</legend>
-              <label><input type="checkbox" name="host-role" value="execution" checked>执行节点</label>
-              <label><input type="checkbox" name="host-role" value="test" checked>测试节点</label>
-              <label><input type="checkbox" name="host-role" value="preproduction" checked>预生产节点</label>
-            </fieldset>
-          </div></section>
-        </div>
-        <div id="host-fingerprint-panel" class="host-fingerprint hidden">
-          <span>检测到的 SSH 主机指纹</span><code id="host-fingerprint">—</code>
-          <label><input id="host-fingerprint-confirmed" type="checkbox"> 我已通过可信渠道核对并确认该指纹</label>
-        </div>
-        <div class="form-actions configuration-actions">
-          <button id="probe-host" type="button" class="secondary">检测主机指纹</button>
-          <button id="save-host" type="submit" disabled>确认并登记主机</button>
-          <span id="host-message" role="status"></span>
-        </div>
-      </form>
-      </details>
-      <div id="physical-hosts" class="management-card-grid"></div>
-      <details class="resource-subdisclosure">
-      <summary class="resource-subsection-head"><strong>批量迁移与重建</strong><span>源主机卷保留，目标主机按期望状态重建</span></summary>
-      <form id="host-rebuild-form" class="project-form resource-form compact-operation-form">
-        <div class="form-grid configuration-grid">
-          <label>源主机<select id="host-rebuild-source" required></select></label>
-          <label>目标主机<select id="host-rebuild-target" required></select></label>
-          <label class="wide">节点 ID（可选）<input id="host-rebuild-nodes" maxlength="1000" placeholder="留空表示源主机全部节点，多个 ID 用逗号分隔"></label>
-        </div>
-        <p class="form-help">跨主机重建不会复制节点数据卷；源主机卷保留用于回退。无状态执行节点可直接迁移，有状态节点应先导出业务数据。</p>
-        <div class="form-actions"><button type="submit">开始批量重建</button><span id="host-rebuild-message" role="status"></span></div>
-      </form>
-      </details>
-      <details class="resource-subdisclosure">
-      <summary class="resource-subsection-head"><strong>最近主机操作</strong><span>不记录私钥原文</span></summary>
-      <div id="host-config-audit" class="resource-table"></div>
-      </details>
-    </details>
-    <details id="nodes-disclosure" class="providers-section resource-disclosure">
-      <summary><span class="resource-disclosure-heading"><span class="resource-order">04</span><span><strong>工作节点</strong><small>调度、容器、负载与诊断</small></span></span><span id="node-summary" class="muted">正在检查</span></summary>
-      <div class="section-head resource-actions">
-        <span class="resource-caption">统一查看节点注册、容器生命周期、负载和能力</span>
-        <button id="refresh-nodes" class="secondary resource-refresh" title="刷新工作节点">↻ 刷新</button>
-      </div>
-      <div class="resource-subsection-head"><strong>调度与 Agent 状态</strong><span>容器运行不等于节点可调度</span></div>
-      <div id="nodes" class="management-card-grid"></div>
-      <details class="resource-subdisclosure">
-      <summary class="resource-subsection-head"><strong>创建节点</strong><span id="container-summary" class="muted">正在检查</span></summary>
-      <form id="container-form" class="project-form resource-form">
-        <div class="management-form-grid node-configuration-grid">
-          <section class="configuration-card"><header><div><h3>节点身份</h3><p>指定部署位置和运行角色</p></div></header><div class="configuration-card-fields">
-            <label>目标主机<select id="container-target" required><option value="local">Seed 本机</option></select></label>
-            <label>节点 ID<input id="container-node-id" required minlength="2" maxlength="32" pattern="[a-z0-9][a-z0-9_-]{1,31}" placeholder="worker-01"></label>
-            <label>节点角色<select id="container-role" required>
-              <option value="execution">执行节点</option>
-              <option value="test">测试节点</option>
-              <option value="preproduction">预生产节点</option>
-            </select></label>
-          </div></section>
-          <section class="configuration-card"><header><div><h3>运行配额</h3><p>控制并发能力和容器资源上限</p></div></header><div class="configuration-card-fields">
-            <label>并发任务数<input id="container-slots" type="number" min="1" max="16" value="1" required></label>
-            <label class="remote-node-field hidden">Agent 访问端口<input id="container-host-port" type="number" min="1024" max="65535" value="8020"></label>
-            <label class="remote-node-field hidden">CPU 限额<input id="container-cpu-limit" maxlength="32" placeholder="留空使用平台默认值"></label>
-            <label class="remote-node-field hidden">内存限额<input id="container-memory-limit" maxlength="32" placeholder="例如 4g"></label>
-          </div></section>
-        </div>
-        <p class="form-help">远程节点将使用平台设置中的统一工作镜像；目标主机必须已通过 SSH 准入，并允许承载所选角色。</p>
-        <div class="form-actions">
-          <button id="create-container" type="submit">创建并启动</button>
-          <span id="container-message" role="status"></span>
-        </div>
-      </form>
-      </details>
-      <div id="managed-containers" class="management-card-grid"></div>
-      <details id="node-upgrade-disclosure" class="resource-subdisclosure">
-      <summary class="resource-subsection-head"><strong>节点镜像升级</strong><span>后台校验新镜像，失败时自动恢复原版本</span></summary>
-      <form id="node-upgrade-form" class="project-form resource-form compact-operation-form">
-        <section class="configuration-card node-upgrade-card">
-          <header><div><h3>升级工作节点</h3><p>保留节点数据卷和独立凭据，仅替换目标容器</p></div></header>
-          <div class="configuration-card-fields">
-            <label>远程节点<select id="upgrade-node" required><option value="">请选择节点</option></select></label>
-            <label>目标镜像<input id="upgrade-image" required maxlength="512" placeholder="ghcr.io/gryps/taskhub-node:新版本"></label>
-          </div>
-          <p class="form-help node-upgrade-help">系统依次执行镜像获取、摘要与架构校验、容器替换和 Agent 健康检查。新版本失败时使用原镜像和原数据卷自动回滚。</p>
-          <div class="form-actions">
-            <button id="upgrade-node-submit" type="submit">开始升级</button>
-            <span id="upgrade-node-message" role="status"></span>
-          </div>
-        </section>
-      </form>
-      </details>
-      <details class="resource-subdisclosure">
-      <summary class="resource-subsection-head"><strong>资源负载</strong><span id="load-summary" class="muted">正在检查</span></summary>
-      <div id="node-load" class="resource-table"></div>
-      </details>
-      <details class="resource-subdisclosure">
-      <summary class="resource-subsection-head"><strong>日志与诊断</strong><span>节点日志、最后错误、资源和槽位占用</span></summary>
-      <div class="diagnostic-toolbar">
-        <label>工作节点<select id="diagnostic-node"><option value="">请选择节点</option></select></label>
-        <button id="load-node-diagnostics" type="button" class="secondary">读取诊断</button>
-        <a id="export-diagnostics" class="button-link secondary" href="/api/diagnostics/export" download>导出脱敏诊断包</a>
-        <span id="diagnostic-message" role="status"></span>
-      </div>
-      <div id="node-diagnostics" class="diagnostic-grid"><p class="muted">选择节点后读取最近日志和资源状态。</p></div>
-      </details>
-      <details class="resource-subdisclosure">
-      <summary class="resource-subsection-head"><strong>能力与前置条件</strong><span id="acceptance-prerequisites-summary" class="muted">正在检查</span></summary>
-      <div id="acceptance-prerequisites" class="resource-table"></div>
-      </details>
-    </details>
-    <details id="platform-disclosure" class="providers-section resource-disclosure">
-      <summary><span class="resource-disclosure-heading"><span class="resource-order">05</span><span><strong>平台设置</strong><small>镜像、网络、备份与访问安全</small></span></span><span id="platform-summary" class="muted">正在检查</span></summary>
-      <div class="section-head resource-actions">
-        <span class="resource-caption">镜像、内部网络与配置生效边界</span>
+        <span class="resource-caption">低频平台参数；日常节点部署请使用上方 TaskHub 节点</span>
         <button id="refresh-platform" class="secondary resource-refresh" title="刷新平台设置">↻ 刷新</button>
       </div>
       <div id="platform-settings" class="management-card-grid"></div>
+      <section class="resource-subdisclosure">
+      <div class="resource-subsection-head"><strong>公开工作节点镜像</strong><span>初始化时由 Seed 拉取，创建节点时直接使用</span></div>
+      <div data-public-image-downloads data-image-role="node"></div>
+      </section>
       <details id="capability-inventory-disclosure" class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>能力包库存</strong><span id="capability-inventory-summary">正在读取</span></summary>
       <div class="capability-inventory-surface">
@@ -669,11 +597,19 @@
         <p class="form-help">业务备份包含敏感材料，不通过浏览器下载；请存放在受控、加密的备份介质中。</p>
       </div>
       </details>
-      <details class="resource-subdisclosure">
+      <details id="platform-config-disclosure" class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>可管理平台参数</strong><span id="platform-config-state">正在读取</span></summary>
       <form id="platform-settings-form" class="project-form resource-form configuration-form">
         <p class="form-note">数据库连接、会话密钥、配置加密主密钥和节点令牌属于启动根配置，不能从 Web 读取或修改。</p>
         <div class="management-form-grid platform-configuration-grid">
+          <section id="platform-git-service-card" class="configuration-card"><header><div><h3>Git 仓库服务</h3><p>项目仓库的 SSH 主机、边界和加密凭据</p></div></header><div class="configuration-card-fields">
+            <label>SSH 用户与主机<input id="platform-git-host" required maxlength="253" autocomplete="off" spellcheck="false" placeholder="git@192.168.31.20"></label>
+            <label>SSH 端口<input id="platform-git-port" type="number" min="1" max="65535" required value="22"></label>
+            <label class="wide">权威仓库根目录<input id="platform-git-root" required maxlength="1000" autocomplete="off" spellcheck="false" placeholder="/srv/git"><small>创建和发现的裸仓库必须直接位于此目录。</small></label>
+            <label class="wide">Seed 工作副本根目录<input id="platform-managed-repository-root" required maxlength="1000" autocomplete="off" spellcheck="false" placeholder="/var/lib/taskhub/repositories"><small>项目代码克隆到 Seed 持久化数据卷中的此目录。</small></label>
+            <label class="wide">替换 SSH 私钥<textarea id="platform-git-private-key" rows="5" maxlength="32768" autocomplete="new-password" spellcheck="false" placeholder="留空保留现有私钥"></textarea><small id="platform-git-private-key-state" class="credential-state">未配置；将使用 Seed 运行身份</small></label>
+            <div class="form-actions wide"><button id="test-git-service" type="button" class="secondary">测试 Git 服务</button><span id="git-service-test-message" role="status"></span></div>
+          </div></section>
           <section class="configuration-card"><header><div><h3>访问地址</h3><p>浏览器入口与 Agent 回连目标</p></div></header><div class="configuration-card-fields platform-address-fields">
             <label>Seed 对外地址<input id="platform-seed-url" type="url" maxlength="500" placeholder="http://taskhub.example:8200"></label>
             <label>Node Agent 回连地址<input id="platform-callback-url" type="url" maxlength="500" placeholder="http://taskhub.example:8200"></label>
@@ -736,9 +672,9 @@
   </main>
   <script src="/static/revision-center.js?v=1"></script>
   <script src="/static/capability-center.js?v=1"></script>
-  <script src="/static/app.js?v=19"></script>
+  <script src="/static/app.js?v=26"></script>
   <script src="/static/task-center.js?v=13"></script>
-  <script src="/static/resource-center.js?v=25"></script>
-  <script src="/static/onboarding.js?v=2"></script>
+  <script src="/static/resource-center.js?v=38"></script>
+  <script src="/static/onboarding.js?v=3"></script>
 </body>
 </html>

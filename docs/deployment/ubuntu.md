@@ -28,7 +28,7 @@ chmod +x ./*.sh
 ./init.sh
 ```
 
-脚本会生成权限受限的 `.env`、拉取缺少的镜像、创建初始自签名 TLS 证书、启动 Compose，并等待 HTTPS 健康检查。首次访问 `https://主机IP:8200`，确认初始证书指纹后，从 `.env` 读取一次性的 `TASKHUB_ADMIN_TOKEN` 设置管理员密码。对外开放前应把 `tls/taskhub.crt` 和 `tls/taskhub.key` 替换为企业 CA 或公开 CA 证书。
+脚本会生成权限受限的 `.env`，预拉取 Seed、Node、PostgreSQL 和 Socket Proxy 镜像，启动 Seed 控制面并等待 HTTPS 健康检查。工作节点随后由 Web 在 Seed 本机 Docker 中创建。首次访问 `https://主机IP:8200`，确认初始证书指纹后，从 `.env` 读取一次性的 `TASKHUB_ADMIN_TOKEN` 设置管理员密码。对外开放前应把 `tls/taskhub.crt` 和 `tls/taskhub.key` 替换为企业 CA 或公开 CA 证书。
 
 控制器不直接挂载 Docker Socket；内部 Socket Proxy 只开放容器、镜像、网络、卷和只读系统信息 API，并且不发布宿主机端口。
 
@@ -49,7 +49,7 @@ chmod +x ./*.sh
 ./init.sh
 ```
 
-初始化先用 `SHA256SUMS` 校验镜像包、清单和 Compose，再执行 `docker load`。ARM64 主机必须使用 `TASKHUB_PLATFORM=linux/arm64` 单独生成的包。
+初始化先用 `SHA256SUMS` 校验镜像包、清单和 Compose，再执行 `docker load`。离线包包含 Node 镜像，供 Seed 本机创建工作节点。ARM64 主机必须使用 `TASKHUB_PLATFORM=linux/arm64` 单独生成的包。
 
 ## 升级
 

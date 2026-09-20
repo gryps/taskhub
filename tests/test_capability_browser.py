@@ -106,6 +106,14 @@ def test_capability_cards_lock_design_and_do_not_overflow(tmp_path, width):
         page.locator("#platform-disclosure > summary").click()
         page.locator("#capability-inventory-disclosure > summary").click()
         expect(page.locator(".capability-inventory-card")).to_have_count(7)
+        first_card_box = page.locator(".capability-inventory-card").first.bounding_box()
+        first_fact_label_box = page.locator(".capability-inventory-card dt").first.bounding_box()
+        first_summary = page.locator(".capability-inventory-card > p").first
+        disclosure_box = page.locator("#capability-inventory-disclosure").bounding_box()
+        expected_inset = 10 if width == 390 else 15
+        assert first_card_box["x"] >= disclosure_box["x"] + expected_inset
+        assert first_fact_label_box["x"] >= first_card_box["x"] + 14
+        assert first_summary.evaluate("element => getComputedStyle(element).paddingLeft") == "15px"
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         assert not errors
         browser.close()

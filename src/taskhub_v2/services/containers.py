@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from taskhub_v2.domain.models import NodeDefinition
 from taskhub_v2.security.node_credentials import NodeCredentialError
 from taskhub_v2.services.container_diagnostics import container_resources, docker_log_text
+from taskhub_v2.services.container_runtime import node_runtime_configuration
 from taskhub_v2.services.docker_engine import DockerSocketClient, DockerUnavailableError
 from taskhub_v2.services.node_inventory import NodeInventoryMixin
 
@@ -44,6 +45,9 @@ class ContainerManager(NodeInventoryMixin):
         image: str,
         node_token: str,
         nodes_file: str,
+        data_volume_name: str = "",
+        model_accounts_volume_subpath: str = "",
+        openai_proxy_url: str = "",
         credentials=None,
         client=None,
         operation_log=None,
@@ -54,6 +58,9 @@ class ContainerManager(NodeInventoryMixin):
         self.node_token = node_token
         self.credentials = credentials
         self.nodes_file = Path(nodes_file)
+        self.data_volume_name = data_volume_name
+        self.model_accounts_volume_subpath = model_accounts_volume_subpath.strip("/")
+        self.openai_proxy_url = openai_proxy_url
         self.client = client or DockerSocketClient(socket_path)
         self.operation_log = operation_log
         self.lock = RLock()
@@ -154,6 +161,12 @@ class ContainerManager(NodeInventoryMixin):
             "exec runuser -u taskhub -- python -m uvicorn "
             "taskhub_v2.node_agent:create_node_app --factory --host 0.0.0.0 --port 8020"
         )
+        runtime_environment, runtime_host_config = node_runtime_configuration(
+            request.role,
+            self.data_volume_name,
+            self.model_accounts_volume_subpath,
+            self.openai_proxy_url,
+        )
         payload = {
             "Image": self.image,
             "User": "0:0",
@@ -168,6 +181,7 @@ class ContainerManager(NodeInventoryMixin):
                 f"TASKHUB_NODE_SLOTS={request.slots}",
                 "TASKHUB_NODE_TOKEN=__TASKHUB_NODE_CREDENTIAL__",
                 "TASKHUB_NODE_WORK_ROOT=/var/lib/taskhub-node/jobs",
+                *runtime_environment,
             ],
             "Cmd": ["sh", "-c", node_command],
             "Healthcheck": {
@@ -189,6 +203,7 @@ class ContainerManager(NodeInventoryMixin):
                 "Binds": [f"{name}-data:/var/lib/taskhub-node"],
                 "NetworkMode": self.network,
                 "RestartPolicy": {"Name": "unless-stopped"},
+                **runtime_host_config,
             },
         }
         with self.lock:

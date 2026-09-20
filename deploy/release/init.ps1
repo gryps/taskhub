@@ -76,8 +76,8 @@ if (-not $StandardDataExists -and -not $StandardPostgresExists -and $LegacyDataE
 
 Ensure-EnvValue "TASKHUB_VERSION" "0.1.0-alpha"
 Ensure-EnvValue "TASKHUB_PORT" "8200"
-Ensure-EnvValue "TASKHUB_SEED_IMAGE" "taskhub-seed:0.1.0-alpha"
-Ensure-EnvValue "TASKHUB_NODE_IMAGE" "taskhub-node:0.1.0-alpha"
+Ensure-EnvValue "TASKHUB_SEED_IMAGE" "ghcr.io/gryps/taskhub-seed:0.1.0-alpha"
+Ensure-EnvValue "TASKHUB_NODE_IMAGE" "ghcr.io/gryps/taskhub-node:0.1.0-alpha"
 Ensure-EnvValue "TASKHUB_POSTGRES_IMAGE" "postgres:16-alpine"
 Ensure-EnvValue "TASKHUB_DOCKER_PROXY_IMAGE" "ghcr.io/tecnativa/docker-socket-proxy:v0.5.0"
 Ensure-EnvValue "TASKHUB_DATA_VOLUME" $DataVolume
@@ -94,6 +94,7 @@ Ensure-EnvValue "TASKHUB_LOGIN_MAX_FAILURES" "5"
 Ensure-EnvValue "TASKHUB_LOGIN_WINDOW_SECONDS" "900"
 Ensure-EnvValue "TASKHUB_LOGIN_LOCK_SECONDS" "900"
 Ensure-EnvValue "TASKHUB_OPENAI_PROXY_URL" ""
+Ensure-EnvValue "TASKHUB_WORKER_MODE" "git"
 Ensure-Secret "TASKHUB_POSTGRES_PASSWORD" (New-HexSecret 24)
 Ensure-Secret "TASKHUB_ADMIN_TOKEN" (New-HexSecret 24)
 Ensure-Secret "TASKHUB_SESSION_SECRET" (New-HexSecret 48)
@@ -110,6 +111,9 @@ if ($Archive) {
         $Actual = (Get-FileHash -Algorithm SHA256 $Target).Hash.ToLowerInvariant()
         if ($Actual -ne $Parts[0].ToLowerInvariant()) { throw "校验失败: $Target" }
     }
+    $OfflineVersion = Get-EnvValue "TASKHUB_VERSION"
+    Set-EnvValue "TASKHUB_SEED_IMAGE" "taskhub-seed:$OfflineVersion"
+    Set-EnvValue "TASKHUB_NODE_IMAGE" "taskhub-node:$OfflineVersion"
     $Manifest = Get-Content (Join-Path $Root "manifest.json") -Raw | ConvertFrom-Json
     $ServerArch = docker version --format '{{.Server.Arch}}'
     if ($ServerArch -eq "x86_64") { $ServerArch = "amd64" }

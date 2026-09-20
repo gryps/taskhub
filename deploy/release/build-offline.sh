@@ -20,6 +20,11 @@ if [ -e "$output" ]; then
 fi
 mkdir -p "$output/images" "$output/docs"
 cp "$script_root/README.md" "$script_root/compose.yaml" "$script_root/.env.example" "$output/"
+sed -i.bak \
+  -e "s|^TASKHUB_SEED_IMAGE=.*|TASKHUB_SEED_IMAGE=taskhub-seed:${version}|" \
+  -e "s|^TASKHUB_NODE_IMAGE=.*|TASKHUB_NODE_IMAGE=taskhub-node:${version}|" \
+  "$output/.env.example"
+rm "$output/.env.example.bak"
 cp "$script_root"/*.sh "$script_root"/*.ps1 "$output/"
 cp "$repo_root/docs/deployment/ubuntu.md" "$repo_root/docs/deployment/windows-docker-desktop.md" "$output/docs/"
 

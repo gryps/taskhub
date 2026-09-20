@@ -184,6 +184,7 @@ button {
 .revision-impact summary { cursor: pointer; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
 .revision-impact p { margin: 4px 0 9px; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
 .capability-surface, .capability-current-card, .capability-inventory-surface { display: grid; gap: 14px; }
+.capability-inventory-surface { padding: 16px; }
 .capability-card-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .capability-option-card { display: grid; align-content: start; gap: 12px; min-width: 0; }
 .capability-option-card > details { border-top: 1px solid var(--border); padding-top: 9px; }
@@ -203,11 +204,11 @@ button {
 .capability-migrations h4 { margin: 0; font-size: 13px; }
 .capability-inventory-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .capability-inventory-card { display: grid; gap: 10px; min-width: 0; }
-.capability-inventory-card dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.capability-inventory-card dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 2px 15px 0; }
 .capability-inventory-card dl div { min-width: 0; }
 .capability-inventory-card dt { color: var(--text-tertiary); font-size: 12px; }
 .capability-inventory-card dd { margin: 2px 0 0; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
-.capability-inventory-card > p { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.capability-inventory-card > p { margin: 0; padding: 0 15px 14px; color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
 .capability-executable-confirm { display: flex; align-items: flex-start; gap: 7px; color: var(--warning); font-size: 12px; }
 @media (max-width: 680px) {
   .revision-card-list, .revision-task-picker > div { grid-template-columns: 1fr; }
@@ -433,6 +434,15 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .project-form { padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
 .project-form h2 { margin: 0; }
 .form-note { color: var(--text-secondary); font-size: 12px; margin: 8px 0 18px; }
+.git-service-context {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  margin: -4px 0 18px; padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: 9px; background: var(--surface-subtle);
+}
+.git-service-context span { display: grid; gap: 3px; min-width: 0; }
+.git-service-context strong { font-size: 13px; }
+.git-service-context small { color: var(--text-secondary); overflow-wrap: anywhere; }
+.git-service-context button { flex: 0 0 auto; }
 .form-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; }
 .form-grid .wide { grid-column: 1 / -1; }
 .form-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
@@ -528,8 +538,37 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .blocking-metadata dd { margin: 3px 0 0; font-size: 12px; overflow-wrap: anywhere; }
 
 .resource-title h1 { margin-top: 3px; }
+.system-setup-flow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.system-setup-flow button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 2px 10px;
+  min-height: 64px;
+  padding: 10px 12px;
+  border-color: var(--border);
+  color: var(--text);
+  background: var(--surface);
+  text-align: left;
+}
+.system-setup-flow button:hover { border-color: var(--accent); background: var(--accent-soft); }
+.system-setup-flow button > span {
+  grid-row: 1 / 3;
+  align-self: center;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+.system-setup-flow button strong { font-size: 13px; }
+.system-setup-flow button small { color: var(--text-secondary); font-size: 11px; }
 .providers-section { margin-top: 12px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
 .resource-page > .providers-section:first-of-type { margin-top: 0; }
+.advanced-resource { border-style: dashed; box-shadow: none; }
+.advanced-resource > summary { background: var(--surface-subtle); }
 .resource-disclosure { scroll-margin-top: 80px; }
 .resource-disclosure[open] { overflow: visible; }
 .resource-disclosure > summary {
@@ -850,7 +889,8 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 }
 .configuration-card-fields label { gap: 6px; font-size: 12px; }
 .configuration-card-fields input,
-.configuration-card-fields select { min-height: 38px; padding-block: 8px; }
+.configuration-card-fields select,
+.configuration-card-fields textarea { min-height: 38px; padding-block: 8px; }
 .configuration-card-fields .wide { grid-column: 1 / -1; }
 .platform-configuration-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .platform-address-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -905,16 +945,31 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .model-card-fields select { min-height: 38px; height: 38px; padding-block: 8px; }
 .model-card-fields small { color: var(--text-secondary); font-size: 12px; font-weight: 500; }
 .model-config-card.account-mode .api-model-field { display: none; }
-.model-role-selector { min-width: 0; margin: 0 14px 13px; padding: 10px 12px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.model-card-lower { display: grid; grid-template-columns: minmax(250px, 1.05fr) minmax(190px, .95fr); align-items: start; gap: 12px; padding: 0 14px 13px; }
+.model-role-selector { min-width: 0; margin: 0; padding: 8px 10px 10px; border: 1px solid var(--border); border-radius: 8px; }
 .model-role-selector legend { padding: 0 5px; color: var(--text-secondary); font-size: 12px; font-weight: 750; }
-.model-role-option { display: grid; grid-template-columns: 16px minmax(65px, 1fr) 100px; align-items: center; gap: 7px; min-height: 34px; font-size: 12px; }
+.model-role-help { display: block; margin: 0 0 7px; color: var(--text-tertiary); font-size: 11px; line-height: 1.5; }
+.model-role-option { display: grid; grid-template-columns: 16px minmax(58px, 1fr) 92px; align-items: center; gap: 6px; min-height: 30px; font-size: 12px; }
 .model-role-option input { width: 16px; margin: 0; }
-.model-role-option select { min-height: 32px; padding: 5px 8px; font-size: 12px; }
-.model-card-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 0 14px 13px; }
+.model-role-option select { min-height: 30px; padding: 4px 7px; font-size: 12px; }
+.model-card-actions { display: grid; align-content: start; gap: 9px; min-width: 0; padding: 3px 0 0; }
+.model-card-action-buttons { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
 .model-card-actions button { min-height: 32px; padding: 5px 10px; font-size: 12px; }
 .model-card-actions .model-remove { color: var(--danger); border-color: #dda99e; }
-.model-card-status { flex: 1 1 100%; color: var(--text-secondary); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.model-card-status { min-width: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .model-card-status code { padding: 2px 5px; border-radius: 4px; background: var(--surface-strong); color: var(--text); }
+.model-test-result { display: grid; gap: 7px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-subtle); }
+.model-test-result strong { color: var(--text); font-size: 12px; }
+.model-test-result label { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; }
+.model-test-result label > span { color: var(--text-tertiary); font-size: 11px; white-space: nowrap; }
+.model-test-result select { min-width: 0; min-height: 34px; padding: 5px 8px; font-size: 12px; }
+.model-test-result small { color: var(--text-tertiary); }
+.device-auth-result { display: grid; justify-items: start; gap: 5px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-subtle); }
+.device-auth-result a { color: var(--accent); font-weight: 750; }
+.device-auth-result small { color: var(--text-tertiary); line-height: 1.5; }
+.device-code-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.device-code-row .copy-device-code { min-height: 28px; padding: 3px 8px; font-size: 11px; }
+.device-code-pending { color: var(--warning); font-size: 12px; }
 .model-empty-state { grid-column: 1 / -1; display: grid; gap: 4px; padding: 24px; text-align: center; border: 1px dashed var(--border-strong); border-radius: 10px; color: var(--text-secondary); font-size: 12px; }
 .model-empty-state strong { color: var(--text); font-size: 14px; }
 .host-fingerprint {
@@ -1034,6 +1089,7 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .flow { grid-template-columns: repeat(3, 1fr); }
   .runtime-role-grid { grid-template-columns: 1fr; }
   .model-card-grid { grid-template-columns: 1fr; }
+  .model-card-lower { grid-template-columns: 1fr; }
   .management-form-grid,
   .management-card-grid { grid-template-columns: 1fr; }
   .step:not(:nth-child(6n))::after { content: none; }
@@ -1041,6 +1097,7 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 
 @media (hover: none) and (pointer: coarse) {
   input, textarea, select { font-size: 16px; }
+  .device-code-row .copy-device-code { min-height: 44px; }
 }
 
 @media (max-width: 720px) {
@@ -1053,6 +1110,7 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .side-menu button i { width: 15px; font-size: 13px; }
   .menu-label { margin-left: 7px; }
   .page-head { align-items: flex-start; }
+  .system-setup-flow { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .container-form-grid { grid-template-columns: 1fr; }
   .configuration-grid { grid-template-columns: 1fr; }
@@ -1085,6 +1143,8 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 }
 
 @media (max-width: 560px) {
+  .git-service-context { align-items: stretch; flex-direction: column; }
+  .git-service-context button { width: 100%; }
   .brand-copy small { display: none; }
   .health-badge { padding: 5px 7px; }
   main { width: calc(100% - 20px); }
@@ -1096,6 +1156,9 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .side-menu button i { display: none; }
   .page-head { min-height: 0; margin-bottom: 16px; }
   .page-head { flex-direction: column; }
+  .model-test-result label { grid-template-columns: 1fr; }
+  .system-setup-flow { gap: 7px; }
+  .system-setup-flow button { min-height: 56px; }
   .resource-collapse-shortcut { right: 12px; bottom: 12px; min-height: 44px; }
   .page-head h1 { font-size: 22px; }
   .page-actions { width: 100%; justify-content: flex-start; }
@@ -1120,6 +1183,7 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .resource-subdisclosure { margin-inline: 10px; }
   .resource-disclosure > .resource-subsection-head { margin-inline: 10px; }
   .management-card-grid { padding: 12px 10px; }
+  .capability-inventory-surface { padding: 12px 10px; }
   .platform-address-fields { grid-template-columns: 1fr; }
   .task-filters { grid-template-columns: 1fr; padding: 12px; }
   .table-toolbar { align-items: flex-start; flex-direction: column; margin-bottom: 8px; }

@@ -20,11 +20,23 @@ TaskHub `0.1.0-alpha` is publicly available from either registry:
 Both repositories allow anonymous pulls. Use the Aliyun ACR references when its
 Hangzhou endpoint is faster from the deployment network.
 
+Online initialization preloads Seed, Node, PostgreSQL and the restricted Docker
+proxy images, then starts the Seed control-plane stack. Operators create TaskHub
+nodes on the Seed Docker host. Offline bundles include the same images for
+disconnected single-Seed installation.
+
+The production default is `TASKHUB_WORKER_MODE=git`. Execution nodes enable the
+Codex coding path and a user-namespace-compatible seccomp profile. They receive a
+mount of an isolated model-runtime subdirectory containing only the
+active coder credentials; Seed database, administrator, Git and session secrets
+are not mounted into worker containers.
+
 Build local images with `build-images.sh` or `build-images.ps1`. Set
 `TASKHUB_REGISTRY` and `TASKHUB_PUSH=true` to publish the two TaskHub images.
-The Dockerfiles use the official Debian repositories by default; constrained
-networks may pass `DEBIAN_MIRROR` and `DEBIAN_SECURITY_MIRROR` build arguments
-for a trusted signed-package mirror.
+The Dockerfiles use the official npm and Debian repositories by default;
+constrained networks may pass `NPM_REGISTRY`, `DEBIAN_MIRROR` and
+`DEBIAN_SECURITY_MIRROR` build arguments for trusted mirrors. npm package
+integrity remains pinned by `package-lock.json`.
 Create a self-contained, architecture-specific directory with `build-offline.sh`
 or `build-offline.ps1`. Generated archives belong under ignored `dist/`; do not
 commit image tar files.
@@ -51,3 +63,10 @@ New installations start with HTTPS, Secure Cookie, session timeout/failure limit
 restricted Docker Socket Proxy. The initializer creates a short-lived self-signed bootstrap
 certificate in `tls/`; replace it with an enterprise/public CA certificate before exposing Seed
 beyond a trusted setup network. The controller itself no longer mounts `/var/run/docker.sock`.
+
+After the first administrator login, configure the project Git authority in **System
+Configuration → Advanced Settings → Manageable Platform Parameters → Git Repository
+Service**. Supply the SSH user/host, port, authoritative bare-repository root, Seed checkout
+root, and an optional dedicated private key. Test the draft values before saving. Saved
+credentials are encrypted and take effect after Seed restarts; they are never returned to the
+browser as plaintext.

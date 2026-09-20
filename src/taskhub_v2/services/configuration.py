@@ -11,11 +11,14 @@ from taskhub_v2.domain.configuration import (
     MODEL_SECRET_FIELDS,
     PLATFORM_FIELDS,
     PLATFORM_SECRET_FIELDS,
+    GitRepositoryConnectionTest,
     ModelServicesUpdate,
     PlatformSettingsUpdate,
 )
 from taskhub_v2.security import SecretCipher, mask_secret
 from taskhub_v2.services.configuration_views import audit_view, metadata, safe_error
+from taskhub_v2.services.git_authority import test_git_repository_connection
+from taskhub_v2.services.model_catalog import test_model_card
 
 MODEL_SCOPE = "model_services"
 PLATFORM_SCOPE = "platform"
@@ -159,7 +162,11 @@ class ManagedConfigurationService:
         self._validate_provider_activation(desired, secrets)
         if self.cipher:
             encrypted.update(
-                {field: self.cipher.encrypt(secrets[field]) for field in replaced_secrets}
+                {
+                    field: self.cipher.encrypt(secrets[field])
+                    for field in replaced_secrets
+                    if field in secrets
+                }
             )
         saved = await self.store.save(MODEL_SCOPE, desired, encrypted)
         await self.store.add_audit(
@@ -212,7 +219,7 @@ class ManagedConfigurationService:
             if value:
                 if not self.cipher:
                     raise ConfigurationError(
-                        "configure TASKHUB_CONFIG_ENCRYPTION_KEY before saving registry credentials"
+                        "configure TASKHUB_CONFIG_ENCRYPTION_KEY before saving credentials"
                     )
                 secrets[field] = value
                 replaced_secrets.append(field)
@@ -239,19 +246,37 @@ class ManagedConfigurationService:
             result="pending_restart",
         )
         return await self.platform_settings()
-
-    async def test_provider(self, provider_id: str, operator: str = "admin") -> dict[str, Any]:
+    async def test_git_repository(
+        self, payload: GitRepositoryConnectionTest, operator: str = "admin"
+    ) -> dict[str, Any]:
+        record = await self.store.get(PLATFORM_SCOPE)
+        _, secrets = await self._platform_values(record)
+        return await test_git_repository_connection(
+            self.settings, self.store, payload,
+            secrets.get("authority_git_private_key", ""), operator,
+        )
+    async def test_provider(
+        self, provider_id: str, operator: str = "admin", draft: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         record = await self.store.get(MODEL_SCOPE)
         desired, secrets = await self._model_values(record)
-        card = next(
+        saved_card = next(
             (item for item in desired.get("model_cards", []) if item["model_id"] == provider_id),
             None,
         )
+        card = draft or saved_card
+        if draft and draft.get("api_key"):
+            secrets[f"model_card__{provider_id}"] = draft.pop("api_key")
         if card:
             result = await self._test_model_card(card, secrets)
         elif provider_id == "deterministic":
             result = {"available": True, "detail": "内置确定性模型无需外部连接"}
-        else:
+        elif provider_id in {
+            "openai_api",
+            "gpt_api",
+            "deepseek_api",
+            "minimax_api",
+        }:
             mapping = {
                 "openai_api": ("openai_base_url", "openai_api_key", True),
                 "gpt_api": ("gpt_base_url", "gpt_api_key", True),
@@ -284,6 +309,12 @@ class ManagedConfigurationService:
                     }
                 except (httpx.HTTPError, ConfigurationError) as exc:
                     result = {"available": False, "detail": safe_error(exc)}
+        else:
+            result = {
+                "available": False,
+                "detail": "模型卡片尚未保存，请先保存配置后再测试连接",
+                "models": [],
+            }
         await self.store.add_audit(
             operator=operator,
             scope=MODEL_SCOPE,
@@ -296,30 +327,7 @@ class ManagedConfigurationService:
     async def _test_model_card(
         self, card: dict[str, Any], secrets: dict[str, str]
     ) -> dict[str, Any]:
-        if card["auth_mode"] == "account":
-            auth_file = Path(self.settings.model_account_root) / card["model_id"] / "auth.json"
-            return {
-                "available": auth_file.is_file(),
-                "detail": "ChatGPT 账号令牌已保存" if auth_file.is_file() else "尚未完成账号授权",
-            }
-        key = secrets.get(f"model_card__{card['model_id']}", "")
-        if not key:
-            return {"available": False, "detail": "尚未配置 API Key"}
-        try:
-            options: dict[str, Any] = {"timeout": 12, "trust_env": False}
-            if card.get("proxy_url"):
-                options["proxy"] = card["proxy_url"]
-            async with httpx.AsyncClient(**options) as client:
-                response = await client.get(
-                    f"{card['base_url'].rstrip('/')}/models",
-                    headers={"Authorization": f"Bearer {key}"},
-                )
-            return {
-                "available": response.status_code < 400,
-                "detail": f"服务返回 HTTP {response.status_code}",
-            }
-        except httpx.HTTPError as exc:
-            return {"available": False, "detail": safe_error(exc)}
+        return await test_model_card(self.settings, card, secrets)
 
     def _card_credential_state(
         self, card: dict[str, Any], secrets: dict[str, str]

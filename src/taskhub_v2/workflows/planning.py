@@ -11,15 +11,10 @@ def build_planning_graph(provider: ModelProvider, dag_planner=None):
         plan = result.content
         update = {
             "plan": plan.model_dump(),
-            "current_stage": Stage.PLAN_APPROVAL.value,
-            "status": RunStatus.WAITING.value,
+            "current_stage": Stage.IMPLEMENTATION.value,
+            "status": RunStatus.RUNNING.value,
             "model_runs": model_run("planner", result),
-            "pending_action": {
-                "type": "plan_approval",
-                "title": "Review the implementation plan",
-                "choices": ["approve", "reject"],
-                "next_on_approve": "implementation",
-            },
+            "pending_action": None,
             "timeline": event(
                 Stage.PLANNING,
                 "Plan created",

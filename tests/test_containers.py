@@ -105,6 +105,41 @@ def test_container_manager_creates_registers_and_removes_node(tmp_path):
     assert json.loads((tmp_path / "nodes.json").read_text()) == {"nodes": []}
 
 
+def test_execution_container_enables_coding_sandbox_and_account_mount(tmp_path):
+    docker = FakeDockerClient()
+    subject = ContainerManager(
+        enabled=True,
+        socket_path="/unused/docker.sock",
+        network="taskhub-test_default",
+        image="taskhub:test",
+        node_token="node-secret",
+        nodes_file=str(tmp_path / "nodes.json"),
+        data_volume_name="taskhub-data",
+        model_accounts_volume_subpath="config/model-accounts",
+        openai_proxy_url="http://proxy.test:7890",
+        client=docker,
+    )
+
+    subject.create(ContainerCreate(node_id="work-01", role="execution", slots=1))
+
+    payload = next(call[2] for call in docker.calls if call[1].startswith("/containers/create"))
+    assert "TASKHUB_NODE_CODING_ENABLED=true" in payload["Env"]
+    assert (
+        "TASKHUB_MODEL_CARDS_FILE=/var/lib/taskhub-node/codex/accounts/node-models.json"
+        in payload["Env"]
+    )
+    assert payload["HostConfig"]["SecurityOpt"] == ["seccomp=unconfined"]
+    assert payload["HostConfig"]["Mounts"] == [
+        {
+            "Type": "volume",
+            "Source": "taskhub-data",
+            "Target": "/var/lib/taskhub-node/codex/accounts",
+            "ReadOnly": False,
+            "VolumeOptions": {"Subpath": "config/model-accounts"},
+        }
+    ]
+
+
 def test_container_status_is_disabled_without_runtime_authorization(tmp_path):
     subject = ContainerManager(
         enabled=False,

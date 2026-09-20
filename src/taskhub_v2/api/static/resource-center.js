@@ -223,6 +223,28 @@ function modelAssignment(card, role) {
   return (card.assignments || []).find((item) => item.role === role);
 }
 
+function validateEnabledModelRoutes(cards) {
+  const enabled = cards.filter((card) => card.enabled);
+  if (!enabled.length) return "";
+  const missing = [];
+  const conflicts = [];
+  for (const role of modelRoles) {
+    const priorities = enabled.flatMap((card) => card.assignments
+      .filter((assignment) => assignment.role === role)
+      .map((assignment) => assignment.priority));
+    if (!priorities.length || !priorities.includes(0)) missing.push(modelRoleNames[role]);
+    if (priorities.filter((priority) => priority === 0).length > 1 ||
+        new Set(priorities).size !== priorities.length) conflicts.push(modelRoleNames[role]);
+  }
+  if (missing.length) {
+    return `已启用模型缺少“${missing.join("、")}”主模型。请在对应角色中勾选一张已启用卡片并选择“主模型”`;
+  }
+  if (conflicts.length) {
+    return `“${conflicts.join("、")}”存在重复主模型或备用顺序。每个角色只能有一个主模型，备用顺序不能重复`;
+  }
+  return "";
+}
+
 function modelCardHtml(card) {
   const credential = modelCardCredentials[card.model_id] || {};
   const accountMode = card.auth_mode === "account";
@@ -245,16 +267,22 @@ function modelCardHtml(card) {
       <label>认证模式<select data-field="auth_mode"><option value="api" ${accountMode ? "" : "selected"}>API 模式</option>
         <option value="account" ${accountMode ? "selected" : ""} ${card.service_type === "openai" ? "" : "disabled"}>ChatGPT 账号</option></select></label>
       <label class="api-model-field">API 地址<input data-field="base_url" type="url" maxlength="500" value="${escapeHtml(card.base_url || "")}"></label>
-      <label>模型<input data-field="model" maxlength="200" value="${escapeHtml(card.model || "")}" placeholder="账号模式留空使用默认模型"></label>
+      <label>模型<input data-field="model" maxlength="200" value="${escapeHtml(card.model || "")}" placeholder="先测试读取后选择，或手工输入"></label>
       <label class="api-model-field">替换 API Key<input data-field="api_key" type="password" maxlength="4096" autocomplete="new-password" placeholder="留空保留现有密钥"><small>${credential.configured ? "已安全配置" : "尚未配置"}</small></label>
       <label>网络代理（可选）<input data-field="proxy_url" type="url" maxlength="500" value="${escapeHtml(card.proxy_url || "")}" placeholder="http://proxy.example:7893"></label>
     </div>
-    <fieldset class="model-role-selector"><legend>角色与主备顺序</legend>${roleRows}</fieldset>
-    <div class="model-card-actions">
-      ${accountMode ? `<button type="button" class="secondary model-device-auth">开始账号授权</button>` : ""}
-      <button type="button" class="secondary model-test">测试连接</button>
-      <button type="button" class="secondary model-remove">删除</button>
-      <span class="model-card-status" role="status">${accountMode && credential.configured ? "账号已认证" : ""}</span>
+    <div class="model-card-lower">
+      <fieldset class="model-role-selector"><legend>角色与主备顺序</legend>
+        <small class="model-role-help">五个角色各需一个主模型；其余卡片可设为备用。</small>
+        ${roleRows}</fieldset>
+      <div class="model-card-actions">
+        <div class="model-card-action-buttons">
+          ${accountMode ? `<button type="button" class="secondary model-device-auth">生成新的登录验证码</button>` : ""}
+          <button type="button" class="secondary model-test">测试并读取模型</button>
+          <button type="button" class="secondary model-remove">删除</button>
+        </div>
+        <span class="model-card-status" role="status">${accountMode && credential.configured ? "账号已认证" : ""}</span>
+      </div>
     </div>
   </article>`;
 }
@@ -291,7 +319,14 @@ async function loadProviders() {
 async function saveModelServices(event) {
   event.preventDefault();
   const button = byId("save-model-services");
-  const payload = {model_cards: [...document.querySelectorAll(".model-config-card")].map(readModelCard)};
+  const modelCards = [...document.querySelectorAll(".model-config-card")].map(readModelCard);
+  const routeError = validateEnabledModelRoutes(modelCards);
+  if (routeError) {
+    byId("model-config-message").textContent = `无法保存：${routeError}`;
+    document.querySelector(".model-role-selector")?.scrollIntoView({behavior: "smooth", block: "nearest"});
+    return;
+  }
+  const payload = {model_cards: modelCards};
   button.disabled = true;
   byId("model-config-message").textContent = "正在安全保存";
   try {
@@ -328,14 +363,34 @@ async function testModelService(card) {
   const button = card.querySelector(".model-test");
   button.disabled = true;
   const status = card.querySelector(".model-card-status");
-  status.textContent = "正在测试已保存配置";
+  const draft = readModelCard(card);
+  if (draft.auth_mode === "api" && !draft.base_url) {
+    status.textContent = "请先填写 API 地址";
+    button.disabled = false;
+    return;
+  }
+  status.textContent = "正在测试当前卡片并读取模型列表";
   try {
     const result = await request("/api/settings/model-services/test", {
       method: "POST",
-      body: JSON.stringify({provider_id: card.dataset.modelId}),
+      body: JSON.stringify({provider_id: draft.model_id, draft: {
+        model_id: draft.model_id, service_type: draft.service_type,
+        auth_mode: draft.auth_mode, base_url: draft.base_url,
+        proxy_url: draft.proxy_url, ...(draft.api_key ? {api_key: draft.api_key} : {}),
+      }}),
     });
-    status.textContent = result.available
-      ? `连接可用：${result.detail}` : `连接不可用：${result.detail}`;
+    if (!result.available) {
+      status.textContent = `连接不可用：${result.detail}`;
+      return;
+    }
+    const models = result.models || [];
+    const selected = card.querySelector('[data-field="model"]').value;
+    const options = models.map((model) => `<option value="${escapeHtml(model.id)}"
+      ${model.id === selected ? "selected" : ""}>${escapeHtml(model.name)} · ${escapeHtml(model.id)}</option>`).join("");
+    status.innerHTML = `<span class="model-test-result"><strong>连接可用：${escapeHtml(result.detail)}</strong>
+      ${models.length ? `<label><span>可用模型（${models.length}）</span><select class="model-catalog-select">
+        <option value="">选择模型填入当前卡片</option>${options}</select></label>`
+        : "<small>服务未返回可选择的模型</small>"}</span>`;
   } catch (error) {
     status.textContent = error.message;
   } finally {
@@ -343,24 +398,88 @@ async function testModelService(card) {
   }
 }
 
+function renderDeviceAuthStatus(status, result = {}, error = "") {
+  const detail = error || result.detail || "正在向 OpenAI 请求设备验证码";
+  const credential = result.login_url && result.device_code
+    ? `<a href="${escapeHtml(result.login_url)}" target="_blank" rel="noopener">打开 OpenAI 官方登录页</a>
+      <span class="device-code-row"><span>设备验证码：<code>${escapeHtml(result.device_code)}</code></span>
+        <button type="button" class="secondary copy-device-code"
+          data-device-code="${escapeHtml(result.device_code)}" aria-label="复制设备验证码"
+          aria-live="polite">复制</button></span>`
+    : '<strong class="device-code-pending">等待 Codex CLI 返回登录地址和验证码</strong>';
+  status.innerHTML = `<span class="device-auth-result">
+    ${credential}
+    <small>授权目标：Seed 控制器 · ${escapeHtml(result.model_id || "正在确认模型")}</small>
+    <small>${escapeHtml(detail)}</small>
+  </span>`;
+}
+
+async function copyDeviceCode(button) {
+  const code = button.dataset.deviceCode || "";
+  let copied = false;
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(code);
+      copied = true;
+    } catch (_error) {
+      copied = false;
+    }
+  }
+  if (!copied) {
+    const input = document.createElement("textarea");
+    input.value = code;
+    input.setAttribute("readonly", "");
+    document.body.appendChild(input);
+    input.select();
+    copied = document.execCommand("copy");
+    input.remove();
+  }
+  if (!copied) throw new Error("无法复制设备验证码");
+  button.textContent = "已复制";
+  window.setTimeout(() => {
+    if (button.isConnected) button.textContent = "复制";
+  }, 1600);
+}
+
 async function startDeviceAuth(card) {
   const status = card.querySelector(".model-card-status");
-  status.textContent = "正在启动 Codex 设备授权";
+  const draft = readModelCard(card);
+  const pendingSession = `starting-${Date.now()}`;
+  card.dataset.deviceAuthSession = pendingSession;
+  renderDeviceAuthStatus(status, {model_id: card.dataset.modelId});
   try {
     let result = await request("/api/settings/model-services/device-auth", {method: "POST",
-      body: JSON.stringify({model_id: card.dataset.modelId})});
+      body: JSON.stringify({model_id: draft.model_id, draft: {
+        model_id: draft.model_id, service_type: draft.service_type,
+        auth_mode: draft.auth_mode, base_url: draft.base_url,
+        proxy_url: draft.proxy_url,
+      }})});
+    if (card.dataset.deviceAuthSession !== pendingSession) return;
+    card.dataset.deviceAuthSession = result.session_id;
     const poll = async () => {
-      if (result.device_code) {
-        status.innerHTML = `<a href="${escapeHtml(result.login_url)}" target="_blank" rel="noopener">打开登录页</a> · 验证码 <code>${escapeHtml(result.device_code)}</code> · ${escapeHtml(result.detail)}`;
-      } else status.textContent = result.detail;
-      if (["authenticated", "failed"].includes(result.status)) {
-        if (result.status === "authenticated") await loadProviders();
+      if (card.dataset.deviceAuthSession !== result.session_id) return;
+      renderDeviceAuthStatus(status, result);
+      if (["authenticated", "failed", "superseded"].includes(result.status)) {
+        if (result.status === "authenticated") {
+          modelCardCredentials[draft.model_id] = {configured: true, kind: "account"};
+        }
         return;
       }
-      setTimeout(async () => { result = await request(`/api/settings/model-services/device-auth/${result.session_id}`); await poll(); }, 2000);
+      setTimeout(async () => {
+        try {
+          result = await request(`/api/settings/model-services/device-auth/${result.session_id}`);
+          await poll();
+        } catch (error) {
+          renderDeviceAuthStatus(status, result, error.message);
+        }
+      }, 2000);
     };
     await poll();
-  } catch (error) { status.textContent = error.message; }
+  } catch (error) {
+    if (card.dataset.deviceAuthSession === pendingSession) {
+      renderDeviceAuthStatus(status, {model_id: card.dataset.modelId}, error.message);
+    }
+  }
 }
 
 async function loadNodes() {
@@ -388,196 +507,6 @@ async function loadNodes() {
   }
 }
 
-let pendingHostFingerprint = "";
-let physicalHostInventory = [];
-
-function selectedHostRoles() {
-  return [...document.querySelectorAll('input[name="host-role"]:checked')]
-    .map((item) => item.value);
-}
-
-function hostConnectionPayload() {
-  return {
-    address: byId("host-address").value.trim(),
-    port: Number(byId("host-port").value),
-    username: byId("host-user").value.trim(),
-    private_key: byId("host-private-key").value,
-    docker_access: byId("host-docker-access").value,
-  };
-}
-
-function resetHostFingerprint() {
-  pendingHostFingerprint = "";
-  byId("host-fingerprint-panel").classList.add("hidden");
-  byId("host-fingerprint-confirmed").checked = false;
-  byId("save-host").disabled = true;
-}
-
-function hostFacts(facts) {
-  if (!facts || !Object.keys(facts).length) return "尚未检测";
-  return `${facts.cpu_count || "—"} CPU · ${formatBytes(facts.memory_bytes)} 内存 · ` +
-    `${formatBytes(facts.disk_available_bytes)} 可用磁盘`;
-}
-
-function hostStatusClass(status) {
-  return status === "available" ? "ok" : ["degraded", "blocked"].includes(status) ? "bad" : "warn";
-}
-
-function hostMaintenanceActions(item) {
-  const id = escapeHtml(item.host_id);
-  const state = item.operational_state || "active";
-  if (state !== "active") return `<div class="host-maintenance-actions">
-    <button type="button" class="secondary host-state-action" data-host-id="${id}" data-state="active">重新启用</button>
-    <button type="button" class="secondary host-action" data-host-id="${id}">重新检测</button></div>`;
-  return `<div class="host-maintenance-actions">
-    <button type="button" class="secondary host-action" data-host-id="${id}">重新检测</button>
-    <button type="button" class="secondary host-state-action" data-host-id="${id}" data-state="draining">排空</button>
-    <button type="button" class="secondary host-state-action" data-host-id="${id}" data-state="maintenance">维护</button>
-    <button type="button" class="secondary danger-action host-state-action" data-host-id="${id}" data-state="disabled">停用</button>
-  </div>`;
-}
-
-function refreshHostMaintenanceSelectors() {
-  for (const id of ["host-rebuild-source", "host-rebuild-target"]) {
-    const select = byId(id);
-    const previous = select.value;
-    select.innerHTML = physicalHostInventory.map((item) =>
-      `<option value="${escapeHtml(item.host_id)}">${escapeHtml(item.display_name)} · ${escapeHtml(item.status_label)}</option>`).join("");
-    if ([...select.options].some((item) => item.value === previous)) select.value = previous;
-  }
-}
-
-async function loadPhysicalHosts() {
-  byId("host-summary").textContent = "正在读取物理主机库存";
-  try {
-    const [status, inventory, audit] = await Promise.all([
-      request("/api/containers/status"), request("/api/hosts"),
-      request("/api/settings/audit?scope=physical_hosts&limit=8"),
-    ]);
-    physicalHostInventory = inventory.hosts;
-    refreshContainerTargets();
-    refreshHostMaintenanceSelectors();
-    const stateClass = status.available ? "ok" : status.enabled ? "bad" : "warn";
-    const stateLabel = status.available ? "可用" : status.enabled ? "异常" : "未启用";
-    const available = inventory.hosts.filter((item) => item.status === "available").length;
-    byId("host-summary").textContent =
-      `Seed 本机 ${stateLabel} · 远程主机 ${available}/${inventory.hosts.length} 可用`;
-    const seedCard = `<article class="management-card ${status.available ? "ready" : "blocked"}">
-      <header><div><h3>Seed 本机</h3><p>local-docker · 控制节点内置主机</p></div>
-        <span class="card-state ${stateClass}">${stateLabel}</span></header>
-      <dl class="management-card-facts">
-        <div><dt>连接方式</dt><dd>本机 Docker</dd></div>
-        <div><dt>SSH 准入</dt><dd>无需配置</dd></div>
-        <div class="wide"><dt>检测结果</dt><dd>${escapeHtml(status.detail || "未检测")}</dd></div>
-      </dl></article>`;
-    const remoteCards = inventory.hosts.map((item) => `<article class="management-card ${item.status === "available" ? "ready" : "blocked"}">
-      <header><div><h3>${escapeHtml(item.display_name)}</h3><p>${escapeHtml(item.host_id)} · ${escapeHtml(item.address)}:${item.port}</p></div>
-        <span class="card-state ${hostStatusClass(item.status)}">${escapeHtml(item.status_label)}</span></header>
-      <dl class="management-card-facts">
-        <div><dt>Docker</dt><dd>${escapeHtml(item.facts?.docker_version || "—")}</dd></div>
-        <div><dt>操作系统</dt><dd>${escapeHtml(item.facts?.os || "尚未检测")}</dd></div>
-        <div class="wide"><dt>主机资源</dt><dd>${escapeHtml(hostFacts(item.facts))}</dd></div>
-        <div class="wide"><dt>允许角色</dt><dd>${(item.allowed_roles || []).map((role) => escapeHtml(containerRoleNames[role] || role)).join(" · ") || "未指定"}</dd></div>
-        <div class="wide"><dt>运行判断</dt><dd>${escapeHtml(item.status_reason)} · ${(item.alerts || []).map(escapeHtml).join("；") || "资源阈值正常"}</dd></div>
-        <div class="wide"><dt>SSH 指纹</dt><dd class="mono-value">${escapeHtml(item.fingerprint)}</dd></div>
-      </dl><footer>${hostMaintenanceActions(item)}</footer></article>`).join("");
-    byId("physical-hosts").innerHTML = seedCard + remoteCards;
-    renderConfigurationAudit("host-config-audit", audit.events);
-  } catch (error) {
-    byId("host-summary").textContent = error.message;
-  }
-}
-
-async function probePhysicalHost() {
-  if (!byId("host-form").reportValidity()) return;
-  const button = byId("probe-host");
-  button.disabled = true;
-  resetHostFingerprint();
-  byId("host-message").textContent = "正在读取 SSH 主机指纹";
-  try {
-    const result = await request("/api/hosts/probe", {
-      method: "POST", body: JSON.stringify(hostConnectionPayload()),
-    });
-    pendingHostFingerprint = result.fingerprint;
-    byId("host-fingerprint").textContent = result.fingerprint;
-    byId("host-fingerprint-panel").classList.remove("hidden");
-    byId("host-message").textContent = result.detail;
-  } catch (error) {
-    byId("host-message").textContent = error.message;
-  } finally {
-    button.disabled = false;
-  }
-}
-
-async function savePhysicalHost(event) {
-  event.preventDefault();
-  if (!pendingHostFingerprint || !byId("host-fingerprint-confirmed").checked) return;
-  const button = byId("save-host");
-  button.disabled = true;
-  byId("host-message").textContent = "正在执行 SSH、Docker、硬件和回连准入检测";
-  try {
-    const result = await request("/api/hosts", {
-      method: "POST",
-      body: JSON.stringify({
-        ...hostConnectionPayload(), expected_fingerprint: pendingHostFingerprint,
-        host_id: byId("host-id").value.trim(),
-        display_name: byId("host-name").value.trim(),
-        allowed_roles: selectedHostRoles(),
-        labels: byId("host-labels").value.split(",").map((item) => item.trim()).filter(Boolean),
-        notes: byId("host-notes").value.trim(),
-      }),
-    });
-    byId("host-message").textContent = `${result.display_name} 已通过准入并登记`;
-    byId("host-private-key").value = "";
-    resetHostFingerprint();
-    await loadPhysicalHosts();
-  } catch (error) {
-    byId("host-message").textContent = error.message;
-    button.disabled = false;
-  }
-}
-
-async function checkPhysicalHost(hostId) {
-  byId("host-message").textContent = `正在重新检测 ${hostId}`;
-  try {
-    const result = await request(`/api/hosts/${encodeURIComponent(hostId)}/check`, {method: "POST"});
-    byId("host-message").textContent = `${result.display_name}：${result.status_reason}`;
-  } catch (error) {
-    byId("host-message").textContent = error.message;
-  }
-  await loadPhysicalHosts();
-}
-
-async function changeHostState(hostId, state) {
-  const labels = {active: "重新启用", draining: "排空", maintenance: "进入维护", disabled: "停用"};
-  if (state !== "active" && !window.confirm(`${labels[state]}主机 ${hostId}？该主机将立即停止接收新任务。`)) return;
-  byId("host-message").textContent = `正在${labels[state]} ${hostId}`;
-  try {
-    const result = await request(`/api/hosts/${encodeURIComponent(hostId)}/state`, {
-      method: "POST", body: JSON.stringify({state}),
-    });
-    byId("host-message").textContent = `${result.display_name}：${result.status_reason} · 影响 ${result.affected_nodes} 个节点`;
-  } catch (error) { byId("host-message").textContent = error.message; }
-  await Promise.all([loadPhysicalHosts(), loadContainers(), loadNodes()]);
-}
-
-async function rebuildHostNodes(event) {
-  event.preventDefault();
-  const source = byId("host-rebuild-source").value;
-  const target = byId("host-rebuild-target").value;
-  const nodeIds = byId("host-rebuild-nodes").value.split(",").map((item) => item.trim()).filter(Boolean);
-  if (!source || !target || !window.confirm(`确认将 ${source} 的${nodeIds.length || "全部"}节点在 ${target} 重建？源数据卷会保留。`)) return;
-  byId("host-rebuild-message").textContent = "正在逐节点停止、迁移期望状态并重建";
-  try {
-    const result = await request(`/api/hosts/${encodeURIComponent(source)}/rebuild-nodes`, {
-      method: "POST", body: JSON.stringify({target_host_id: target, node_ids: nodeIds}),
-    });
-    const passed = result.results.filter((item) => item.ok).length;
-    byId("host-rebuild-message").textContent = `完成 ${passed}/${result.results.length} 个节点`;
-    await Promise.all([loadPhysicalHosts(), loadContainers(), loadNodes()]);
-  } catch (error) { byId("host-rebuild-message").textContent = error.message; }
-}
-
 function fillPlatformConfiguration(data) {
   const values = data.desired;
   fillValue("platform-seed-url", values.seed_public_url);
@@ -600,6 +529,15 @@ function fillPlatformConfiguration(data) {
   fillValue("platform-recovery-threshold", values.provider_recovery_threshold);
   fillValue("platform-probe-interval", values.provider_probe_interval_seconds);
   fillValue("platform-switch-lock", values.provider_switch_lock_seconds);
+  fillValue("platform-git-host", values.authority_git_host);
+  fillValue("platform-git-port", values.authority_git_port || 22);
+  fillValue("platform-git-root", values.authority_git_root);
+  fillValue("platform-managed-repository-root", values.managed_repository_root);
+  fillValue("platform-git-private-key", "");
+  byId("platform-git-private-key-state").textContent =
+    data.secrets?.authority_git_private_key?.configured
+      ? `${credentialState(data.secrets.authority_git_private_key)}；留空保留`
+      : "未配置；将使用 Seed 运行身份";
   byId("platform-config-state").textContent = configurationState(data);
 }
 
@@ -630,7 +568,7 @@ async function loadPlatformSettings() {
         <dl class="management-card-facts"><div class="wide"><dt>保护内容</dt><dd>数据库、会话密钥、加密主密钥、节点令牌</dd></div>
           <div class="wide"><dt>读取边界</dt><dd>通过 Docker Secret 或环境变量提供，Web 不回读原文。</dd></div></dl></article>
       <article class="management-card ready"><header><div><h3>Web 管理配置</h3><p>可审计、可版本化的平台参数</p></div><span class="card-state ok">已开放</span></header>
-        <dl class="management-card-facts"><div class="wide"><dt>配置范围</dt><dd>地址、镜像策略、默认限额、心跳和保留策略</dd></div>
+        <dl class="management-card-facts"><div class="wide"><dt>配置范围</dt><dd>Git 仓库服务、地址、镜像策略、默认限额、心跳和保留策略</dd></div>
           <div class="wide"><dt>变更证据</dt><dd>保存与启动生效动作均写入审计记录。</dd></div></dl></article>`;
     fillPlatformConfiguration(configuration);
     renderConfigurationAudit("platform-config-audit", audit.events);
@@ -661,6 +599,11 @@ async function savePlatformSettings(event) {
     provider_recovery_threshold: Number(byId("platform-recovery-threshold").value),
     provider_probe_interval_seconds: Number(byId("platform-probe-interval").value),
     provider_switch_lock_seconds: Number(byId("platform-switch-lock").value),
+    authority_git_host: byId("platform-git-host").value.trim(),
+    authority_git_port: Number(byId("platform-git-port").value),
+    authority_git_root: byId("platform-git-root").value.trim(),
+    managed_repository_root: byId("platform-managed-repository-root").value.trim(),
+    authority_git_private_key: byId("platform-git-private-key").value.trim(),
   };
   button.disabled = true;
   byId("platform-config-message").textContent = "正在保存平台设置";
@@ -676,6 +619,31 @@ async function savePlatformSettings(event) {
       ? "配置已保存；重启 Seed 控制器后生效" : "配置已保存并生效";
   } catch (error) {
     byId("platform-config-message").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function testGitService() {
+  const button = byId("test-git-service");
+  const message = byId("git-service-test-message");
+  const payload = {
+    authority_git_host: byId("platform-git-host").value.trim(),
+    authority_git_port: Number(byId("platform-git-port").value),
+    authority_git_root: byId("platform-git-root").value.trim(),
+    managed_repository_root: byId("platform-managed-repository-root").value.trim(),
+  };
+  const privateKey = byId("platform-git-private-key").value.trim();
+  if (privateKey) payload.authority_git_private_key = privateKey;
+  button.disabled = true;
+  message.textContent = "正在测试 SSH 与仓库根目录";
+  try {
+    const result = await request("/api/settings/platform/git-test", {
+      method: "POST", body: JSON.stringify(payload),
+    });
+    message.textContent = result.detail;
+  } catch (error) {
+    message.textContent = error.message;
   } finally {
     button.disabled = false;
   }
@@ -740,78 +708,20 @@ const containerRoleNames = {
 
 function containerActions(item) {
   const nodeId = escapeHtml(item.node_id);
-  const location = escapeHtml(item.location || "local");
-  if (location === "remote" && !item.container_id) {
-    return `<div class="container-actions"><button type="button" class="secondary container-action remove-container"
-      data-node-id="${nodeId}" data-location="remote" data-action="remove">移除记录</button></div>`;
-  }
   const primary = item.state === "running"
-    ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="${location}" data-action="stop">停止</button>`
-    : `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="${location}" data-action="start">启动</button>`;
-  const restart = location === "remote" && item.state === "running"
-    ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="remote" data-action="restart">重启</button>` : "";
-  const rotate = item.credential?.status === "active"
-    ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="${location}" data-action="rotate-credential">轮换凭据</button>` : "";
-  const revoke = location === "remote" && item.credential?.status === "active"
-    ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-location="remote" data-action="revoke-credential">吊销凭据</button>` : "";
-  const upgrade = location === "remote" && item.state === "running"
-    ? `<button type="button" class="secondary prepare-node-upgrade" data-node-id="${nodeId}" data-image="${escapeHtml(item.image || "")}">升级镜像</button>` : "";
+    ? `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-action="stop">停止</button>`
+    : `<button type="button" class="secondary container-action" data-node-id="${nodeId}" data-action="start">启动</button>`;
   return `<div class="container-actions">${primary}
-    ${restart}${upgrade}${rotate}${revoke}
     <button type="button" class="secondary container-action remove-container"
-      data-node-id="${nodeId}" data-location="${location}" data-action="remove">移除</button></div>`;
-}
-
-function refreshContainerTargets() {
-  const select = byId("container-target");
-  const previous = select.value || "local";
-  select.innerHTML = '<option value="local">Seed 本机</option>' + physicalHostInventory
-    .filter((item) => item.status === "available")
-    .map((item) => `<option value="${escapeHtml(item.host_id)}">${escapeHtml(item.display_name)} · 远程</option>`)
-    .join("");
-  select.value = [...select.options].some((item) => item.value === previous) ? previous : "local";
-  updateRemoteNodeFields();
-}
-
-function updateRemoteNodeFields() {
-  const hostId = byId("container-target").value;
-  const remote = hostId !== "local";
-  document.querySelectorAll(".remote-node-field").forEach((item) => item.classList.toggle("hidden", !remote));
-  const host = physicalHostInventory.find((item) => item.host_id === hostId);
-  const allowed = new Set(host?.allowed_roles || ["execution", "test", "preproduction"]);
-  [...byId("container-role").options].forEach((item) => {
-    item.disabled = remote && !allowed.has(item.value);
-  });
-  if (byId("container-role").selectedOptions[0]?.disabled) {
-    const first = [...byId("container-role").options].find((item) => !item.disabled);
-    if (first) byId("container-role").value = first.value;
-  }
+      data-node-id="${nodeId}" data-action="remove">移除</button></div>`;
 }
 
 async function loadContainers() {
   byId("container-summary").textContent = "正在读取 Docker Engine";
   try {
-    const [status, remoteData, hostData] = await Promise.all([
-      request("/api/containers/status"), request("/api/remote-nodes"), request("/api/hosts"),
-    ]);
-    physicalHostInventory = hostData.hosts;
-    refreshContainerTargets();
+    const status = await request("/api/containers/status");
     const localData = status.available ? await request("/api/containers") : {containers: []};
-    const local = localData.containers.map((item) => ({...item, location: "local", host_id: "Seed 本机"}));
-    const remote = remoteData.nodes.map((item) => ({
-      ...item, location: "remote", state: item.actual_state,
-      status: item.status_reason, name: `taskhub-node-${item.node_id}`,
-    }));
-    const containers = [...local, ...remote];
-    const upgradeSelect = byId("upgrade-node");
-    const selectedUpgrade = upgradeSelect.value;
-    upgradeSelect.innerHTML = '<option value="">请选择节点</option>' + remote
-      .filter((item) => item.actual_state === "running")
-      .map((item) => `<option value="${escapeHtml(item.node_id)}">${escapeHtml(item.node_id)} · ${escapeHtml(item.image || "未记录镜像")}</option>`)
-      .join("");
-    if ([...upgradeSelect.options].some((item) => item.value === selectedUpgrade)) {
-      upgradeSelect.value = selectedUpgrade;
-    }
+    const containers = localData.containers.map((item) => ({...item, host_id: "Seed 本机"}));
     const diagnosticSelect = byId("diagnostic-node");
     const selectedDiagnostic = diagnosticSelect.value;
     diagnosticSelect.innerHTML = '<option value="">请选择节点</option>' + containers.map((item) =>
@@ -819,36 +729,23 @@ async function loadContainers() {
     if ([...diagnosticSelect.options].some((item) => item.value === selectedDiagnostic)) {
       diagnosticSelect.value = selectedDiagnostic;
     }
-    byId("container-form").classList.toggle("hidden", !status.available && !physicalHostInventory.some((item) => item.status === "available"));
+    byId("container-form").classList.toggle("hidden", !status.available);
     const running = containers.filter((item) => item.state === "running").length;
     byId("container-summary").textContent =
-      `${running}/${containers.length} 运行 · 本机 ${status.available ? "可用" : "不可用"} · 远程 ${remote.length}`;
+      `${running}/${containers.length} 运行 · Seed Docker ${status.available ? "可用" : "不可用"}`;
     const cards = containers.map((item) => {
-      const distribution = item.distribution || {};
-      const operation = item.operation || {};
-      const operationActive = ["queued", "running"].includes(operation.status);
-      const progress = item.location === "remote" && distribution.phase && operationActive
-        ? `<progress class="distribution-progress" max="100" value="${Number(distribution.percent || 0)}">${Number(distribution.percent || 0)}%</progress>
-          <small>${Number(distribution.percent || 0)}% · ${escapeHtml(distribution.detail || item.status || "")}</small>`
-        : `<small>${escapeHtml(item.status)}</small>`;
       const stateClass = item.state === "running" ? "ok" : item.state === "error" ? "bad" : "warn";
-      const credential = item.credential
-        ? ` · 凭据 v${Number(item.credential.version || 0)} ${item.credential.status === "active" ? "有效" : "已吊销"}` : "";
-      const reconciled = item.reconciliation?.checked_at
-        ? ` · 协调 ${new Date(item.reconciliation.checked_at).toLocaleTimeString()}` : "";
       return `<article class="management-card ${item.state === "running" ? "ready" : "blocked"}">
         <header><div><h3>${escapeHtml(item.node_id)}</h3><p>${escapeHtml(item.name)} · ${escapeHtml(item.host_id)}</p></div>
           <span class="card-state ${stateClass}">${escapeHtml(item.state)}</span></header>
         <dl class="management-card-facts">
           <div><dt>节点角色</dt><dd>${escapeHtml(containerRoleNames[item.role] || item.role)}</dd></div>
-          <div><dt>部署位置</dt><dd>${item.location === "remote" ? "远程主机" : "Seed 本机"}</dd></div>
+          <div><dt>部署位置</dt><dd>Seed 本机</dd></div>
           <div class="wide"><dt>当前镜像</dt><dd class="mono-value">${escapeHtml(item.image || "未记录")}</dd></div>
-          <div class="wide"><dt>运行与分发</dt><dd>${progress}${escapeHtml(credential + reconciled)}</dd></div>
+          <div class="wide"><dt>运行状态</dt><dd><small>${escapeHtml(item.status || item.state)}</small></dd></div>
         </dl><footer>${containerActions(item)}</footer></article>`;
     }).join("");
     byId("managed-containers").innerHTML = cards || '<p class="management-empty">尚未创建节点容器，请展开“创建节点”进行配置。</p>';
-    scheduleDistributionRefresh(remote.some((item) =>
-      ["distributing", "starting", "upgrading"].includes(item.actual_state)));
   } catch (error) {
     byId("container-summary").textContent = error.message;
   }
@@ -885,22 +782,11 @@ async function loadNodeDiagnostics() {
       </div><p class="${data.last_error ? "bad" : "ok"}">${escapeHtml(data.last_error || "节点未报告错误")}</p></section>
       <section class="diagnostic-card"><h4>Agent 日志</h4><pre>${escapeHtml(diagnosticEventLines(data.agent_logs))}</pre></section>
       <section class="diagnostic-card"><h4>容器最近日志</h4><pre>${escapeHtml(data.container_logs || "尚无容器日志")}</pre></section>
-      <section class="diagnostic-card"><h4>SSH / Docker 操作</h4><pre>${escapeHtml(diagnosticEventLines(data.operations))}</pre></section>`;
+      <section class="diagnostic-card"><h4>Docker 操作</h4><pre>${escapeHtml(diagnosticEventLines(data.operations))}</pre></section>`;
     byId("diagnostic-message").textContent = `${nodeId} 诊断已更新`;
   } catch (error) {
     byId("diagnostic-message").textContent = error.message;
   } finally { button.disabled = false; }
-}
-
-let distributionRefreshTimer = null;
-function scheduleDistributionRefresh(active) {
-  if (distributionRefreshTimer) {
-    clearTimeout(distributionRefreshTimer);
-    distributionRefreshTimer = null;
-  }
-  if (active && byId("nodes-disclosure").open) {
-    distributionRefreshTimer = setTimeout(() => loadContainers(), 2000);
-  }
 }
 
 async function createContainer(event) {
@@ -909,26 +795,16 @@ async function createContainer(event) {
   button.disabled = true;
   byId("container-message").textContent = "正在创建并启动容器";
   try {
-    const hostId = byId("container-target").value;
-    const remote = hostId !== "local";
     const payload = {
       node_id: byId("container-node-id").value,
       role: byId("container-role").value,
       slots: Number(byId("container-slots").value),
     };
-    if (remote) Object.assign(payload, {
-      host_id: hostId,
-      host_port: Number(byId("container-host-port").value),
-      cpu_limit: byId("container-cpu-limit").value,
-      memory_limit: byId("container-memory-limit").value,
-    });
-    const result = await request(remote ? "/api/remote-nodes" : "/api/containers", {
+    const result = await request("/api/containers", {
       method: "POST",
       body: JSON.stringify(payload),
     });
-    byId("container-message").textContent = remote
-      ? `${result.node_id} 已进入镜像分发队列，可在下方查看进度`
-      : `${result.node_id} 已创建并加入调度`;
+    byId("container-message").textContent = `${result.node_id} 已在 Seed 本机创建并加入调度`;
     byId("container-node-id").value = "";
     await Promise.all([loadContainers(), loadNodes()]);
   } catch (error) {
@@ -938,55 +814,13 @@ async function createContainer(event) {
   }
 }
 
-function prepareNodeUpgrade(nodeId, image) {
-  const disclosure = byId("node-upgrade-disclosure");
-  disclosure.open = true;
-  byId("upgrade-node").value = nodeId;
-  byId("upgrade-image").value = image || "";
-  byId("upgrade-image").focus();
-  byId("upgrade-node-message").textContent = `请输入 ${nodeId} 的目标镜像版本`;
-  disclosure.scrollIntoView({behavior: "smooth", block: "nearest"});
-}
-
-async function upgradeRemoteNode(event) {
-  event.preventDefault();
-  const nodeId = byId("upgrade-node").value;
-  const image = byId("upgrade-image").value.trim();
-  if (!window.confirm(`确认将 ${nodeId} 升级到 ${image}？失败时系统会自动恢复原镜像。`)) return;
-  const button = byId("upgrade-node-submit");
-  button.disabled = true;
-  byId("upgrade-node-message").textContent = `正在提交 ${nodeId} 的升级操作`;
-  try {
-    await request(`/api/remote-nodes/${encodeURIComponent(nodeId)}/upgrade`, {
-      method: "POST", body: JSON.stringify({image}),
-    });
-    byId("upgrade-node-message").textContent = `${nodeId} 已进入后台升级队列`;
-    await Promise.all([loadContainers(), loadNodes()]);
-  } catch (error) {
-    byId("upgrade-node-message").textContent = error.message;
-  } finally { button.disabled = false; }
-}
-
-async function runContainerAction(nodeId, action, location) {
+async function runContainerAction(nodeId, action) {
   if (action === "remove" &&
       !window.confirm(`确认移除节点容器 ${nodeId}？节点数据卷将保留。`)) return;
-  if (action === "rotate-credential" &&
-      !window.confirm(`确认轮换 ${nodeId} 的独立凭据？节点将短暂重建并保留数据卷。`)) return;
-  if (action === "revoke-credential" &&
-      !window.confirm(`确认吊销 ${nodeId} 的独立凭据？节点将停止并退出调度。`)) return;
-  const verbs = {start: "启动", stop: "停止", restart: "重启", remove: "移除",
-    "rotate-credential": "轮换凭据", "revoke-credential": "吊销凭据"};
+  const verbs = {start: "启动", stop: "停止", remove: "移除"};
   byId("container-message").textContent = `正在${verbs[action]} ${nodeId}`;
   try {
-    const prefix = location === "remote" ? "/api/remote-nodes" : "/api/containers";
-    const credentialAction = {"rotate-credential": "rotate", "revoke-credential": "revoke"}[action];
-    const endpoint = credentialAction && location === "remote"
-      ? `${prefix}/${encodeURIComponent(nodeId)}/credential/${credentialAction}`
-      : `${prefix}/${encodeURIComponent(nodeId)}/${action}`;
-    await request(endpoint, {
-      method: "POST", body: action === "remove" && location === "remote"
-        ? JSON.stringify({remove_volume: false}) : undefined,
-    });
+    await request(`/api/containers/${encodeURIComponent(nodeId)}/${action}`, {method: "POST"});
     byId("container-message").textContent = `${nodeId} 操作完成`;
     await Promise.all([loadContainers(), loadNodes()]);
   } catch (error) {
@@ -1210,9 +1044,8 @@ async function checkTestEnvironment() {
 
 const resourceSections = [
     ["system-disclosure", loadSystemConfig],
-    ["providers-disclosure", loadProviders],
-    ["hosts-disclosure", loadPhysicalHosts],
     ["nodes-disclosure", loadWorkNodes],
+    ["providers-disclosure", loadProviders],
     ["platform-disclosure", loadPlatformSettings],
 ];
 
@@ -1284,14 +1117,21 @@ function refreshWhenExpanded(id, load) {
 
 restoreOpenResource();
 
+document.querySelectorAll("[data-resource-target]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const disclosure = byId(button.dataset.resourceTarget);
+    if (!disclosure) return;
+    disclosure.open = true;
+    scrollResourceHeadingIntoView(disclosure);
+  });
+});
+
 byId("refresh-system").addEventListener("click", loadSystemConfig);
 byId("refresh-providers").addEventListener("click", loadProviders);
-byId("refresh-hosts").addEventListener("click", loadPhysicalHosts);
 byId("refresh-nodes").addEventListener("click", loadWorkNodes);
 byId("refresh-platform").addEventListener("click", loadPlatformSettings);
 refreshWhenExpanded("system-disclosure", loadSystemConfig);
 refreshWhenExpanded("providers-disclosure", loadProviders);
-refreshWhenExpanded("hosts-disclosure", loadPhysicalHosts);
 refreshWhenExpanded("nodes-disclosure", loadWorkNodes);
 refreshWhenExpanded("platform-disclosure", loadPlatformSettings);
 byId("test-environment-disclosure").addEventListener("toggle", (event) => {
@@ -1321,6 +1161,16 @@ byId("add-model-card").addEventListener("click", () => {
   byId("model-card-editor").insertAdjacentHTML("beforeend", modelCardHtml(newModelCard()));
 });
 byId("model-card-editor").addEventListener("click", (event) => {
+  const copyButton = event.target.closest(".copy-device-code");
+  if (copyButton) {
+    copyDeviceCode(copyButton).catch(() => {
+      copyButton.textContent = "复制失败";
+      window.setTimeout(() => {
+        if (copyButton.isConnected) copyButton.textContent = "复制";
+      }, 1600);
+    });
+    return;
+  }
   const card = event.target.closest(".model-config-card");
   if (!card) return;
   if (event.target.closest(".model-remove")) card.remove();
@@ -1330,6 +1180,11 @@ byId("model-card-editor").addEventListener("click", (event) => {
 byId("model-card-editor").addEventListener("change", (event) => {
   const card = event.target.closest(".model-config-card");
   if (!card) return;
+  if (event.target.matches(".model-catalog-select") && event.target.value) {
+    card.querySelector('[data-field="model"]').value = event.target.value;
+    card.querySelector(".model-test-result > strong").textContent =
+      `已选择模型：${event.target.value}`;
+  }
   if (event.target.matches("[data-model-role]")) {
     card.querySelector(`[data-model-priority="${event.target.dataset.modelRole}"]`).disabled = !event.target.checked;
   }
@@ -1347,6 +1202,7 @@ byId("model-card-editor").addEventListener("change", (event) => {
   }
 });
 byId("platform-settings-form").addEventListener("submit", savePlatformSettings);
+byId("test-git-service").addEventListener("click", testGitService);
 byId("access-security-disclosure").addEventListener("toggle", (event) => {
   if (event.currentTarget.open) loadUsers();
 });
@@ -1363,35 +1219,11 @@ byId("user-inventory").addEventListener("click", (event) => {
   const remove = event.target.closest(".delete-user");
   if (remove) deleteUser(remove.dataset.username);
 });
-byId("host-form").addEventListener("submit", savePhysicalHost);
-byId("host-rebuild-form").addEventListener("submit", rebuildHostNodes);
 byId("load-node-diagnostics").addEventListener("click", loadNodeDiagnostics);
-byId("probe-host").addEventListener("click", probePhysicalHost);
-byId("host-fingerprint-confirmed").addEventListener("change", (event) => {
-  byId("save-host").disabled = !event.currentTarget.checked || !pendingHostFingerprint;
-});
-for (const id of ["host-address", "host-port"]) {
-  byId(id).addEventListener("input", resetHostFingerprint);
-}
-byId("physical-hosts").addEventListener("click", (event) => {
-  const stateButton = event.target.closest(".host-state-action");
-  if (stateButton) changeHostState(stateButton.dataset.hostId, stateButton.dataset.state);
-  else {
-    const button = event.target.closest(".host-action");
-    if (button) checkPhysicalHost(button.dataset.hostId);
-  }
-});
 byId("container-form").addEventListener("submit", createContainer);
-byId("node-upgrade-form").addEventListener("submit", upgradeRemoteNode);
-byId("container-target").addEventListener("change", updateRemoteNodeFields);
 byId("managed-containers").addEventListener("click", (event) => {
-  const upgrade = event.target.closest(".prepare-node-upgrade");
-  if (upgrade) {
-    prepareNodeUpgrade(upgrade.dataset.nodeId, upgrade.dataset.image);
-    return;
-  }
   const button = event.target.closest(".container-action");
-  if (button) runContainerAction(button.dataset.nodeId, button.dataset.action, button.dataset.location);
+  if (button) runContainerAction(button.dataset.nodeId, button.dataset.action);
 });
 window.addEventListener("taskhub:projects", () => {
   if (byId("test-environment-disclosure").open) loadTestEnvironmentConfig();

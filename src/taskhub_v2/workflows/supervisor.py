@@ -57,19 +57,17 @@ def build_supervisor_graph(provider: ModelProvider):
             "supervision": decision.model_dump(),
             "blocking_reason": None,
             "current_stage": (
-                Stage.MERGE_APPROVAL.value if approved else Stage.SUPERVISION.value
+                Stage.MERGING.value if approved else Stage.SUPERVISION.value
             ),
             "status": (
-                RunStatus.WAITING.value
-                if approved or evidence_only or not revision_available
+                RunStatus.RUNNING.value
+                if approved
+                else RunStatus.WAITING.value
+                if evidence_only or not revision_available
                 else RunStatus.RUNNING.value
             ),
             "pending_action": (
-                {
-                    "type": "merge_approval",
-                    "title": "Publish the approved change",
-                    "choices": ["approve", "reject"],
-                }
+                None
                 if approved
                 else (
                     {

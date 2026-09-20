@@ -2,12 +2,13 @@ import subprocess
 from pathlib import Path
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from taskhub_v2.api.app import create_app
 from taskhub_v2.config import Settings
 from taskhub_v2.domain.models import ProjectDefinition
-from taskhub_v2.projects import ProjectRegistry
+from taskhub_v2.projects import ProjectProvisioner, ProjectProvisionError, ProjectRegistry
 
 
 def git(path: Path, *args: str) -> None:
@@ -42,9 +43,12 @@ class FakeProvisioner:
         self.repository_path = repository_path
 
     async def create(
-        self, name, project_id, base_ref, test_commands, acceptance_commands=None,
+        self, name, project_id, remote_url, local_path, base_ref, test_commands,
+        acceptance_commands=None,
         acceptance_capabilities=None,
     ):
+        assert remote_url == "ssh://git.example.test/srv/git/new-shop.git"
+        assert local_path == str(self.repository_path)
         return self.registry.add(
             ProjectDefinition(
                 id=project_id,
@@ -66,14 +70,23 @@ class FakeProvisioner:
                 "default_branch": "main",
                 "attached": False,
                 "project_id": "shop",
+                "remote_url": "ssh://git.example.test/srv/git/shop.git",
+                "local_path": str(self.repository_path),
             }
         ]
 
+    def defaults(self):
+        return {
+            "authority_url_prefix": "ssh://git.example.test/srv/git",
+            "managed_repository_root": str(self.repository_path.parent),
+        }
+
     async def attach(
-        self, repository, name, base_ref, test_commands, acceptance_commands=None,
+        self, name, remote_url, local_path, base_ref, test_commands, acceptance_commands=None,
         acceptance_capabilities=None,
     ):
-        assert repository == "shop.git"
+        assert remote_url == "ssh://git.example.test/srv/git/shop.git"
+        assert local_path == str(self.repository_path)
         return self.registry.add(
             ProjectDefinition(
                 id="shop",
@@ -108,6 +121,8 @@ def test_new_project_creation_uses_the_provisioner(tmp_path: Path):
             json={
                 "name": "New Shop",
                 "project_id": "new-shop",
+                "remote_url": "ssh://git.example.test/srv/git/new-shop.git",
+                "local_path": str(repo),
                 "base_ref": "main",
                 "test_commands": "npm test",
                 "acceptance_commands": "python3 accept.py",
@@ -142,7 +157,8 @@ def test_authority_project_can_be_selected_and_attached_from_the_api(tmp_path: P
             headers=headers,
             json={
                 "name": "Shop Platform",
-                "repository": "shop.git",
+                "remote_url": "ssh://git.example.test/srv/git/shop.git",
+                "local_path": str(repo),
                 "base_ref": "main",
                 "test_commands": "python3 -m pytest -q\nnpm test",
             },
@@ -152,6 +168,7 @@ def test_authority_project_can_be_selected_and_attached_from_the_api(tmp_path: P
     assert response.status_code == 201
     assert available.status_code == 200
     assert available.json()["repositories"][0]["repository"] == "shop.git"
+    assert available.json()["defaults"]["authority_url_prefix"].startswith("ssh://")
     assert response.json()["name"] == "Shop Platform"
     assert listed.json()["projects"][0]["repository"] == str(repo)
     assert listed.json()["projects"][0]["test_commands"] == [
@@ -175,10 +192,55 @@ def test_project_registration_rejects_an_invalid_authority_repository(tmp_path: 
         response = client.post(
             "/api/projects/attach",
             headers={"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]},
-            json={"name": "Invalid", "repository": "../invalid.git"},
+            json={
+                "name": "Invalid",
+                "remote_url": "../invalid.git",
+                "local_path": str(tmp_path / "invalid"),
+            },
         )
 
     assert response.status_code == 422
+
+
+def test_project_locations_must_stay_inside_configured_git_boundaries(tmp_path: Path):
+    managed_root = tmp_path / "managed"
+    provisioner = ProjectProvisioner(
+        ProjectRegistry(str(tmp_path / "projects.json")),
+        "git@example.test",
+        "/srv/git",
+        str(managed_root),
+    )
+    assert provisioner.defaults() == {
+        "authority_url_prefix": "ssh://git@example.test/srv/git",
+        "managed_repository_root": str(managed_root.resolve()),
+        "authority_service": "git@example.test:22 · /srv/git",
+    }
+    assert provisioner._authority_repository(
+        "ssh://git@example.test/srv/git/shop.git"
+    ).name == "shop.git"
+    assert provisioner._local_target(str(managed_root / "shop")) == (
+        managed_root / "shop"
+    ).resolve()
+    with pytest.raises(ProjectProvisionError, match="权威仓库根目录"):
+        provisioner._authority_repository("ssh://git@example.test/other/shop.git")
+    with pytest.raises(ProjectProvisionError, match="托管目录"):
+        provisioner._local_target(str(tmp_path / "outside"))
+
+    alternate = ProjectProvisioner(
+        provisioner.registry,
+        "git@example.test",
+        "/srv/git",
+        str(managed_root),
+        authority_port=2222,
+    )
+    assert alternate.defaults()["authority_url_prefix"] == (
+        "ssh://git@example.test:2222/srv/git"
+    )
+    assert alternate._authority_repository(
+        "ssh://git@example.test:2222/srv/git/shop.git"
+    ).name == "shop.git"
+    with pytest.raises(ProjectProvisionError, match="Git 远端地址"):
+        alternate._authority_repository("ssh://git@example.test/srv/git/shop.git")
 
 
 def test_project_repository_settings_can_be_viewed_checked_and_updated(tmp_path: Path):

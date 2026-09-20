@@ -34,7 +34,7 @@ which adapter receives the next call.
 - Human decisions enter only through `Command(resume=...)`.
 - Code before `interrupt()` must be side-effect free or idempotent.
 - A run ID selects one stable branch and worktree, making Worker retry idempotent.
-- Publication is a separate gateway and only runs after a graph-owned human interrupt.
+- Publication is a separate gateway and runs automatically after graph-owned supervision succeeds.
 - Stale production lines rebase and retest before a fast-forward authority merge.
 - Timeline records are graph state deltas accumulated by the parent graph.
 
@@ -84,7 +84,7 @@ platform source and checked by an architecture test.
 Creating a project provisions a bare repository on the configured authority host and
 a managed checkout on the controller. Runtime worktrees are derived from that checkout.
 Before work begins, the controller fetches and fast-forwards to the authority remote.
-After publication approval, the reviewed commit is pushed with an explicit lease so a
+After supervision approval, the reviewed commit is pushed with an explicit lease so a
 concurrent authority update becomes a recoverable block instead of being overwritten.
 
 ## Distributed Execution

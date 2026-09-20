@@ -201,9 +201,20 @@ class RunService:
             await self.task_index.upsert(checkpoint_values(snapshot), values.get("production_line"))
 
     async def recover_interrupted(self) -> None:
-        """Replay graph-owned running checkpoints after a controller restart."""
+        """Advance retired approvals, then replay graph-owned running checkpoints."""
         if self.task_index is None:
             return
+        waiting = await self.task_index.list(status=RunStatus.WAITING, page_size=100)
+        for item in waiting.items:
+            try:
+                current = await self.get(item.run_id)
+                action_type = (current.pending_action or {}).get("type")
+                if action_type == "plan_approval":
+                    await self.approve(item.run_id, ApprovalRequest(decision="approve"))
+                elif action_type == "merge_approval":
+                    await self.resume(item.run_id, ResumeRequest(decision="approve"))
+            except Exception:
+                logger.exception("failed to advance retired approval %s", item.run_id)
         page = await self.task_index.list(status=RunStatus.RUNNING, page_size=100)
         for item in page.items:
             try:

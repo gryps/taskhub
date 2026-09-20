@@ -18,7 +18,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
   controller:
-    image: ${TASKHUB_SEED_IMAGE:-taskhub-seed:0.1.0-alpha}
+    image: ${TASKHUB_SEED_IMAGE:-ghcr.io/gryps/taskhub-seed:0.1.0-alpha}
     pull_policy: never
     restart: unless-stopped
     init: true
@@ -41,8 +41,8 @@ services:
       TASKHUB_CONFIG_ENCRYPTION_KEY: ${TASKHUB_CONFIG_ENCRYPTION_KEY:?TASKHUB_CONFIG_ENCRYPTION_KEY is required}
       TASKHUB_COOKIE_SECURE: ${TASKHUB_COOKIE_SECURE:-true}
       TASKHUB_ENFORCE_HTTPS: ${TASKHUB_ENFORCE_HTTPS:-true}
-      TASKHUB_TLS_CERT_FILE: ${TASKHUB_TLS_CERT_FILE:-/run/taskhub/tls/taskhub.crt}
-      TASKHUB_TLS_KEY_FILE: ${TASKHUB_TLS_KEY_FILE:-/run/taskhub/tls/taskhub.key}
+      TASKHUB_TLS_CERT_FILE: ${TASKHUB_TLS_CERT_FILE:-}
+      TASKHUB_TLS_KEY_FILE: ${TASKHUB_TLS_KEY_FILE:-}
       TASKHUB_TRUSTED_HOSTS: ${TASKHUB_TRUSTED_HOSTS:-*}
       TASKHUB_USERS_FILE: /var/lib/taskhub/config/users.json
       TASKHUB_SESSION_STATE_FILE: /var/lib/taskhub/state/sessions.json
@@ -55,6 +55,9 @@ services:
       TASKHUB_PROVIDER_SECRETS_FILE: /var/lib/taskhub/config/providers.env
       TASKHUB_PROVIDER_WORKDIR: /var/lib/taskhub/repositories
       TASKHUB_PROJECTS_FILE: /var/lib/taskhub/config/projects.json
+      TASKHUB_AUTHORITY_GIT_HOST: ${TASKHUB_AUTHORITY_GIT_HOST:-git@host.docker.internal}
+      TASKHUB_AUTHORITY_GIT_PORT: ${TASKHUB_AUTHORITY_GIT_PORT:-22}
+      TASKHUB_AUTHORITY_GIT_ROOT: ${TASKHUB_AUTHORITY_GIT_ROOT:-/srv/git}
       TASKHUB_NODES_FILE: /var/lib/taskhub/config/nodes.json
       TASKHUB_NODE_STATE_FILE: /var/lib/taskhub/state/node-state.json
       TASKHUB_OPERATIONS_LOG_FILE: /var/lib/taskhub/state/operations.jsonl
@@ -62,7 +65,9 @@ services:
       TASKHUB_CONTAINER_PROVISIONING_ENABLED: "true"
       TASKHUB_DOCKER_SOCKET: http://docker-proxy:2375
       TASKHUB_DOCKER_NETWORK: ${TASKHUB_DOCKER_NETWORK:-taskhub_default}
-      TASKHUB_NODE_CONTAINER_IMAGE: ${TASKHUB_NODE_IMAGE:-taskhub-node:0.1.0-alpha}
+      TASKHUB_DATA_VOLUME_NAME: ${TASKHUB_DATA_VOLUME:-taskhub-data}
+      TASKHUB_MODEL_ACCOUNTS_VOLUME_SUBPATH: config/model-accounts/node-runtime
+      TASKHUB_NODE_CONTAINER_IMAGE: ${TASKHUB_NODE_IMAGE:-ghcr.io/gryps/taskhub-node:0.1.0-alpha}
       TASKHUB_PROVIDER_HEALTH_FILE: /var/lib/taskhub/state/provider-health.json
       TASKHUB_MANAGED_REPOSITORY_ROOT: /var/lib/taskhub/repositories
       TASKHUB_WORKSPACE_ROOT: /var/lib/taskhub/workspaces
@@ -70,7 +75,7 @@ services:
       TASKHUB_MODEL_ACCOUNT_ROOT: /var/lib/taskhub/config/model-accounts
       TASKHUB_CODEX_CLI_BIN: /usr/local/bin/codex
       TASKHUB_OPENAI_PROXY_URL: ${TASKHUB_OPENAI_PROXY_URL:-}
-      TASKHUB_WORKER_MODE: local
+      TASKHUB_WORKER_MODE: ${TASKHUB_WORKER_MODE:-git}
       TASKHUB_TEST_RUNNER: scheduled
       TASKHUB_SELF_DEPLOY_ENABLED: "false"
     volumes:

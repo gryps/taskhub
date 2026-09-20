@@ -9,7 +9,7 @@ import pytest
 
 
 @pytest.mark.parametrize("browser_name", ["chromium", "edge"])
-def test_candidate_approval_consistency(browser_name, record_property):
+def test_candidate_automatic_flow_consistency(browser_name, record_property):
     from playwright.sync_api import expect, sync_playwright
 
     assert os.name == "nt", "Windows GUI node is required"
@@ -41,7 +41,7 @@ def test_candidate_approval_consistency(browser_name, record_property):
         record_property("browser_version", browser.version)
         try:
             pages = []
-            for index in range(2):
+            for _index in range(2):
                 context = browser.new_context(record_video_dir=str(output / "videos"))
                 contexts.append(context)
                 context.tracing.start(screenshots=True, snapshots=True, sources=True)
@@ -58,22 +58,21 @@ def test_candidate_approval_consistency(browser_name, record_property):
             response = contexts[0].request.post(
                 f"{url}/api/runs", headers={"X-CSRF-Token": csrf},
                 data={"project_id": f"browser-{uuid4().hex}",
-                      "requirement": "Verify candidate approval consistency"},
+                      "requirement": "Verify candidate automatic flow consistency"},
             )
             assert response.status == 201, response.text()
             run_id = response.json()["run_id"]
             for page in pages:
                 page.locator("#refresh-tasks").click()
                 page.locator(f'tr[data-run-id="{run_id}"]').click()
-                expect(page.locator("#status")).to_have_text("待处理")
-                expect(page.locator("#status")).not_to_have_text("已阻塞")
-                expect(page.locator("#approve")).to_have_text("批准计划")
-                expect(page.locator("#reject")).to_have_text("拒绝")
+                expect(page.locator("#status")).to_have_text("已阻塞")
+                expect(page.locator("#approve")).to_have_text("重新检查并发布")
+                expect(page.locator("#reject")).to_have_text("取消任务")
                 expect(page.locator("#revise")).to_be_hidden()
                 expect(page.locator("#archive-task")).to_be_hidden()
                 page.reload()
                 page.locator(f'tr[data-run-id="{run_id}"]').click()
-                expect(page.locator("#status")).to_have_text("待处理")
+                expect(page.locator("#status")).to_have_text("已阻塞")
             completed("login_status")
             completed("refresh_consistency")
             states = [context.request.get(f"{url}/api/runs/{run_id}").json()
@@ -85,16 +84,14 @@ def test_candidate_approval_consistency(browser_name, record_property):
             # Exercise a recoverable failure through the real UI. The disposable
             # publisher fails once per run and then succeeds, giving both clients
             # an observable blocked -> recovered transition.
-            pages[0].locator("#approve").click()
-            expect(pages[0].locator("#approve")).to_have_text("合并到权威分支")
-            pages[0].locator("#acceptance-detail").evaluate("element => element.parentElement.open = true")
+            pages[0].locator("#acceptance-detail").evaluate(
+                "element => element.parentElement.open = true"
+            )
             with pages[0].expect_download() as artifact_download_info:
                 pages[0].locator("#acceptance-detail a").click()
             artifact_download = artifact_download_info.value
             assert "Candidate artifact available" in Path(artifact_download.path()).read_text()
             completed("artifact_view")
-            pages[0].locator("#approve").click()
-            expect(pages[0].locator("#status")).to_have_text("已阻塞")
             blocked = contexts[0].request.get(f"{url}/api/runs/{run_id}").json()
             reason = blocked["blocking_reason"]
             assert reason["code"] == "TransientPublicationError"

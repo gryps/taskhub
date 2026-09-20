@@ -61,7 +61,7 @@ function openOnboardingTarget(target) {
   }
   const disclosures = {
     system: "system-disclosure", providers: "providers-disclosure",
-    hosts: "hosts-disclosure", nodes: "nodes-disclosure", platform: "platform-disclosure",
+    nodes: "nodes-disclosure", platform: "platform-disclosure",
   };
   const disclosure = byId(disclosures[target] || "system-disclosure");
   showPage("resources");

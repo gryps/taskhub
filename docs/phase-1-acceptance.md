@@ -3,24 +3,24 @@
 ## Delivered
 
 - LangGraph parent graph and six responsibility subgraphs.
-- Native plan approval with `interrupt()` and `Command(resume=...)`.
+- Automatic plan-to-implementation and supervision-to-publication transitions.
 - Development memory checkpointer and production PostgreSQL checkpointer.
 - Restart recovery through a new database connection and graph instance.
 - Provider and worker protocols, deterministic test adapters, and an OpenAI Responses adapter.
-- Run creation, detail, approval, history, health, and SSE endpoints.
-- Browser workflow timeline with explicit pending human action.
+- Run creation, detail, recovery, history, health, and SSE endpoints.
+- Browser workflow timeline with explicit pending human action only for recovery and unresolved decisions.
 - Architecture tests for module size and business-project coupling.
 
 ## Hard Acceptance Scenarios
 
 | Scenario | Expected result |
 | --- | --- |
-| Start a requirement | Stops at `plan_approval`; worker has not run |
-| Approve | Continues through worker, review, risk, and supervisor |
-| Reject | Ends as rejected; worker never runs |
+| Start a requirement | Continues from planning through implementation and publication without routine approval stops |
+| Implementation or publication failure | Stops at a recoverable blocked state with retry/cancel actions |
+| Supervision rejects | Returns to implementation within the revision limit |
 | Resume twice | Returns conflict instead of repeating execution |
-| Recreate runtime | Restores waiting run from PostgreSQL and continues |
-| Inspect history | Shows checkpoint at the approval boundary |
+| Recreate runtime | Restores completed, blocked, or running state from PostgreSQL |
+| Inspect history | Shows automatic stage boundaries and recovery checkpoints |
 
 ## Explicitly Deferred
 

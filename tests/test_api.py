@@ -21,7 +21,7 @@ def login(client: TestClient) -> dict[str, str]:
     return {"X-CSRF-Token": client.cookies.get("taskhub_v2_csrf")}
 
 
-def test_http_approval_flow():
+def test_http_run_automatically_implements_and_publishes():
     app = create_app(settings())
     with TestClient(app) as client:
         headers = login(client)
@@ -31,26 +31,17 @@ def test_http_approval_flow():
             headers=headers,
         )
         assert response.status_code == 201
-        waiting = response.json()
-        assert waiting["stage"] == "plan_approval"
-        assert waiting["status"] == "waiting"
+        completed = response.json()
+        assert completed["stage"] == "completed"
+        assert completed["status"] == "completed"
+        assert completed["pending_action"] is None
 
         response = client.post(
-            f"/api/runs/{waiting['run_id']}/approval",
+            f"/api/runs/{completed['run_id']}/approval",
             json={"decision": "approve", "comment": "ok"},
             headers=headers,
         )
-        assert response.status_code == 200
-        publication_waiting = response.json()
-        assert publication_waiting["stage"] == "merge_approval"
-
-        response = client.post(
-            f"/api/runs/{waiting['run_id']}/resume",
-            json={"decision": "approve", "comment": "publish"},
-            headers=headers,
-        )
-        assert response.status_code == 200
-        assert response.json()["status"] == "completed"
+        assert response.status_code == 409
 
 
 def test_unknown_run_returns_404():

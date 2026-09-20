@@ -1,6 +1,10 @@
 # TaskHub Seed SSH 多主机节点编排需求
 
-状态：SSH 准入、远程生命周期、镜像分发、逐节点凭据与期望状态协调 Alpha 已实现
+状态：已退役（2026-09-20）；仅作为历史实现记录保留
+
+当前产品固定采用单 Seed 模式。物理主机库存、SSH 准入、跨主机部署/迁移、远程镜像
+升级和期望状态协调均不再属于产品功能；现有持久化数据保留，避免升级时破坏历史记录。
+当前契约以 `system-configuration-productization.md` 和 `seed-first-run-onboarding.md` 为准。
 
 版本：0.4
 

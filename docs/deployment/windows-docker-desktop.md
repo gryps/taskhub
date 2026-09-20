@@ -34,9 +34,11 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\init.ps1
 ```
 
-初始化脚本生成主机本地 `.env`，拉取 Seed、Node、PostgreSQL 和 Socket Proxy 镜像，创建初始自签名 TLS 证书，启动 Compose 并等待 HTTPS 健康检查。首次访问 `https://主机IP:8200`，确认初始证书指纹后，从 `.env` 读取一次性的 `TASKHUB_ADMIN_TOKEN` 设置管理员密码。对外开放前应把 `tls\taskhub.crt` 和 `tls\taskhub.key` 替换为企业 CA 或公开 CA 证书。
+初始化脚本生成主机本地 `.env`，预拉取 Seed、Node、PostgreSQL 和 Socket Proxy 镜像，启动 Seed 控制面，创建初始自签名 TLS 证书并等待 HTTPS 健康检查。工作节点随后由 Web 在 Seed 本机 Docker 中创建。首次访问 `https://主机IP:8200`，确认初始证书指纹后，从 `.env` 读取一次性的 `TASKHUB_ADMIN_TOKEN` 设置管理员密码。对外开放前应把 `tls\taskhub.crt` 和 `tls\taskhub.key` 替换为企业 CA 或公开 CA 证书。
 
 只有内部 Socket Proxy 挂载 Docker Socket；控制器不直接持有宿主机 Socket，Proxy 也不发布到 Windows 主机端口。
+
+执行节点由 Seed 以 `seccomp=unconfined` 创建，使非 root 的 TaskHub 用户能够建立 Codex `workspace-write` 所需的用户命名空间。该放行只应用于执行节点，测试和预生产节点继续使用 Docker 默认 seccomp。执行节点挂载 `taskhub-data` 中隔离生成的 `config/model-accounts/node-runtime` 子目录，以允许 Codex 更新自身账号会话；其中仅包含当前编码角色需要的模型卡片和账号凭据，不暴露 Seed 的数据库、管理员、Git 或会话密钥。正式部署使用 `TASKHUB_WORKER_MODE=git`，否则流程只会返回本地演示结果而不会修改项目代码。
 
 ## 离线安装
 
@@ -48,7 +50,7 @@ $env:TASKHUB_PLATFORM = "linux/amd64"
 .\deploy\release\build-offline.ps1
 ```
 
-把生成的整个 `dist\taskhub-offline-<version>-amd64` 复制到目标机，然后在该目录执行 `.\init.ps1`。脚本会验证 `SHA256SUMS` 后导入镜像。不要在 Intel/AMD 主机上导入 ARM64 包，反之亦然。
+把生成的整个 `dist\taskhub-offline-<version>-amd64` 复制到目标机，然后在该目录执行 `.\init.ps1`。脚本会验证 `SHA256SUMS` 后导入镜像；离线包包含 Node 镜像，供 Seed 本机创建工作节点。不要在 Intel/AMD 主机上导入 ARM64 包，反之亦然。
 
 ## 升级
 
