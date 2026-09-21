@@ -66,6 +66,56 @@ def test_project_preflight_is_actionable_and_responsive(tmp_path, width):
         browser.close()
 
 
+@pytest.mark.parametrize("width", [1440, 768, 390])
+def test_attached_project_quality_can_be_repaired_in_place(tmp_path, width):
+    from playwright.sync_api import expect, sync_playwright
+
+    repo = repository(tmp_path / "shop")
+    add_remote(repo, tmp_path / "shop.git")
+    settings = Settings(
+        admin_token="quality-browser-token",
+        session_secret="quality-browser-session",
+        projects_file=str(tmp_path / "projects.json"),
+        operations_log_file=str(tmp_path / "operations.jsonl"),
+    )
+    app = create_app(settings)
+    app.state.projects.add(
+        ProjectDefinition(
+            id="shop",
+            name="Shop",
+            repository=str(repo),
+            authority_remote="origin",
+        )
+    )
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    executable = os.getenv("TASKHUB_TEST_BROWSER_EXECUTABLE") or None
+
+    with sync_playwright() as playwright, serve(app, port):
+        browser = playwright.chromium.launch(executable_path=executable)
+        page = browser.new_page(viewport={"width": width, "height": 1000})
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(f"http://127.0.0.1:{port}", wait_until="networkidle")
+        page.locator("#admin-token").fill("quality-browser-token")
+        page.locator("#login-button").click()
+        page.locator("#onboarding-later").click()
+        page.locator("#nav-workflow").click()
+
+        expect(page.locator("#project-preflight-state")).to_have_text("1 项阻塞")
+        page.locator("#project-repository-disclosure > summary").click()
+        page.locator("#project-quality-tests").fill("python3 -m pytest -q")
+        page.locator("#save-project-quality").click()
+        expect(page.locator("#project-quality-message")).to_have_text(
+            "质量配置已保存，项目预检已刷新"
+        )
+        expect(page.locator("#project-preflight-state")).to_have_text("可以启动")
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        assert not errors
+        browser.close()
+
+
 def test_exception_center_opens_the_checkpoint_owned_recovery_action(monkeypatch, tmp_path):
     from playwright.sync_api import expect, sync_playwright
 

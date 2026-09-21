@@ -40,6 +40,7 @@ services:
       TASKHUB_CHECKPOINTER: postgres
       TASKHUB_PRODUCTION_ORCHESTRATION_ENABLED: ${TASKHUB_PRODUCTION_ORCHESTRATION_ENABLED:-false}
       TASKHUB_POSTGRES_DSN: postgresql://taskhub:${TASKHUB_POSTGRES_PASSWORD}@postgres:5432/taskhub
+      TASKHUB_TEST_DATABASE_ADMIN_DSN: postgresql://taskhub:${TASKHUB_POSTGRES_PASSWORD}@postgres:5432/postgres
       TASKHUB_PROVIDER: deterministic
       TASKHUB_ADMIN_TOKEN: ${TASKHUB_ADMIN_TOKEN:?TASKHUB_ADMIN_TOKEN is required}
       TASKHUB_ADMIN_PASSWORD_FILE: /var/lib/taskhub/config/admin-password.json

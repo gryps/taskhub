@@ -110,6 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         data_volume_name=settings.data_volume_name,
         model_accounts_volume_subpath=settings.model_accounts_volume_subpath,
         openai_proxy_url=settings.openai_proxy_url,
+        test_database_admin_dsn=settings.test_database_admin_dsn,
         operation_log=operation_log,
     )
     @asynccontextmanager
@@ -175,6 +176,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         effective_settings.model_accounts_volume_subpath
                     ),
                     openai_proxy_url=effective_settings.openai_proxy_url,
+                    test_database_admin_dsn=effective_settings.test_database_admin_dsn,
                     credentials=node_credentials,
                     operation_log=operation_log,
                 )

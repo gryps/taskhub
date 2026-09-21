@@ -48,6 +48,7 @@ class ContainerManager(NodeInventoryMixin):
         data_volume_name: str = "",
         model_accounts_volume_subpath: str = "",
         openai_proxy_url: str = "",
+        test_database_admin_dsn: str = "",
         credentials=None,
         client=None,
         operation_log=None,
@@ -61,6 +62,7 @@ class ContainerManager(NodeInventoryMixin):
         self.data_volume_name = data_volume_name
         self.model_accounts_volume_subpath = model_accounts_volume_subpath.strip("/")
         self.openai_proxy_url = openai_proxy_url
+        self.test_database_admin_dsn = test_database_admin_dsn
         self.client = client or DockerSocketClient(socket_path)
         self.operation_log = operation_log
         self.lock = RLock()
@@ -166,6 +168,7 @@ class ContainerManager(NodeInventoryMixin):
             self.data_volume_name,
             self.model_accounts_volume_subpath,
             self.openai_proxy_url,
+            self.test_database_admin_dsn,
         )
         payload = {
             "Image": self.image,

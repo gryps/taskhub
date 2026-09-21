@@ -3,9 +3,12 @@ def node_runtime_configuration(
     data_volume_name: str,
     model_accounts_volume_subpath: str,
     openai_proxy_url: str,
+    test_database_admin_dsn: str = "",
 ) -> tuple[list[str], dict]:
     coding = role == "execution"
     environment = [f"TASKHUB_NODE_CODING_ENABLED={'true' if coding else 'false'}"]
+    if role in {"test", "preproduction"} and test_database_admin_dsn:
+        environment.append(f"TASKHUB_TEST_DATABASE_ADMIN_DSN={test_database_admin_dsn}")
     host_config = {"SecurityOpt": ["seccomp=unconfined"]} if coding else {}
     if not coding or not data_volume_name or not model_accounts_volume_subpath:
         return environment, host_config

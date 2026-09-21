@@ -140,6 +140,43 @@ def test_execution_container_enables_coding_sandbox_and_account_mount(tmp_path):
     ]
 
 
+def test_test_database_admin_dsn_is_only_injected_into_acceptance_nodes(tmp_path):
+    dsn = "postgresql://taskhub:secret@postgres:5432/postgres"
+    test_docker = FakeDockerClient()
+    test_subject = ContainerManager(
+        enabled=True,
+        socket_path="/unused/docker.sock",
+        network="taskhub-test_default",
+        image="taskhub:test",
+        node_token="node-secret",
+        nodes_file=str(tmp_path / "test-nodes.json"),
+        test_database_admin_dsn=dsn,
+        client=test_docker,
+    )
+    test_subject.create(ContainerCreate(node_id="test-01", role="test", slots=1))
+    test_payload = next(
+        call[2] for call in test_docker.calls if call[1].startswith("/containers/create")
+    )
+    assert f"TASKHUB_TEST_DATABASE_ADMIN_DSN={dsn}" in test_payload["Env"]
+
+    work_docker = FakeDockerClient()
+    work_subject = ContainerManager(
+        enabled=True,
+        socket_path="/unused/docker.sock",
+        network="taskhub-test_default",
+        image="taskhub:test",
+        node_token="node-secret",
+        nodes_file=str(tmp_path / "work-nodes.json"),
+        test_database_admin_dsn=dsn,
+        client=work_docker,
+    )
+    work_subject.create(ContainerCreate(node_id="work-01", role="execution", slots=1))
+    work_payload = next(
+        call[2] for call in work_docker.calls if call[1].startswith("/containers/create")
+    )
+    assert all("TASKHUB_TEST_DATABASE_ADMIN_DSN" not in item for item in work_payload["Env"])
+
+
 def test_container_status_is_disabled_without_runtime_authorization(tmp_path):
     subject = ContainerManager(
         enabled=False,

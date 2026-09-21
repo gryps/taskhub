@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=60">
+  <link rel="stylesheet" href="/static/styles.css?v=61">
 </head>
 <body>
   <header class="app-header">
@@ -209,6 +209,18 @@
               <button id="check-project-repository" type="button" class="secondary">测试连接</button>
               <button id="save-project-repository" type="submit">保存仓库配置</button>
               <span id="project-repository-message" role="status"></span>
+            </div>
+            <div class="project-quality-settings" aria-labelledby="project-quality-title">
+              <div class="section-head"><div><h4 id="project-quality-title">质量与验收</h4><p>每行一条命令；保存后项目预检会立即重新检查。</p></div></div>
+              <div class="form-grid project-repository-fields">
+                <label class="wide">质量命令<textarea id="project-quality-tests" maxlength="4000" spellcheck="false" placeholder="例如：python3 -m pytest -q"></textarea><span class="field-help">至少配置一条，用于提交前的自动质量门禁。</span></label>
+                <label class="wide">验收命令（可选）<textarea id="project-quality-acceptance" maxlength="4000" spellcheck="false" placeholder="例如：npm run test:e2e"></textarea></label>
+                <label class="check wide"><input id="project-quality-test-database" type="checkbox"> 验收需要隔离 PostgreSQL 测试数据库</label>
+              </div>
+              <div class="form-actions project-repository-actions">
+                <button id="save-project-quality" type="button">保存质量配置</button>
+                <span id="project-quality-message" role="status"></span>
+              </div>
             </div>
           </section>
         </form>
@@ -700,7 +712,7 @@
   </main>
   <script src="/static/revision-center.js?v=1"></script>
   <script src="/static/capability-center.js?v=1"></script>
-  <script src="/static/app.js?v=28"></script>
+  <script src="/static/app.js?v=29"></script>
   <script src="/static/task-center.js?v=15"></script>
   <script src="/static/resource-center.js?v=39"></script>
   <script src="/static/onboarding.js?v=3"></script>

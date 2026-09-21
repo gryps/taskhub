@@ -72,6 +72,7 @@ class Settings(BaseModel):
     node_image_proxy: str = ""
     node_registry_username: str = ""
     node_registry_password: str = Field(default="", repr=False)
+    test_database_admin_dsn: str = Field(default="", repr=False)
     default_node_slots: int = 1
     default_node_cpu_limit: str = ""
     default_node_memory_limit: str = ""
@@ -211,6 +212,7 @@ def get_settings() -> Settings:
         node_image_proxy=os.getenv("TASKHUB_NODE_IMAGE_PROXY", ""),
         node_registry_username=os.getenv("TASKHUB_NODE_REGISTRY_USERNAME", ""),
         node_registry_password=os.getenv("TASKHUB_NODE_REGISTRY_PASSWORD", ""),
+        test_database_admin_dsn=os.getenv("TASKHUB_TEST_DATABASE_ADMIN_DSN", ""),
         default_node_slots=int(os.getenv("TASKHUB_DEFAULT_NODE_SLOTS", "1")),
         default_node_cpu_limit=os.getenv("TASKHUB_DEFAULT_NODE_CPU_LIMIT", ""),
         default_node_memory_limit=os.getenv("TASKHUB_DEFAULT_NODE_MEMORY_LIMIT", ""),

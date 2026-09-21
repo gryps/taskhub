@@ -300,6 +300,65 @@ def test_project_repository_settings_can_be_viewed_checked_and_updated(tmp_path:
     assert updated.status_code == 200
 
 
+def test_project_quality_settings_can_be_updated_after_attach(tmp_path: Path):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+        )
+    )
+    app.state.projects.add(ProjectDefinition(id="shop", repository=str(repo)))
+
+    with TestClient(app) as client:
+        login = client.post("/api/auth/login", json={"token": "admin-secret"})
+        response = client.put(
+            "/api/projects/shop/quality",
+            headers={"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]},
+            json={
+                "test_commands": "python3 -m pytest -q\nnpm run lint",
+                "acceptance_commands": "npm run test:e2e",
+                "test_database": True,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["test_commands"] == [
+        ["python3", "-m", "pytest", "-q"],
+        ["npm", "run", "lint"],
+    ]
+    assert response.json()["acceptance_commands"] == [["npm", "run", "test:e2e"]]
+    assert response.json()["test_database"] is True
+    stored = app.state.projects.get("shop")
+    assert stored.acceptance_capabilities == {"test_database"}
+
+
+def test_project_quality_settings_reject_an_invalid_command(tmp_path: Path):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+        )
+    )
+    app.state.projects.add(ProjectDefinition(id="shop", repository=str(repo)))
+
+    with TestClient(app) as client:
+        login = client.post("/api/auth/login", json={"token": "admin-secret"})
+        response = client.put(
+            "/api/projects/shop/quality",
+            headers={"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]},
+            json={"test_commands": "python3 -c 'unterminated"},
+        )
+
+    assert response.status_code == 422
+    assert "测试命令格式错误" in response.json()["detail"]
+
+
 def test_project_preflight_reports_a_ready_local_delivery_path(tmp_path: Path):
     projects_file = tmp_path / "projects.json"
     repo = repository(tmp_path / "shop")

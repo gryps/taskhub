@@ -167,9 +167,9 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert "styles.css?v=60" in html
+        assert "styles.css?v=61" in html
         assert 'href="/canvas/"' in html and "打开生产画布" in html
-        assert "app.js?v=28" in html
+        assert "app.js?v=29" in html
         assert 'id="exception-center"' in html
         assert 'id="evidence-center"' in html
         assert "task-center.js?v=15" in html
@@ -222,7 +222,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="execution-tasks"' in html
         assert 'id="capability-disclosure"' in html
         assert 'id="capability-inventory-disclosure"' in html
-        assert "/static/app.js?v=28" in html
+        assert "/static/app.js?v=29" in html
         assert 'id="project-remote-url" required' in html
         assert 'id="project-local-path" required' in html
         assert 'id="attach-project-remote-url" required' in html
@@ -236,6 +236,8 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="project-repository-form"' in html
         assert 'id="check-project-repository"' in html
         assert 'id="save-project-repository"' in html
+        assert 'id="project-quality-tests"' in html
+        assert 'id="save-project-quality"' in html
         assert 'id="workflow-project"' in html
         app_script = client.get("/static/app.js").text
         assert "projectProvisioningDefaults" in app_script
@@ -290,6 +292,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         script = client.get("/static/app.js").text
         assert "copy-image-reference" in script
         assert "/repository/check" in script
+        assert "/quality" in script
         assert "renderProjectRepository(active)" in script
         assert 'path = "/api/auth/setup"' in script
         assert 'localStorage.setItem("taskhub_run_id"' not in script

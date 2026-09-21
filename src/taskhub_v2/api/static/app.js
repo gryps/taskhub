@@ -974,11 +974,41 @@ function renderProjectRepository(project) {
   byId("project-repository-remote").value = settings?.remote_name || "origin";
   byId("project-repository-branch").value = settings?.base_ref || "main";
   byId("project-repository-path").value = settings?.local_path || "";
+  const formatCommands = (commands) => (commands || []).map((command) =>
+    command.map((argument) => /[\s"'\\]/.test(argument) ? JSON.stringify(argument) : argument).join(" ")
+  ).join("\n");
+  byId("project-quality-tests").value = formatCommands(project?.test_commands);
+  byId("project-quality-acceptance").value = formatCommands(project?.acceptance_commands);
+  byId("project-quality-test-database").checked = Boolean(project?.test_database);
   const allowed = Boolean(project && canPermission("projects:manage"));
-  for (const id of ["project-repository-url", "project-repository-remote", "project-repository-branch", "check-project-repository", "save-project-repository"]) {
+  for (const id of ["project-repository-url", "project-repository-remote", "project-repository-branch", "check-project-repository", "save-project-repository", "project-quality-tests", "project-quality-acceptance", "project-quality-test-database", "save-project-quality"]) {
     byId(id).disabled = !allowed;
   }
   byId("project-repository-message").textContent = "";
+  byId("project-quality-message").textContent = "";
+}
+
+async function saveProjectQuality() {
+  if (!currentProjectId) return;
+  const button = byId("save-project-quality");
+  button.disabled = true;
+  byId("project-quality-message").textContent = "正在保存质量配置";
+  try {
+    const project = await request(`/api/projects/${encodeURIComponent(currentProjectId)}/quality`, {
+      method: "PUT",
+      body: JSON.stringify({
+        test_commands: byId("project-quality-tests").value,
+        acceptance_commands: byId("project-quality-acceptance").value,
+        test_database: byId("project-quality-test-database").checked,
+      }),
+    });
+    await loadProjects(project.id);
+    byId("project-quality-message").textContent = "质量配置已保存，项目预检已刷新";
+  } catch (error) {
+    byId("project-quality-message").textContent = error.message;
+  } finally {
+    button.disabled = !canPermission("projects:manage");
+  }
 }
 
 async function saveProjectRepository(event) {
@@ -1418,6 +1448,7 @@ byId("run-project-contract-gate").addEventListener("click", () => {
 byId("attach-project-form").addEventListener("submit", attachProject);
 byId("attach-project-repository").addEventListener("change", applySelectedRepository);
 byId("project-repository-form").addEventListener("submit", saveProjectRepository);
+byId("save-project-quality").addEventListener("click", saveProjectQuality);
 byId("scheduling-policy-form").addEventListener("submit", saveSchedulingPolicy);
 byId("execution-task-previous").addEventListener("click", () => {
   if (executionPlanPage <= 1 || !currentRun) return;
