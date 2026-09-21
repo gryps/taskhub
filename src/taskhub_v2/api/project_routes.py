@@ -204,6 +204,14 @@ async def check_project_repository(project_id: str, request: Request) -> dict:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.get("/{project_id}/preflight")
+async def project_preflight(project_id: str, request: Request) -> dict:
+    try:
+        return await request.app.state.project_preflight.run(project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="项目不存在") from exc
+
+
 @router.put("/{project_id}/scheduling-policy")
 async def update_project_scheduling_policy(
     project_id: str, payload: ProjectSchedulingPolicyRequest, request: Request

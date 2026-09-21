@@ -1,5 +1,5 @@
-import hashlib
 import asyncio
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -13,15 +13,19 @@ from taskhub_v2.browser.contract import (
     load_acceptance_contract,
     load_acceptance_suite,
 )
-from taskhub_v2.domain.models import RunStatus
-from taskhub_v2.domain.models import ExecutionResult, ScheduledTests, TestExecution, Workspace
+from taskhub_v2.browser.reports import validate_junit
+from taskhub_v2.domain.models import (
+    ExecutionResult,
+    RunStatus,
+    ScheduledTests,
+    TestExecution,
+    Workspace,
+)
+from taskhub_v2.node_agent.runtime import normalize_command, run_commands
 from taskhub_v2.workflows.browser_acceptance import (
     request_browser_acceptance,
     route_browser_acceptance,
 )
-from taskhub_v2.node_agent.runtime import normalize_command
-from taskhub_v2.node_agent.runtime import run_commands
-from taskhub_v2.browser.reports import validate_junit
 
 
 def test_candidate_identity_reaches_real_subprocess(tmp_path):
@@ -51,7 +55,10 @@ def test_junit_rejects_incomplete_or_skipped_evidence(report):
 
 
 def test_junit_surfaces_browser_failure_detail():
-    report = b"<testsuite failures='1'><testcase><failure>UnicodeDecodeError: gbk</failure></testcase></testsuite>"
+    report = (
+        b"<testsuite failures='1'><testcase><failure>"
+        b"UnicodeDecodeError: gbk</failure></testcase></testsuite>"
+    )
     with pytest.raises(ValueError, match="UnicodeDecodeError: gbk"):
         validate_junit([report], ["chromium"])
 
@@ -179,9 +186,13 @@ def test_browser_contract_dispatches_automatically_when_present(tmp_path):
 
 def test_browser_acceptance_uses_unique_job_id_for_retries(monkeypatch, tmp_path):
     import subprocess
+
     from taskhub_v2.browser.preview import PreviewInstance
     from taskhub_v2.projects import ProjectRegistry
-    from taskhub_v2.workers.acceptance import ProjectAcceptanceGateway
+    from taskhub_v2.workers.acceptance import (
+        AcceptanceExecutionError,
+        ProjectAcceptanceGateway,
+    )
 
     repository = tmp_path / "repo"
     repository.mkdir()
@@ -229,7 +240,13 @@ required_artifacts: [junit.xml]
             self.job_ids.append(job_id)
             return ScheduledTests(
                 node_id="windows-gui-34",
-                tests=[TestExecution(command=["npx", "playwright", "test"], exit_code=0, output_tail="ok")],
+                tests=[
+                    TestExecution(
+                        command=["npx", "playwright", "test"],
+                        exit_code=0,
+                        output_tail="ok",
+                    )
+                ],
                 metadata={
                     "target_url": "http://preview",
                     "git_commit": "a" * 40,
@@ -251,12 +268,17 @@ required_artifacts: [junit.xml]
     )
     implementation = ExecutionResult(
         summary="done",
-        workspace=Workspace(project_id="shop", path=str(repository), branch="task", base_commit="a" * 40),
+        workspace=Workspace(
+            project_id="shop",
+            path=str(repository),
+            branch="task",
+            base_commit="a" * 40,
+        ),
         commit="a" * 40,
     )
 
     for _ in range(2):
-        with pytest.raises(Exception):
+        with pytest.raises(AcceptanceExecutionError):
             asyncio.run(gateway.verify("run-1", "shop", implementation))
 
     assert len(set(scheduler.job_ids)) == 2
@@ -364,6 +386,7 @@ required_artifacts: [junit.xml]
 
 def test_browser_acceptance_surfaces_collection_failure(monkeypatch, tmp_path):
     import subprocess
+
     from taskhub_v2.browser.preview import PreviewInstance
     from taskhub_v2.projects import ProjectRegistry
     from taskhub_v2.workers.acceptance import AcceptanceExecutionError, ProjectAcceptanceGateway
@@ -436,7 +459,12 @@ required_artifacts: [junit.xml]
     )
     implementation = ExecutionResult(
         summary="done",
-        workspace=Workspace(project_id="shop", path=str(repository), branch="task", base_commit="a" * 40),
+        workspace=Workspace(
+            project_id="shop",
+            path=str(repository),
+            branch="task",
+            base_commit="a" * 40,
+        ),
         commit="a" * 40,
     )
 
@@ -515,8 +543,9 @@ def test_artifact_store_verifies_agent_digest_and_size(tmp_path):
 def test_preview_cancellation_cleans_schema_process_and_state(monkeypatch, tmp_path):
     import asyncio
     import subprocess
-    from taskhub_v2.browser.preview import PreviewManager
+
     from taskhub_v2.browser.contract import PreviewContract
+    from taskhub_v2.browser.preview import PreviewManager
 
     async def in_thread(function, *args, **kwargs):
         return function(*args, **kwargs)
@@ -538,7 +567,11 @@ def test_preview_cancellation_cleans_schema_process_and_state(monkeypatch, tmp_p
             PreviewContract(command=[
                 sys.executable, "-c", "import time; time.sleep(60); port='{port}'"
             ])))
-        done, _ = await asyncio.wait([task, asyncio.create_task(ready.wait())], timeout=5, return_when=asyncio.FIRST_COMPLETED)
+        done, _ = await asyncio.wait(
+            [task, asyncio.create_task(ready.wait())],
+            timeout=5,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
         if task in done:
             await task
         assert ready.is_set()
@@ -557,8 +590,9 @@ def test_preview_uses_candidate_source_instead_of_controller_pythonpath(
     monkeypatch, tmp_path
 ):
     import subprocess
-    from taskhub_v2.browser.preview import PreviewManager
+
     from taskhub_v2.browser.contract import PreviewContract
+    from taskhub_v2.browser.preview import PreviewManager
 
     (tmp_path / "src").mkdir()
     manager = PreviewManager("postgresql://unused", host="127.0.0.1", ports=[8498])
@@ -604,6 +638,7 @@ def test_preview_host_is_loaded_from_environment(monkeypatch):
 
 def test_preview_rejects_healthy_old_version(monkeypatch):
     import httpx
+
     from taskhub_v2.browser.preview import PreviewManager
 
     client_class = httpx.AsyncClient

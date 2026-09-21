@@ -49,10 +49,11 @@ def production_readiness(settings: Settings, app_state) -> dict:
             "正式控制器应连接受限 Socket Proxy，不直接挂载 Docker Socket",
         ),
         _check(
-            "node_reconciliation",
-            "节点协调与升级回滚",
-            bool(getattr(app_state, "remote_nodes", None)),
-            "需要启用远程节点协调服务",
+            "local_node_management",
+            "本机节点管理",
+            settings.container_provisioning_enabled
+            and bool(getattr(app_state, "container_manager", None)),
+            "需要启用 Seed 本机 Docker 节点管理",
         ),
     ]
     return {

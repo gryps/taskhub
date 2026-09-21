@@ -24,6 +24,8 @@ def test_release_kit_contains_cross_platform_lifecycle_assets():
         "upgrade.ps1",
         "restore.sh",
         "restore.ps1",
+        "verify-backup.sh",
+        "verify-backup.ps1",
         "prepare-ubuntu.sh",
         "prepare-windows.ps1",
         "preflight.sh",
@@ -93,7 +95,10 @@ def test_release_compose_preloads_unified_node_reference():
 
 
 def test_backup_restore_binds_encryption_key_to_database_identity():
-    for name in ("backup.sh", "backup.ps1", "restore.sh", "restore.ps1"):
+    for name in (
+        "backup.sh", "backup.ps1", "restore.sh", "restore.ps1",
+        "verify-backup.sh", "verify-backup.ps1",
+    ):
         text = (RELEASE / name).read_text(encoding="utf-8-sig")
         assert "TASKHUB_CONFIG_KEY_FINGERPRINT" in text
         assert "taskhub-backup-v1:" in text
@@ -105,6 +110,8 @@ def test_backup_restore_binds_encryption_key_to_database_identity():
             "docker compose --project-directory"
         )
     assert ') -join "`n"' in (RELEASE / "restore.ps1").read_text(encoding="utf-8-sig")
+    assert "verify-backup.sh" in (RELEASE / "backup.sh").read_text(encoding="utf-8")
+    assert "verify-backup.ps1" in (RELEASE / "backup.ps1").read_text(encoding="utf-8-sig")
 
 
 def test_release_images_pin_codex_and_node_has_common_role_tools():

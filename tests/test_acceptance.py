@@ -7,8 +7,10 @@ from taskhub_v2.artifacts import ArtifactStore
 from taskhub_v2.domain.models import (
     ExecutionResult,
     ScheduledTests,
-    TestExecution as CommandExecution,
     Workspace,
+)
+from taskhub_v2.domain.models import (
+    TestExecution as CommandExecution,
 )
 from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.workers.acceptance import (

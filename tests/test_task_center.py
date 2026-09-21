@@ -55,6 +55,17 @@ def test_memory_task_index_filters_and_preserves_created_time():
         assert page.items[0].created_at == first.created_at
         assert page.items[0].updated_at >= first.updated_at
 
+        await index.upsert(
+            {
+                "run_id": "blocked",
+                "requirement": "Blocked publication",
+                "project_id": "demo",
+                "current_stage": "merge_blocked",
+                "status": "blocked",
+            }
+        )
+        assert (await index.list(stage="merging")).total == 1
+
     asyncio.run(exercise())
 
 
@@ -156,14 +167,18 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert "styles.css?v=56" in html
+        assert "styles.css?v=60" in html
         assert 'href="/canvas/"' in html and "打开生产画布" in html
-        assert "app.js?v=26" in html
+        assert "app.js?v=28" in html
+        assert 'id="exception-center"' in html
+        assert 'id="evidence-center"' in html
+        assert "task-center.js?v=15" in html
         assert "revision-center.js?v=1" in html
         assert "capability-center.js?v=1" in html
         assert html.count('class="resource-disclosure-heading"') == 4
         assert html.count('class="resource-order"') == 4
-        assert "resource-center.js?v=38" in html
+        assert 'id="model-operations"' in html
+        assert "resource-center.js?v=39" in html
         assert html.count('class="configuration-card"') >= 6
         assert html.count('class="management-card-grid"') >= 3
         assert 'id="login-username"' in html
@@ -207,7 +222,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="execution-tasks"' in html
         assert 'id="capability-disclosure"' in html
         assert 'id="capability-inventory-disclosure"' in html
-        assert "/static/app.js?v=26" in html
+        assert "/static/app.js?v=28" in html
         assert 'id="project-remote-url" required' in html
         assert 'id="project-local-path" required' in html
         assert 'id="attach-project-remote-url" required' in html

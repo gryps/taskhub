@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 
 from taskhub_v2.api.dependencies import get_run_service
@@ -41,6 +41,34 @@ Service = Annotated[RunService, Depends(get_run_service)]
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "orchestrator": "langgraph"}
+
+
+@router.get("/exceptions")
+async def exception_center(
+    request: Request,
+    project_id: str = "",
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+) -> dict:
+    return await request.app.state.exception_center.list(
+        project_id=project_id,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/evidence")
+async def evidence_center(
+    request: Request,
+    project_id: str = "",
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=50),
+) -> dict:
+    return await request.app.state.evidence_center.list(
+        project_id=project_id,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post("/runs", response_model=RunView, status_code=201)

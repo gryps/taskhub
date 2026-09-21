@@ -17,3 +17,8 @@ Catalog = Annotated[ProviderCatalog, Depends(get_catalog)]
 @router.get("")
 async def provider_status(catalog: Catalog) -> dict:
     return await catalog.status()
+
+
+@router.get("/operations")
+async def provider_operations(request: Request, project_id: str = "") -> dict:
+    return await request.app.state.model_operations.report(project_id=project_id)

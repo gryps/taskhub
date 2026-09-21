@@ -1,10 +1,10 @@
 import asyncio
 import os
 import re
+import shutil
 import signal
 import subprocess
 import tempfile
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -38,7 +38,13 @@ class PreviewManager:
         self._instances: dict[str, PreviewInstance] = {}
         self._lock = asyncio.Lock()
 
-    async def start(self, run_id: str, worktree: str, commit: str, contract: PreviewContract) -> PreviewInstance:
+    async def start(
+        self,
+        run_id: str,
+        worktree: str,
+        commit: str,
+        contract: PreviewContract,
+    ) -> PreviewInstance:
         if not re.fullmatch(r"[a-fA-F0-9]{7,64}", commit):
             raise ValueError("preview requires an exact Git commit SHA")
         actual = await asyncio.to_thread(subprocess.run,
@@ -60,7 +66,18 @@ class PreviewManager:
             await asyncio.to_thread(self._create_schema, schema)
             state_dir = tempfile.mkdtemp(prefix="taskhub-preview-")
             try:
-                environment = {**os.environ, "PORT": str(port), "TASKHUB_PREVIEW_URL": f"http://{self.host}:{port}", "PGOPTIONS": f"-c search_path={schema}", "TASKHUB_GIT_COMMIT": commit, "TASKHUB_PREVIEW_STATE_DIR": state_dir, "TASKHUB_PREVIEW_DSN": make_conninfo(self.postgres_dsn, options=f"-csearch_path={schema}")}
+                environment = {
+                    **os.environ,
+                    "PORT": str(port),
+                    "TASKHUB_PREVIEW_URL": f"http://{self.host}:{port}",
+                    "PGOPTIONS": f"-c search_path={schema}",
+                    "TASKHUB_GIT_COMMIT": commit,
+                    "TASKHUB_PREVIEW_STATE_DIR": state_dir,
+                    "TASKHUB_PREVIEW_DSN": make_conninfo(
+                        self.postgres_dsn,
+                        options=f"-csearch_path={schema}",
+                    ),
+                }
                 candidate_source = Path(worktree) / "src"
                 if candidate_source.is_dir():
                     environment["PYTHONPATH"] = str(candidate_source)

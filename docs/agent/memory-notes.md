@@ -2,6 +2,21 @@
 
 Updated: 2026-09-13
 
+## Phase 7 Single-Seed Backend and Quality Baseline
+
+- Active TaskHub applications no longer mount the physical-host or remote-node APIs and no longer
+  start SSH host monitoring or remote-node reconciliation. Historical stores and implementation
+  modules remain untouched for upgrade audit and rollback compatibility.
+- Production readiness now verifies Seed-local Docker node management instead of requiring a
+  remote-node service. Diagnostics remain backward compatible but emit empty legacy host sections
+  and collect active local containers, scheduler state and operations.
+- Repository-wide Ruff was restored from 28 findings to a clean result. The Makefile automatically
+  uses `.venv/bin/python` when available and exposes a combined Python/frontend quality target.
+- The React production canvas now has Vitest coverage for typed-edge inference and preservation of
+  server-owned capability and priority facts during client-side save transformations.
+- GitHub CI covers Python 3.12–3.14 with PostgreSQL, frontend unit/build checks, and opt-in browser
+  acceptance with a real PostgreSQL service and Playwright Chromium.
+
 ## Production Canvas Formal Registry Release
 
 - On 2026-09-13, source commit `1cc5185` was formally released as `0.1.0-alpha` after correcting
@@ -510,3 +525,20 @@ Updated: 2026-09-13
 - The coding router now uses each model card's proxy before the global OpenAI proxy. This fixed the gap where device login and connection tests succeeded but actual Codex coding failed with `ProxyRequiredError`.
 - A temporary overlay release was deployed to `.31` for acceptance. Both execution nodes reported coding, workspace-write sandbox, Git and Python capabilities. A real Codex task changed an isolated `value.txt` on `work-01`, then `work-02` executed a Python assertion against the transferred workspace; the result was `DEVELOPMENT_SMOKE_OK`.
 - Final source verification before Git publication: `288 passed, 19 skipped`; real Chrome system-configuration acceptance, focused Ruff, JavaScript syntax, diff checks and the React/Vite production build passed.
+
+## Phase 7 Quality Baseline and Project Preflight
+
+- On 2026-09-21, the active backend converged to the single-Seed product boundary: physical-host and remote-node routers, background monitoring and reconciliation are no longer mounted. Historical modules and diagnostic archive members remain for rollback compatibility, but return no active legacy inventory.
+- Repository-wide Ruff is clean. `make check` selects the project virtual environment and runs Python tests, React unit tests and the Vite production build. GitHub Actions adds Python 3.12/3.13/3.14, PostgreSQL, frontend and real-browser jobs.
+- A release acceptance test now uses a real bare Git authority, real worktree, local quality command, Git publication and PostgreSQL checkpoint. It passed in an isolated container and verified that a fresh controller restores the completed run without creating a duplicate commit.
+- `ProjectPreflightService` is the single authority for project startup readiness. The report covers repository reachability, effective model configuration, online Seed-local execution, active-contract requirements, quality commands and declared acceptance capabilities. The Development Workflow renders six actionable checks and disables “开始流程” until blocking checks pass.
+- Static asset markers are `styles.css?v=57` and `app.js?v=27`. The next Phase 7 work item is the unified exception and recovery-action center; no live deployment or image publication has been performed for this source batch.
+- The unified exception center projects waiting, blocked and failed entries directly from workflow checkpoints and the task index. It groups project, implementation, acceptance, evidence, publication and workflow failures by severity and opens the checkpoint-owned recovery action in task detail; it does not introduce a second mutable lifecycle.
+- Canonical task-stage filters now include their blocked sub-states. Memory and PostgreSQL indexes expose the same attention query, including restart recovery. Static markers are `styles.css?v=58`, `app.js?v=28` and `task-center.js?v=14`; real Chrome passed at 1440/390px and PostgreSQL index/restart/browser tests passed.
+- The next Phase 7 work item is the unified evidence center, followed by model operations and backup/recovery. No deployment, image build or image publication has been performed for this source batch.
+- `EvidenceCenterService` now derives four-gate completeness, test/evidence pass counts, SHA-256 artifact integrity, missing evidence and source/commit lineage from authoritative run checkpoints. The Task Center presents the read-only projection and opens the existing task evidence detail; real Chrome passed at desktop and 390px widths.
+- `ModelOperationsService` combines provider billing/runtime circuit state with the latest checkpoint-owned model traces, reporting calls, role distribution, latency and fallbacks without exposing credentials. The system-configuration panel degrades independently from model-card editing; its real Chrome regression covers cooldown and quota states.
+- Release kits now include `verify-backup.sh` and `verify-backup.ps1`. Backup creation invokes the verifier before success; operators can rerun it without restoring. It verifies checksums, the configuration-key fingerprint, the PostgreSQL backup identity and the TaskHub data archive on Ubuntu or Windows.
+- Static markers are `styles.css?v=60`, `app.js?v=28`, `task-center.js?v=15` and `resource-center.js?v=39`. The next Phase 7 item is full regression and release/security documentation closure. No deployment, image build or image publication has been performed for this source batch.
+- Phase 7 source closure passed repository-wide Ruff; `302 passed, 23 skipped` Python tests; four React tests; the Vite production build; all 15 opt-in real-Chrome browser cases; and six focused PostgreSQL/restart/release cases. GitHub Actions YAML, shell syntax, PowerShell BOM requirements, diff whitespace and a redacted credential-pattern scan passed. The only initial browser mismatch was an obsolete assertion expecting an active plan after automatic completion; it now correctly expects the completed state.
+- Temporary PostgreSQL used on `.31` ran with `--rm`; its SSH tunnel was stopped and the container stop returned its name with no retained listing. The source is ready for Git publication. Building/publishing replacement Seed and node images, deploying them, and running a destructive target restore drill remain explicit release actions.

@@ -42,6 +42,7 @@ docker save -o "$backup/images.tar" "$seed_image" "$node_image" "$postgres_image
   printf 'TASKHUB_CONFIG_KEY_FINGERPRINT=%s\n' "$key_fingerprint"
 } >"$backup/backup.env"
 (cd "$backup" && sha256sum .env backup.env postgres.dump taskhub-data.tar.gz images.tar compose.yaml >SHA256SUMS)
+"$root/verify-backup.sh" "$backup"
 
 $compose start controller
 trap - EXIT INT TERM

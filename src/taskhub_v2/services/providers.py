@@ -8,7 +8,6 @@ from taskhub_v2.providers.health import ProviderHealthStore
 from taskhub_v2.security import mask_secret
 from taskhub_v2.services.model_usage import ModelUsageReader, unavailable
 
-
 DEVICE_AUTH_URL = "https://auth.openai.com/codex/device"
 
 

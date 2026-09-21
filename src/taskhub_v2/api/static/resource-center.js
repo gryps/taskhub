@@ -311,8 +311,48 @@ async function loadProviders() {
     byId("provider-summary").textContent = `${ready}/${cards.length} 已认证 · 按角色主备路由`;
     fillModelConfiguration(configuration);
     renderConfigurationAudit("model-config-audit", audit.events);
+    loadModelOperations();
   } catch (error) {
     byId("provider-summary").textContent = error.message;
+  }
+}
+
+const operationStateNames = {healthy: "正常", degraded: "降级", cooldown: "熔断中",
+  recovering: "恢复探测", unconfigured: "未配置"};
+
+function billingText(billing) {
+  if (!billing || billing.status !== "available") return billing?.detail || "未提供额度数据";
+  const metrics = billing.metrics || [];
+  return metrics.map((item) => {
+    if (item.used_percent !== undefined) return `${item.label} ${item.used_percent}%`;
+    return `${item.label} ${item.value ?? "—"}${item.unit ? ` ${item.unit}` : ""}`;
+  }).join(" · ") || "额度接口未返回指标";
+}
+
+async function loadModelOperations() {
+  byId("model-operations-summary").textContent = "正在读取";
+  try {
+    const data = await request("/api/providers/operations");
+    const summary = data.summary || {};
+    byId("model-operations-summary").textContent = `${summary.invocations || 0} 次调用 · ${summary.fallback_events || 0} 次回退`;
+    const providerNames = {chatgpt_plus_account: "ChatGPT Plus", chatgpt_pro_account: "ChatGPT Pro",
+      gpt_api: "OpenAI API", deepseek_api: "DeepSeek", minimax_api: "MiniMax"};
+    const providers = (data.providers || []).map((item) => `<article class="model-operation-card state-${escapeHtml(item.operational_state)}">
+      <header><div><strong>${escapeHtml(providerNames[item.id] || item.id)}</strong><small>${escapeHtml(item.model || "默认模型")}</small></div><span>${escapeHtml(operationStateNames[item.operational_state] || item.operational_state)}</span></header>
+      <p>${escapeHtml(billingText(item.billing))}</p>
+      ${item.reason ? `<small>原因：${escapeHtml(item.reason)} · 连续失败 ${item.failure_count}</small>` : ""}
+    </article>`).join("");
+    const usage = (data.usage || []).map((item) => `<div class="model-usage-row">
+      <strong>${escapeHtml(item.provider)}<small>${escapeHtml(item.model)}</small></strong>
+      <span>${item.invocations} 次</span><span>平均 ${(item.average_duration_ms / 1000).toFixed(1)} 秒</span><span>${item.fallback_events} 次回退</span>
+    </div>`).join("");
+    byId("model-operations").innerHTML = `<div class="model-operation-stats">
+      <div><strong>${summary.providers || 0}</strong><span>服务</span></div><div><strong>${summary.unhealthy_providers || 0}</strong><span>需关注</span></div><div><strong>${summary.sampled_runs || 0}</strong><span>采样任务</span></div><div><strong>${((summary.average_duration_ms || 0) / 1000).toFixed(1)}s</strong><span>平均耗时</span></div>
+    </div><div class="model-operation-grid">${providers || '<p class="muted">尚无模型服务。</p>'}</div>
+    <div class="model-usage-table"><div class="model-usage-row resource-header"><span>服务 / 模型</span><span>调用</span><span>耗时</span><span>回退</span></div>${usage || '<p class="muted">最近任务尚无模型调用记录。</p>'}</div>`;
+  } catch (error) {
+    byId("model-operations-summary").textContent = "读取失败";
+    byId("model-operations").innerHTML = `<p class="muted">${escapeHtml(error.message)}</p>`;
   }
 }
 

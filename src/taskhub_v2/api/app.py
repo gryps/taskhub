@@ -17,14 +17,12 @@ from taskhub_v2.api.container_routes import router as container_router
 from taskhub_v2.api.dag_routes import router as dag_router
 from taskhub_v2.api.deployment_routes import router as deployment_router
 from taskhub_v2.api.diagnostic_routes import router as diagnostic_router
-from taskhub_v2.api.host_routes import router as host_router
 from taskhub_v2.api.node_routes import router as node_router
 from taskhub_v2.api.onboarding_routes import router as onboarding_router
 from taskhub_v2.api.productization_routes import router as productization_router
 from taskhub_v2.api.project_contract_routes import router as project_contract_router
 from taskhub_v2.api.project_routes import router as project_router
 from taskhub_v2.api.provider_routes import router as provider_router
-from taskhub_v2.api.remote_node_routes import router as remote_node_router
 from taskhub_v2.api.revision_routes import router as revision_router
 from taskhub_v2.api.routes import router
 from taskhub_v2.api.system_routes import router as system_router
@@ -33,9 +31,7 @@ from taskhub_v2.config import Settings, get_settings
 from taskhub_v2.deployment import DeploymentManager
 from taskhub_v2.persistence.checkpoints import checkpoint_store
 from taskhub_v2.persistence.configuration import configuration_store
-from taskhub_v2.persistence.hosts import physical_host_store
 from taskhub_v2.persistence.production import production_store
-from taskhub_v2.persistence.remote_nodes import remote_node_store
 from taskhub_v2.persistence.task_index import task_index_store
 from taskhub_v2.persistence.topologies import topology_store
 from taskhub_v2.projects import ProjectRegistry
@@ -53,14 +49,16 @@ from taskhub_v2.services.configuration import ManagedConfigurationService
 from taskhub_v2.services.containers import ContainerManager
 from taskhub_v2.services.dag_runtime import build_dag_runtime
 from taskhub_v2.services.device_auth import CodexDeviceAuthService
+from taskhub_v2.services.evidence import EvidenceCenterService
+from taskhub_v2.services.exceptions import ExceptionCenterService
 from taskhub_v2.services.git_authority import build_project_provisioner
-from taskhub_v2.services.hosts import PhysicalHostService
+from taskhub_v2.services.model_operations import ModelOperationsService
 from taskhub_v2.services.node_model_config import write_node_model_configuration
 from taskhub_v2.services.operational_log import OperationalLog
 from taskhub_v2.services.productization import ProductizationService
 from taskhub_v2.services.project_contracts import ProjectContractService
+from taskhub_v2.services.project_preflight import ProjectPreflightService
 from taskhub_v2.services.providers import ProviderCatalog
-from taskhub_v2.services.remote_nodes import RemoteNodeService
 from taskhub_v2.services.revisions import RevisionService
 from taskhub_v2.services.system_diagnostics import SystemDiagnosticsService
 from taskhub_v2.services.topologies import TopologyService
@@ -118,8 +116,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         async with (
             configuration_store(settings) as managed_store,
-            physical_host_store(settings) as host_store,
-            remote_node_store(settings) as remote_store,
             production_store(settings) as production_objects,
             checkpoint_store(settings) as checkpointer,
             task_index_store(settings) as task_index,
@@ -166,14 +162,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 effective_settings.model_account_root,
                 effective_settings.openai_proxy_url,
             )
-            app.state.physical_hosts = PhysicalHostService(
-                host_store,
-                managed_store,
-                cipher,
-                effective_settings.node_callback_url,
-                operation_log=operation_log,
-                monitor_interval_seconds=effective_settings.node_heartbeat_seconds,
-            )
             if app.state.container_manager is default_container_manager:
                 app.state.container_manager = ContainerManager(
                     enabled=effective_settings.container_provisioning_enabled,
@@ -190,23 +178,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     credentials=node_credentials,
                     operation_log=operation_log,
                 )
-            app.state.remote_nodes = RemoteNodeService(
-                remote_store,
-                app.state.physical_hosts,
-                host_store,
-                managed_store,
-                app.state.container_manager,
-                image=effective_settings.node_container_image,
-                node_token=effective_settings.node_token,
-                image_registry=effective_settings.node_image_registry,
-                image_proxy=effective_settings.node_image_proxy,
-                registry_username=effective_settings.node_registry_username,
-                registry_password=effective_settings.node_registry_password,
-                default_cpu=effective_settings.default_node_cpu_limit,
-                default_memory=effective_settings.default_node_memory_limit,
-                credentials=node_credentials,
-                reconcile_interval_seconds=effective_settings.node_heartbeat_seconds,
-            )
             provider = build_provider(effective_settings, provider_health)
             app.state.capability_packs = CapabilityService(production_objects, projects)
             await app.state.capability_packs.ensure_builtins()
@@ -221,6 +192,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             app.state.project_contracts = ProjectContractService(
                 production_objects, projects, test_scheduler
+            )
+            app.state.project_preflight = ProjectPreflightService(
+                effective_settings,
+                projects,
+                app.state.project_contracts,
+                test_scheduler,
             )
             app.state.topologies = TopologyService(topologies, projects, test_scheduler)
             worker = build_worker(
@@ -269,6 +246,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 projects if effective_settings.worker_mode == "git" else None,
                 task_index,
             )
+            app.state.exception_center = ExceptionCenterService(
+                task_index,
+                projects if effective_settings.worker_mode == "git" else None,
+            )
+            app.state.evidence_center = EvidenceCenterService(app.state.run_service)
             # A memory checkpointer is new for every process and has nothing to repair.
             # PostgreSQL can contain runs created before the task index existed.
             if effective_settings.checkpointer == "postgres":
@@ -277,24 +259,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     app.state.run_service.recover_interrupted()
                 )
             app.state.provider_catalog = ProviderCatalog(effective_settings, provider_health)
+            app.state.model_operations = ModelOperationsService(
+                app.state.provider_catalog,
+                app.state.run_service,
+            )
             app.state.node_scheduler = test_scheduler
             app.state.node_credentials = node_credentials
             app.state.system_diagnostics = SystemDiagnosticsService(
                 effective_settings,
-                app.state.physical_hosts,
-                app.state.remote_nodes,
+                None,
+                None,
                 app.state.container_manager,
                 test_scheduler,
                 operation_log,
             )
-            app.state.physical_hosts.start_monitoring()
-            app.state.remote_nodes.start_reconciliation()
             await managed_configuration.mark_applied()
             try:
                 yield
             finally:
-                await app.state.remote_nodes.close()
-                await app.state.physical_hosts.close()
                 recovery = getattr(app.state, "recovery_task", None)
                 if recovery and not recovery.done():
                     recovery.cancel()
@@ -315,8 +297,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(configuration_router)
     app.include_router(container_router)
-    app.include_router(host_router)
-    app.include_router(remote_node_router)
     app.include_router(revision_router)
     app.include_router(capability_router)
     app.include_router(project_router)

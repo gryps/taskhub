@@ -66,6 +66,8 @@ try {
         "$Hash  $Name"
     }
     $Checksums | Set-Content (Join-Path $BackupDirectory "SHA256SUMS") -Encoding ascii
+    & (Join-Path $Root "verify-backup.ps1") -BackupDirectory $BackupDirectory
+    if ($LASTEXITCODE -ne 0) { throw "备份验证失败。" }
 } finally {
     docker compose --project-directory $Root --env-file $EnvFile -f $ComposeFile start controller *> $null
 }

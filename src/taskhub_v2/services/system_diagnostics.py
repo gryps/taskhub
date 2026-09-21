@@ -24,7 +24,11 @@ class SystemDiagnosticsService:
         self.operation_log = operation_log
 
     async def node(self, node_id: str, tail: int = 200) -> dict[str, Any]:
-        remote = await self.remote_nodes.store.get(node_id)
+        remote = (
+            await self.remote_nodes.store.get(node_id)
+            if self.remote_nodes is not None
+            else None
+        )
         if remote:
             result = await self.remote_nodes.diagnostics(node_id, tail)
         else:
@@ -55,8 +59,15 @@ class SystemDiagnosticsService:
 
     async def export(self) -> tuple[bytes, str]:
         created = datetime.now(UTC).isoformat()
-        hosts = await self.hosts.list()
-        remote_nodes = await self.remote_nodes.list()
+        # Keep the legacy archive members so older support tooling can still
+        # consume diagnostics, but single-Seed deployments no longer start or
+        # query the retired SSH host/remote-node services.
+        hosts = await self.hosts.list() if self.hosts is not None else {"hosts": []}
+        remote_nodes = (
+            await self.remote_nodes.list()
+            if self.remote_nodes is not None
+            else {"nodes": []}
+        )
         scheduler = await self.scheduler.status()
         try:
             containers = await asyncio.to_thread(self.container_manager.list)

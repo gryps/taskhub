@@ -103,6 +103,13 @@ TASKHUB_REGISTRY=registry.example.com/team ./upgrade.sh 0.2.0
 
 升级脚本先在 `backups/<UTC时间>` 创建恢复点，包含 PostgreSQL dump、TaskHub 数据卷、旧镜像、旧 `.env` 和旧 Compose。控制器在一致性备份期间会短暂停止。新版本三分钟内未通过健康检查时自动恢复。
 
+备份脚本在完成前会自动验证文件摘要、配置加密主密钥身份、PostgreSQL 转储和数据卷归档。
+也可在不修改当前部署的情况下重复执行只读验证：
+
+```bash
+./verify-backup.sh ./backups/20260911T080000Z
+```
+
 ## 手工恢复
 
 恢复会覆盖当前 `taskhub-data` 和 `taskhub-postgres-data` 两个卷。确认恢复点后执行：

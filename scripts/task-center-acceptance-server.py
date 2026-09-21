@@ -23,7 +23,11 @@ from taskhub_v2.domain.models import (
 
 class AcceptanceProvider:
     async def create_plan(self, requirement):
-        plan = Plan(summary=f"Plan for {requirement}", steps=["change", "verify"], acceptance=["works"])
+        plan = Plan(
+            summary=f"Plan for {requirement}",
+            steps=["change", "verify"],
+            acceptance=["works"],
+        )
         return ModelResult(content=plan, provider="acceptance", model="deterministic")
 
     async def review(self, requirement, implementation):

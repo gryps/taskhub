@@ -4,7 +4,6 @@ from pathlib import Path
 
 from taskhub_v2.security.secrets import parse_env_file, write_env_file
 
-
 MAPPING = {
     "LLM_GPT_API_KEY": "TASKHUB_GPT_API_KEY",
     "LLM_GPT_BASE_URL": "TASKHUB_GPT_BASE_URL",

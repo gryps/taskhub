@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pytest
 import uvicorn
+from cryptography.fernet import Fernet
 
 from taskhub_v2.config import Settings
 from tests.fakes import RecordingProvider, RecordingWorker
@@ -54,6 +55,7 @@ def test_browser_history_and_publication_recovery(monkeypatch, tmp_path, postgre
     settings = Settings(
         checkpointer="postgres", postgres_dsn=postgres_dsn,
         admin_token="acceptance-only", session_secret="acceptance-only-session",
+        config_encryption_key=Fernet.generate_key().decode(),
         projects_file=str(tmp_path / "projects.json"),
         provider_health_file=str(tmp_path / "health.json"),
         nodes_file=str(tmp_path / "nodes.json"),
@@ -65,6 +67,7 @@ def test_browser_history_and_publication_recovery(monkeypatch, tmp_path, postgre
     url = f"http://127.0.0.1:{port}"
     project = f"browser-{uuid4().hex}"
     errors = []
+    executable = os.getenv("TASKHUB_TEST_BROWSER_EXECUTABLE") or None
 
     def login(browser):
         context = browser.new_context(viewport={"width": 1440, "height": 1000})
@@ -73,6 +76,9 @@ def test_browser_history_and_publication_recovery(monkeypatch, tmp_path, postgre
         page.goto(url)
         page.locator("#admin-token").fill("acceptance-only")
         page.locator("#login-button").click()
+        expect(page.locator("#workspace")).to_be_visible()
+        page.wait_for_load_state("networkidle")
+        page.locator("#nav-tasks").click()
         expect(page.locator("#task-center")).to_be_visible()
         expect(page.locator("#workflow-page")).to_be_hidden()
         page.locator("#filter-project").fill(project)
@@ -99,7 +105,7 @@ def test_browser_history_and_publication_recovery(monkeypatch, tmp_path, postgre
 
     with sync_playwright() as playwright:
         with serve(app_module.create_app(settings), port):
-            browser = playwright.chromium.launch()
+            browser = playwright.chromium.launch(executable_path=executable)
             context, page = login(browser)
             csrf = next(c["value"] for c in context.cookies() if c["name"] == "taskhub_v2_csrf")
             ids = []
@@ -113,16 +119,25 @@ def test_browser_history_and_publication_recovery(monkeypatch, tmp_path, postgre
                 ids.append(response.json()["run_id"])
             page.locator("#refresh-tasks").click()
             rows(page, 3)
+            expect(page.locator("#exception-items .exception-item")).to_have_count(1)
+            expect(page.locator("#exception-center-state")).to_have_text("1 项待处理")
+            expect(page.locator("#exception-items")).to_contain_text("Git 发布")
+            expect(page.locator("#evidence-items .evidence-item")).to_have_count(3)
+            expect(page.locator("#evidence-items")).to_contain_text("制品完整性")
             sidebar(page)
             page.screenshot(path=str(tmp_path / "task-list.png"), full_page=True)
             page.reload()
+            page.wait_for_load_state("networkidle")
+            page.locator("#nav-tasks").click()
             page.locator("#filter-project").fill(project)
             rows(page, 3)
             page.locator("#filter-line").fill("B")
             rows(page, 1)
             expect(page.locator("#task-rows")).to_contain_text(ids[1])
             page.locator("#filter-line").fill("A")
+            rows(page, 2)
             page.locator("#filter-status").select_option("blocked")
+            rows(page, 1)
             page.locator("#filter-stage").select_option("merging")
             rows(page, 1)
             page.locator(f'tr[data-run-id="{ids[0]}"]').click()
@@ -136,15 +151,16 @@ def test_browser_history_and_publication_recovery(monkeypatch, tmp_path, postgre
             context.close()
             browser.close()
 
-        # New application lifespan performs real startup backfill; Firefox has no
-        # cookies/localStorage from Chromium, so it must query history from the server.
+        # A new browser context has no cookies/localStorage and the fresh application
+        # lifespan must backfill its task index from the server-owned checkpoints.
         with serve(app_module.create_app(settings), port):
-            browser = playwright.firefox.launch()
+            browser = playwright.chromium.launch(executable_path=executable)
             context, page = login(browser)
             rows(page, 3)
             sidebar(page)
             page.set_viewport_size({"width": 680, "height": 900})
             sidebar(page)
+            assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
             page.set_viewport_size({"width": 1440, "height": 1000})
             expect(page.locator(f'tr[data-run-id="{ids[0]}"]')).to_contain_text(
                 "temporary publication failure"

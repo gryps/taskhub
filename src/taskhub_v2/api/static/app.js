@@ -23,6 +23,7 @@ let permissionObserver = null;
 let productizationEnabled = false;
 let currentProductSpecDetail = null;
 let currentProjectContract = null;
+let currentProjectPreflight = null;
 let activeProject = null;
 let projectProvisioningDefaults = {};
 
@@ -294,7 +295,9 @@ function render(run) {
   renderEvidence(run);
   refreshDeployment(run);
   loadExecutionPlan(run.run_id).catch(() => renderExecutionPlan(null));
-  window.loadRevisionCenter?.(run.project_id, run.run_id);
+  if (productizationEnabled) {
+    window.loadRevisionCenter?.(run.project_id, run.run_id);
+  }
 }
 
 const dagStateLabels = {draft: "草稿", validating: "验证中", active: "已激活",
@@ -573,13 +576,23 @@ async function loadProjects(preferredProjectId = currentProjectId) {
     : "请先创建或接入项目";
   renderProjectRepository(active);
   renderSchedulingPolicy(active);
-  await Promise.all([loadCurrentProjectContract(), loadCurrentProductSpec()]);
-  await window.loadCapabilityCenter?.(
-    productizationEnabled ? currentProjectId : null,
-    currentProductSpecDetail?.product_spec,
-    currentProjectContract,
-  );
-  window.loadRevisionCenter?.(currentProjectId, currentRun);
+  await Promise.all([
+    loadCurrentProjectContract(),
+    loadCurrentProductSpec(),
+    loadProjectPreflight(),
+  ]);
+  if (productizationEnabled) {
+    await window.loadCapabilityCenter?.(
+      currentProjectId,
+      currentProductSpecDetail?.product_spec,
+      currentProjectContract,
+    );
+  }
+  if (productizationEnabled) {
+    await window.loadRevisionCenter?.(currentProjectId, currentRun);
+  } else {
+    await window.loadRevisionCenter?.(null, null);
+  }
   refreshStartAction();
   window.dispatchEvent(new CustomEvent("taskhub:projects", {detail: data.projects}));
 }
@@ -595,9 +608,10 @@ async function loadProductizationStatus() {
 function refreshStartAction() {
   const button = byId("start");
   const repositoryReady = Boolean(activeProject?.repository_ready);
+  const preflightReady = Boolean(currentProjectPreflight?.ready);
   if (!productizationEnabled) {
-    button.textContent = "开始流程";
-    button.disabled = !repositoryReady;
+    button.textContent = preflightReady ? "开始流程" : "先修复项目预检";
+    button.disabled = !repositoryReady || !preflightReady;
     return;
   }
   const spec = currentProductSpecDetail?.product_spec;
@@ -605,9 +619,87 @@ function refreshStartAction() {
   button.textContent = !spec ? (canPermission("projects:manage") ? "生成产品规格" : "等待项目负责人生成规格")
     : spec.status !== "approved" ? "等待规格批准"
       : contract?.status !== "active" ? "等待项目契约生效" : "按批准规格开始流程";
-  button.disabled = !repositoryReady || (!spec && !canPermission("projects:manage"))
+  button.disabled = !repositoryReady || !preflightReady
+    || (!spec && !canPermission("projects:manage"))
     || Boolean(spec && spec.status !== "approved")
     || Boolean(spec?.status === "approved" && contract?.status !== "active");
+}
+
+function renderProjectPreflight(report) {
+  currentProjectPreflight = report || null;
+  const state = byId("project-preflight-state");
+  const checks = byId("project-preflight-checks");
+  const summary = byId("project-preflight-summary");
+  if (!report) {
+    state.textContent = "等待项目";
+    state.className = "card-state warn";
+    byId("project-preflight-detail").textContent = "选择项目后统一检查启动开发所需条件。";
+    summary.innerHTML = "";
+    checks.innerHTML = "";
+    byId("refresh-project-preflight").disabled = true;
+    refreshStartAction();
+    return;
+  }
+  const values = report.summary || {};
+  state.textContent = report.ready ? "可以启动" : `${values.failed || 0} 项阻塞`;
+  state.className = `card-state ${report.ready ? "ok" : "bad"}`;
+  byId("project-preflight-detail").textContent = report.ready
+    ? "仓库、模型、执行与质量边界已满足。"
+    : "请先处理阻塞项，再启动开发流程。";
+  summary.innerHTML = [
+    ["通过", values.passed || 0, "ok"],
+    ["提醒", values.warnings || 0, "warn"],
+    ["阻塞", values.failed || 0, "bad"],
+  ].map(([label, value, tone]) => `<div class="${tone}"><strong>${value}</strong><span>${label}</span></div>`).join("");
+  checks.innerHTML = (report.checks || []).map((item) => {
+    const label = {passed: "通过", warning: "提醒", failed: "阻塞"}[item.status] || item.status;
+    return `<article class="project-preflight-check ${escapeHtml(item.status)}">
+      <span class="project-preflight-icon" aria-hidden="true">${item.status === "passed" ? "✓" : item.status === "warning" ? "!" : "×"}</span>
+      <div><h3>${escapeHtml(item.title)}<small>${escapeHtml(label)}</small></h3>
+        <p>${escapeHtml(item.detail)}</p>
+        ${item.remediation ? `<p class="project-preflight-remediation">${escapeHtml(item.remediation)}</p>` : ""}
+      </div>
+      ${item.status === "failed" ? `<button type="button" class="secondary" data-preflight-target="${escapeHtml(item.target)}">去修复</button>` : ""}
+    </article>`;
+  }).join("");
+  byId("refresh-project-preflight").disabled = false;
+  refreshStartAction();
+}
+
+async function loadProjectPreflight() {
+  if (!currentProjectId) {
+    renderProjectPreflight(null);
+    return;
+  }
+  byId("project-preflight-message").textContent = "正在检查项目启动条件";
+  try {
+    const report = await request(`/api/projects/${encodeURIComponent(currentProjectId)}/preflight`);
+    renderProjectPreflight(report);
+    byId("project-preflight-message").textContent = report.ready
+      ? `预检通过 · ${new Date(report.checked_at).toLocaleTimeString()}`
+      : "预检发现阻塞项";
+  } catch (error) {
+    currentProjectPreflight = null;
+    byId("project-preflight-state").textContent = "检查失败";
+    byId("project-preflight-state").className = "card-state bad";
+    byId("project-preflight-message").textContent = error.message;
+    refreshStartAction();
+  }
+}
+
+function openPreflightTarget(target) {
+  if (target === "model-services" || target === "nodes") {
+    showPage("resources");
+    const disclosure = byId(target === "model-services" ? "providers-disclosure" : "nodes-disclosure");
+    disclosure.open = true;
+    disclosure.scrollIntoView({behavior: "smooth", block: "start"});
+    return;
+  }
+  const disclosure = byId(`${target}-disclosure`);
+  if (disclosure) {
+    disclosure.open = true;
+    disclosure.scrollIntoView({behavior: "smooth", block: "start"});
+  }
 }
 
 function renderProjectContract(contract) {
@@ -696,6 +788,7 @@ async function transitionProjectContract(action) {
   if (!contract) return;
   await request(`/api/projects/${encodeURIComponent(currentProjectId)}/project-contracts/${encodeURIComponent(contract.contract_id)}/versions/${contract.version}/${action}`, {method: "POST"});
   await loadCurrentProjectContract();
+  await loadProjectPreflight();
   await window.loadCapabilityCenter?.(
     currentProjectId, currentProductSpecDetail?.product_spec, currentProjectContract,
   );
@@ -713,6 +806,7 @@ async function runProjectContractGate() {
   host.textContent = report.status === "passed"
     ? `门禁通过 · 已检查 ${(report.findings || []).length} 项`
     : `门禁未通过 · ${failed.slice(0, 3).map((item) => item.summary).join("；")}`;
+  await loadProjectPreflight();
 }
 
 function productSpecList(title, values) {
@@ -1336,6 +1430,13 @@ byId("execution-task-next").addEventListener("click", () => {
   loadExecutionPlan(currentRun).catch(() => { executionPlanPage -= 1; });
 });
 byId("check-project-repository").addEventListener("click", checkProjectRepository);
+byId("refresh-project-preflight").addEventListener("click", () => {
+  loadProjectPreflight().catch(() => {});
+});
+byId("project-preflight-checks").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-preflight-target]");
+  if (button) openPreflightTarget(button.dataset.preflightTarget);
+});
 byId("product-decision-form").addEventListener("submit", (event) => {
   resolveProductDecision(event).catch((error) => { byId("product-spec-message").textContent = error.message; });
 });

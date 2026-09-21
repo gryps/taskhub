@@ -51,12 +51,15 @@ commit image tar files.
 | Configure TLS | `./configure-tls.sh` | `.\configure-tls.ps1` |
 | Verify | `./verify.sh` | `.\verify.ps1` |
 | Back up | `./backup.sh` | `.\backup.ps1` |
+| Verify backup | `./verify-backup.sh BACKUP` | `.\verify-backup.ps1 -BackupDirectory BACKUP` |
 | Upgrade | `./upgrade.sh VERSION [BUNDLE]` | `.\upgrade.ps1 -Version VERSION [-OfflineBundle BUNDLE]` |
 | Restore | `./restore.sh BACKUP` | `.\restore.ps1 -BackupDirectory BACKUP` |
 | Package online kit | `./package-online.sh` | `.\package-online.ps1` |
 
 Backups contain the PostgreSQL database, TaskHub data volume, deployment
-configuration (including the encryption master key), and rollback images. Keep
+configuration (including the encryption master key), and rollback images. Every
+backup runs the read-only verifier before it is declared complete; the verifier
+can also be rerun later without changing TaskHub data. Keep
 the backup directory on encrypted, access-controlled media. Restore verifies
 file checksums and compares the master-key fingerprint with the database
 identity before clearing any TaskHub data volume; it refuses mismatched sets.

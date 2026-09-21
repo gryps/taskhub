@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -53,10 +53,7 @@ class Plan(BaseModel):
     acceptance: list[str]
 
 
-T = TypeVar("T")
-
-
-class ModelResult(BaseModel, Generic[T]):
+class ModelResult[T](BaseModel):
     content: T
     provider: str
     model: str

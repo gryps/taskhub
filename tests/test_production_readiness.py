@@ -16,8 +16,9 @@ def test_formal_settings_pass_production_readiness_contract():
             operations_log_file="/data/operations.jsonl",
             config_encryption_key="configured-for-test",
             docker_socket="http://docker-proxy:2375",
+            container_provisioning_enabled=True,
         ),
-        SimpleNamespace(remote_nodes=object()),
+        SimpleNamespace(container_manager=object()),
     )
     assert report["ready"] is True
     assert report["summary"] == {"passed": 8, "total": 8}
@@ -27,5 +28,10 @@ def test_development_defaults_explain_failed_production_controls():
     report = production_readiness(Settings(), SimpleNamespace())
     assert report["ready"] is False
     failed = {item["id"]: item for item in report["checks"] if not item["passed"]}
-    assert {"persistent_orchestration", "https_session", "docker_isolation"} <= failed.keys()
+    assert {
+        "persistent_orchestration",
+        "https_session",
+        "docker_isolation",
+        "local_node_management",
+    } <= failed.keys()
     assert all(item["remediation"] for item in failed.values())

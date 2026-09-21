@@ -101,6 +101,13 @@ $env:TASKHUB_REGISTRY = "registry.example.com/team"
 
 升级前会在 `backups\<UTC时间>` 生成数据库、TaskHub 数据卷、配置和旧镜像恢复点。备份期间控制器短暂停止；升级健康检查失败时自动恢复。
 
+备份脚本在完成前会自动验证文件摘要、配置加密主密钥身份、PostgreSQL 转储和数据卷归档。
+也可以在不修改当前部署的情况下重复执行只读验证：
+
+```powershell
+.\verify-backup.ps1 -BackupDirectory ".\backups\20260911T080000Z"
+```
+
 ## 手工恢复
 
 恢复会覆盖当前 `taskhub-data` 和 `taskhub-postgres-data` 两个 Docker 卷：

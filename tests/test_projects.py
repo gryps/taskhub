@@ -283,6 +283,72 @@ def test_project_repository_settings_can_be_viewed_checked_and_updated(tmp_path:
     assert updated.status_code == 200
 
 
+def test_project_preflight_reports_a_ready_local_delivery_path(tmp_path: Path):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    add_remote(repo, tmp_path / "shop.git")
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+        )
+    )
+    app.state.projects.add(
+        ProjectDefinition(
+            id="shop",
+            repository=str(repo),
+            authority_remote="origin",
+            test_commands=[["python3", "-m", "pytest"]],
+        )
+    )
+
+    with TestClient(app) as client:
+        client.post("/api/auth/login", json={"token": "admin-secret"})
+        response = client.get("/api/projects/shop/preflight")
+
+    assert response.status_code == 200
+    report = response.json()
+    assert report["ready"] is True
+    assert report["summary"] == {"passed": 5, "warnings": 1, "failed": 0, "total": 6}
+    assert {item["id"] for item in report["checks"]} == {
+        "repository",
+        "models",
+        "execution",
+        "contract",
+        "quality_commands",
+        "acceptance",
+    }
+
+
+def test_project_preflight_explains_blocking_repository_and_quality_failures(
+    tmp_path: Path,
+):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    git(repo, "remote", "add", "origin", str(tmp_path / "missing.git"))
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+        )
+    )
+    app.state.projects.add(
+        ProjectDefinition(id="shop", repository=str(repo), authority_remote="origin")
+    )
+
+    with TestClient(app) as client:
+        client.post("/api/auth/login", json={"token": "admin-secret"})
+        response = client.get("/api/projects/shop/preflight")
+
+    report = response.json()
+    failures = {item["id"]: item for item in report["checks"] if item["status"] == "failed"}
+    assert report["ready"] is False
+    assert set(failures) == {"repository", "quality_commands"}
+    assert all(item["remediation"] for item in failures.values())
+
+
 def test_project_repository_rejects_a_password_in_the_remote_url(tmp_path: Path):
     projects_file = tmp_path / "projects.json"
     repo = repository(tmp_path / "shop")

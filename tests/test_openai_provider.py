@@ -33,7 +33,10 @@ def test_openai_provider_parses_structured_plan():
                         "content": [
                             {
                                 "type": "output_text",
-                                "text": '{"summary":"Do it","steps":["code"],"acceptance":["pass"]}',
+                                "text": (
+                                    '{"summary":"Do it","steps":["code"],'
+                                    '"acceptance":["pass"]}'
+                                ),
                             }
                         ]
                     }

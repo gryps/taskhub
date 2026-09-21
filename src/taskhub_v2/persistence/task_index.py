@@ -8,6 +8,12 @@ from typing import Any
 from taskhub_v2.config import Settings
 from taskhub_v2.domain.models import TaskPage, TaskSummary
 
+STAGE_FILTERS = {
+    "implementation": {"implementation", "implementation_blocked"},
+    "acceptance": {"acceptance", "acceptance_blocked", "browser_acceptance"},
+    "merging": {"merging", "merge_blocked"},
+}
+
 
 class MemoryTaskIndex:
     def __init__(self):
@@ -48,18 +54,46 @@ class MemoryTaskIndex:
         items = [
             item for item in self._items.values()
             if (include_archived or item.archived_at is None)
-            and all(
-                not value or (
-                    (item.rebound_project_id or item.project_id) if key == "project_id"
-                    else getattr(item, key)
-                ) == value
-                for key, value in filters.items()
-            )
+            and all(self._matches(item, key, value) for key, value in filters.items())
         ]
         items.sort(key=lambda item: (item.updated_at, item.run_id), reverse=True)
         start = (page - 1) * page_size
         return TaskPage(items=items[start:start + page_size], total=len(items), page=page,
                         page_size=page_size)
+
+    @staticmethod
+    def _matches(item: TaskSummary, key: str, value) -> bool:
+        if not value:
+            return True
+        actual = (
+            item.rebound_project_id or item.project_id
+            if key == "project_id"
+            else getattr(item, key)
+        )
+        if key == "stage":
+            return actual in STAGE_FILTERS.get(str(value), {str(value)})
+        return actual == value
+
+    async def attention(self, *, project_id="", page=1, page_size=50) -> TaskPage:
+        statuses = {"waiting", "blocked", "failed"}
+        items = [
+            item
+            for item in self._items.values()
+            if item.archived_at is None
+            and item.status in statuses
+            and (
+                not project_id
+                or (item.rebound_project_id or item.project_id) == project_id
+            )
+        ]
+        items.sort(key=lambda item: (item.updated_at, item.run_id), reverse=True)
+        start = (page - 1) * page_size
+        return TaskPage(
+            items=items[start : start + page_size],
+            total=len(items),
+            page=page,
+            page_size=page_size,
+        )
 
     async def archive(self, run_id: str) -> TaskSummary | None:
         item = self._items.get(run_id)
@@ -165,9 +199,34 @@ class PostgresTaskIndex:
         for key, value in filters.items():
             if value:
                 column = "COALESCE(rebound_project_id, project_id)" if key == "project_id" else key
-                clauses.append(f"{column}=%s")
-                params.append(str(value))
+                if key == "stage":
+                    stages = sorted(STAGE_FILTERS.get(str(value), {str(value)}))
+                    clauses.append("stage IN (" + ",".join(["%s"] * len(stages)) + ")")
+                    params.extend(stages)
+                else:
+                    clauses.append(f"{column}=%s")
+                    params.append(str(value))
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        async with self.pool.connection() as connection:
+            count = await connection.execute(
+                f"SELECT count(*) AS count FROM taskhub_task_index{where}", params
+            )
+            total = (await count.fetchone())["count"]
+            cursor = await connection.execute(
+                f"SELECT * FROM taskhub_task_index{where} "
+                "ORDER BY updated_at DESC, run_id DESC LIMIT %s OFFSET %s",
+                [*params, page_size, (page - 1) * page_size],
+            )
+            items = [TaskSummary.model_validate(dict(row)) async for row in cursor]
+        return TaskPage(items=items, total=total, page=page, page_size=page_size)
+
+    async def attention(self, *, project_id="", page=1, page_size=50) -> TaskPage:
+        clauses = ["archived_at IS NULL", "status IN ('waiting', 'blocked', 'failed')"]
+        params = []
+        if project_id:
+            clauses.append("COALESCE(rebound_project_id, project_id)=%s")
+            params.append(project_id)
+        where = " WHERE " + " AND ".join(clauses)
         async with self.pool.connection() as connection:
             count = await connection.execute(
                 f"SELECT count(*) AS count FROM taskhub_task_index{where}", params

@@ -142,7 +142,7 @@ def test_product_spec_card_layout(tmp_path):
         execution_disclosure = page.locator("#execution-plan-disclosure")
         expect(execution_disclosure).to_be_visible()
         execution_disclosure.locator("summary").click()
-        expect(page.locator("#execution-plan-state")).to_have_text("已激活")
+        expect(page.locator("#execution-plan-state")).to_have_text("已完成")
         expect(page.locator("#execution-plan-facts > div")).to_have_count(4)
         expect(page.locator("#execution-analysis .execution-analysis-facts > div")).to_have_count(6)
         assert page.locator("#execution-tasks .execution-task-card").count() >= 2

@@ -7,7 +7,7 @@ PostgreSQL checkpointer on one Docker host. It proves that a clean Docker Deskto
 installation can start TaskHub without a host Python environment.
 
 The controller can create execution, test, and preproduction node containers on
-the Seed host or an admitted remote Linux Docker host from the Web UI. It uses the deterministic provider and local worker so the UI and
+the Seed-connected Docker Engine from the Web UI. It uses the deterministic provider and local worker so the UI and
 LangGraph workflow can be evaluated without copying provider credentials into the
 image. The historical alpha Seed image has only the Python/TaskHub runtime. The
 standard release now builds a unified `taskhub-node` image with role-controlled
@@ -22,39 +22,26 @@ capabilities rather than universal image requirements.
 | `controller` | TaskHub Web, API, LangGraph orchestration | `8200/tcp` |
 | `postgres` | Checkpoints and task index | none |
 | Local Web-created node | Role-selected node agent and job workspace | none |
-| Remote Web-created node | Role-selected node agent and job workspace | selected Agent port |
 
 Both services use named Docker volumes. Deleting a container does not delete its
 data; deleting the Compose volumes does.
 
 The standard Seed controller contains Codex CLI for ChatGPT device authorization,
-but not Git, Node.js or browser tooling. The controller image includes the OpenSSH client used only
-for strict-fingerprint remote host admission; it contains no SSH private key or
-preconfigured host trust. The installer also builds `taskhub-node:0.1.0-alpha`
+but not Git, Node.js or browser tooling. The installer also builds `taskhub-node:0.1.0-alpha`
 from `deploy/node/Dockerfile`; it contains the common role runtime but does not
 preinstall browser binaries.
 
 ## Web node lifecycle
 
-Open **系统配置 → 工作节点**, select the Seed host or an admitted remote host,
-enter a unique lower-case node ID, choose an allowed role and slot count, then
-select **创建并启动**. Remote creation now runs in the background and reports
-registry pull, SSH transfer, verification, container creation and Agent health
-progress in the node table.
+Open **系统配置 → 工作节点**, enter a unique lower-case node ID, choose a role and
+slot count, then select **创建并启动**. Creation reports image availability,
+container creation and Agent health progress in the node table.
 
 Configure an optional private-registry prefix, pull-through mirror prefix and
-private-registry credentials under **系统配置 → 平台设置**. TaskHub first tries
-those remote pull sources and the configured image reference. If none succeeds,
-it exports the image with the Seed Docker Engine API and sends the tar stream over
-strict-host-key SSH to remote `docker load`. This fallback requires the exact image
-tag to exist on the Seed Docker host and enough temporary space inside the Seed
-controller for one image archive. Registry credentials are encrypted at rest and
-the remote Docker login uses an operation-local temporary configuration directory.
-
-Before container creation, TaskHub verifies that the image is Linux, matches the
-remote host CPU architecture, and has a usable digest or image ID. Digest-pinned
-references are rejected when the resolved digest differs. SSH-transferred images
-must have the same image ID on the Seed and remote engines.
+private-registry credentials under **系统配置 → 平台设置**. Online initialization
+preloads the configured Node image into the Seed Docker Engine. For disconnected
+installation, import the verified architecture-specific offline bundle or use the
+wizard's `docker save` archive import. Registry credentials are encrypted at rest.
 
 | Role | Registered workloads |
 | --- | --- |
@@ -97,8 +84,8 @@ Never commit or copy the `.env` file into an image.
 
 After the first password is set, an incomplete Seed opens the first-run wizard.
 It checks Docker CPU and memory capacity, TaskHub persistent-disk space, managed
-addresses, image availability, model configuration, admitted hosts and healthy
-nodes. Each incomplete step links to its canonical system-configuration form.
+addresses, image availability, model configuration and healthy local nodes. Each
+incomplete step links to its canonical system-configuration form.
 When every required condition passes, the wizard and running overview display
 `系统已具备运行任务条件`.
 
@@ -109,13 +96,9 @@ removes the temporary upload. Model and platform settings that require a restart
 can be applied with the wizard's Seed restart action; Compose `unless-stopped`
 then starts the controller again and the page waits for health recovery.
 
-The encryption key protects Web-managed provider API keys stored in PostgreSQL.
-It also protects SSH private keys entered through **系统配置 → 物理主机**. Before
-admitting a host, configure a LAN-reachable Node Agent callback URL in platform
-settings, detect the host fingerprint, verify it through a trusted channel, and
-explicitly confirm it. TaskHub then checks SSH authentication, Linux hardware,
-Docker permission and remote callback connectivity before saving the host.
-It remains a deployment root secret: the Web UI can report whether encryption is
+The encryption key protects Web-managed provider API keys stored in PostgreSQL and
+per-node credentials stored in the persistent TaskHub data volume. It remains a
+deployment root secret: the Web UI can report whether encryption is
 available but cannot read or replace this key. Back up the `.env` file securely;
 losing this key makes previously stored provider credentials unrecoverable.
 
@@ -155,8 +138,6 @@ docker compose --project-directory .\deploy\seed --env-file .\deploy\seed\.env `
   authority; keep this alpha on a trusted LAN and never make its HTTP port public.
 - Only containers carrying TaskHub's managed label are listed or operated on by
   the lifecycle API. Local nodes publish no host ports. Each managed node receives
-  a different encrypted-at-rest credential; plaintext is injected only into that
-  node. Remote Alpha nodes publish a selected Agent port, so firewall the port to
-  the Seed host and trusted LAN.
+  a different encrypted-at-rest credential; plaintext is injected only into that node.
 - A later hardened release should replace direct socket access with a restricted
   provisioning service or socket proxy before deployment outside a trusted host.

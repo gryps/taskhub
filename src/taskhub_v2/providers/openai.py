@@ -55,7 +55,10 @@ class OpenAIResponsesProvider:
             [
                 {
                     "role": "developer",
-                    "content": "Create a concise implementation plan with verifiable acceptance criteria.",
+                    "content": (
+                        "Create a concise implementation plan with verifiable "
+                        "acceptance criteria."
+                    ),
                 },
                 {"role": "user", "content": requirement},
             ],
@@ -94,7 +97,9 @@ class OpenAIResponsesProvider:
     async def assess_risk(self, requirement: str, implementation: str) -> ModelResult[str]:
         started = time.monotonic()
         payload = await self._request(
-            f"Assess delivery risks briefly.\nRequirement: {requirement}\nEvidence: {implementation}"
+            "Assess delivery risks briefly.\n"
+            f"Requirement: {requirement}\n"
+            f"Evidence: {implementation}"
         )
         return ModelResult(
             content=self._output_text(payload),

@@ -51,6 +51,41 @@ def test_unknown_run_returns_404():
         assert client.get("/api/runs/missing").status_code == 404
 
 
+def test_exception_center_is_empty_when_no_task_needs_attention():
+    with TestClient(create_app(settings())) as client:
+        login(client)
+        response = client.get("/api/exceptions")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [],
+        "total": 0,
+        "page": 1,
+        "page_size": 50,
+        "summary": {
+            "waiting": 0,
+            "blocked": 0,
+            "failed": 0,
+            "visible_recoverable": 0,
+        },
+    }
+
+
+def test_evidence_center_is_empty_when_no_runs_exist():
+    with TestClient(create_app(settings())) as client:
+        login(client)
+        response = client.get("/api/evidence")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [],
+        "total": 0,
+        "page": 1,
+        "page_size": 20,
+        "summary": {"verified": 0, "collecting": 0, "missing": 0, "failed": 0},
+    }
+
+
 def test_provider_status_masks_api_keys(tmp_path):
     app_settings = settings(
         codex_cli_bin="/missing/codex",
@@ -85,6 +120,13 @@ def test_mutating_api_requires_session_and_csrf():
         assert client.post("/api/runs", json=payload).status_code == 401
         login(client)
         assert client.post("/api/runs", json=payload).status_code == 403
+
+
+def test_single_seed_app_does_not_expose_retired_multihost_routes():
+    with TestClient(create_app(settings())) as client:
+        login(client)
+        assert client.get("/api/hosts").status_code == 404
+        assert client.get("/api/remote-nodes").status_code == 404
 
 
 def test_node_status_api_exposes_configured_nodes(tmp_path):

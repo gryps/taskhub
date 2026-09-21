@@ -2,7 +2,6 @@ import os
 import platform
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 from taskhub_v2.config import Settings
@@ -133,7 +132,10 @@ def _user_namespace_check() -> dict:
         "User namespace",
         output or f"exit {rc}",
         status="fail",
-        recommendation="修复宿主机 user namespace/AppArmor 权限，否则 Codex workspace-write 无法改代码",
+        recommendation=(
+            "修复宿主机 user namespace/AppArmor 权限，否则 Codex "
+            "workspace-write 无法改代码"
+        ),
     )
 
 

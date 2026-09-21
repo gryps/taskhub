@@ -88,8 +88,12 @@ def test_postgres_index_history_repair_and_resume_after_restart(postgres_dsn):
             filtered = await service.list(project_id='pg-history', production_line='A',
                                           status='blocked', stage='merge_blocked')
             assert target in {item.run_id for item in filtered.items}
+            attention = await index.attention(project_id='pg-history')
+            assert attention.total == 1
+            assert attention.items[0].run_id == target
             completed = await service.resume(target, ResumeRequest(decision='retry'))
             assert completed.status == 'completed'
+            assert (await index.attention(project_id='pg-history')).total == 0
             assert worker.calls == provider.review_calls == provider.supervisor_calls == 3
             assert provider.plan_calls == 3 and publisher.calls == 4
 

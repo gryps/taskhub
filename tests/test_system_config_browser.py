@@ -163,7 +163,30 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         expect(page.locator("#platform-git-service-card")).to_be_visible()
         expect(page.locator("#platform-git-host")).to_have_value("gryps@192.168.31.3")
         expect(page.locator("#test-git-service")).to_be_visible()
+        page.route(
+            "**/api/providers/operations",
+            lambda route: route.fulfill(json={
+                "summary": {"providers": 2, "unhealthy_providers": 1, "invocations": 7,
+                            "fallback_events": 1, "average_duration_ms": 900,
+                            "sampled_runs": 3, "available_runs": 3},
+                "providers": [{"id": "gpt_api", "kind": "api", "model": "gpt-test",
+                               "configured": True, "operational_state": "cooldown",
+                               "reason": "quota_exceeded", "failure_count": 3,
+                               "recovery_count": 0, "retry_at": 1234,
+                               "billing": {"status": "unavailable", "detail": "账单权限不可用",
+                                           "metrics": []}}],
+                "usage": [{"provider": "gpt_api", "model": "gpt-test", "invocations": 7,
+                           "duration_ms": 6300, "fallback_events": 1,
+                           "average_duration_ms": 900, "roles": {"coder": 7}}],
+                "role_counts": {"coder": 7}, "role_models": {"coder": "gpt-test"},
+            }),
+        )
         page.locator("#providers-disclosure").evaluate("element => { element.open = true; }")
+        page.evaluate("loadModelOperations()")
+        expect(page.locator("#model-operations-summary")).to_have_text("7 次调用 · 1 次回退")
+        expect(page.locator("#model-operations")).to_contain_text("熔断中")
+        expect(page.locator("#model-operations")).to_contain_text("quota_exceeded")
+        expect(page.locator("#provider-summary")).to_contain_text("已认证")
         captured_model_test = {}
 
         def fulfill_model_test(route):

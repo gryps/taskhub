@@ -54,5 +54,7 @@ def validate_junit(
                 for browser in matrix}
     missing = required - completed
     if missing:
-        raise ValueError("JUnit results missing required scenario coverage: " +
-                         ", ".join(f"{scenario}/{browser}" for scenario, browser in sorted(missing)))
+        missing_labels = ", ".join(
+            f"{scenario}/{browser}" for scenario, browser in sorted(missing)
+        )
+        raise ValueError(f"JUnit results missing required scenario coverage: {missing_labels}")

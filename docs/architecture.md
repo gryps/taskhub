@@ -29,6 +29,13 @@ which adapter receives the next call.
 - A blocked managed-project run is recovered by fixing TaskHub, its node environment,
   or project configuration and then rerunning the workflow. Platform maintainers do
   not edit the managed-project worktree as a substitute for the coding worker.
+- `ExceptionCenterService` projects waiting, blocked and failed task-index entries into
+  a unified operational view. It owns no second lifecycle or mutable recovery state;
+  every recovery action remains defined by the workflow checkpoint and opens the
+  existing task-detail action surface.
+- `EvidenceCenterService` derives evidence completeness, integrity and lineage from the
+  same run checkpoint. `ModelOperationsService` combines immutable model traces with
+  the separate provider-health circuit state; neither service owns workflow state.
 - A run ID is also the LangGraph `thread_id`.
 - Every graph uses a durable production checkpointer.
 - Human decisions enter only through `Command(resume=...)`.
@@ -87,15 +94,27 @@ Before work begins, the controller fetches and fast-forwards to the authority re
 After supervision approval, the reviewed commit is pushed with an explicit lease so a
 concurrent authority update becomes a recoverable block instead of being overwritten.
 
-## Distributed Execution
+Project startup readiness is owned by `ProjectPreflightService`, not duplicated in the
+browser. Its read-only report aggregates repository reachability, effective model
+configuration, online local execution capability, active contract requirements,
+quality commands, and declared acceptance capabilities. The UI may navigate to a
+repair surface, but only the server report enables a new run.
 
-The controller owns Git worktrees, commits, review, and publication. A remote node
-receives a sanitized archive without `.git` or project credentials. A coding-enabled
-node invokes its own configured model profiles and returns a validated change bundle;
-test/build nodes return structured command results. A run keeps its assigned node while
-it remains healthy and capable; transport failure permits controlled failover.
+## Single-Seed Node Execution
+
+The controller owns Git worktrees, commits, review, and publication. Role-selected node
+containers run only in the Docker Engine connected to the Seed. A node receives a
+sanitized archive without `.git` or project credentials. A coding-enabled node invokes
+its isolated model profiles and returns a validated change bundle; test/build nodes
+return structured command results. A run keeps its assigned node while it remains
+healthy and capable; container or Agent failure permits controlled failover to another
+eligible local node.
 
 Command results are persisted by job ID, workspace digest, and request content on the
 execution node. Reconnected controllers retrieve the same result instead of repeating
 the command. After a controller restart, graph checkpoints still marked running are
 replayed automatically when they have a next node and are not waiting for owner input.
+
+Physical-host inventory, SSH admission, cross-host image transfer, remote-node upgrade
+and migration APIs are not part of the active product. Their historical persistence and
+service modules remain only as an upgrade/rollback compatibility boundary.

@@ -39,7 +39,7 @@ const KINDS: { value: NodeKind; label: string }[] = [
   { value: "preproduction", label: "预生产节点" },
   { value: "resource_pool", label: "资源池" },
 ];
-const EDGE_LABELS: Record<EdgeKind, string> = {
+export const EDGE_LABELS: Record<EdgeKind, string> = {
   governed_by: "控制",
   executes_on: "执行",
   verified_by: "验证",
@@ -77,7 +77,7 @@ function flowNodes(
     },
   }));
 }
-function flowEdges(topology: Topology | null): Edge[] {
+export function flowEdges(topology: Topology | null): Edge[] {
   return (topology?.edges || []).map((item) => ({
     id: item.edge_id,
     source: item.source,
@@ -86,7 +86,7 @@ function flowEdges(topology: Topology | null): Edge[] {
     data: { kind: item.edge_type },
   }));
 }
-function inferEdge(source?: string, target?: string): EdgeKind {
+export function inferEdge(source?: string, target?: string): EdgeKind {
   if (source?.startsWith("project:") && target?.startsWith("controller:"))
     return "governed_by";
   return target?.includes("test")
@@ -663,7 +663,7 @@ export function TopologyApp() {
   );
 }
 
-function toCanvasNodes(
+export function toCanvasNodes(
   nodes: Node<TopologyNodeData>[],
   source: Topology,
 ): CanvasNode[] {
@@ -678,7 +678,7 @@ function toCanvasNodes(
     position: item.position,
   }));
 }
-function toCanvasEdges(edges: Edge[], source: Topology): CanvasEdge[] {
+export function toCanvasEdges(edges: Edge[], source: Topology): CanvasEdge[] {
   const existing = new Map(source.edges.map((item) => [item.edge_id, item]));
   return edges.map((item) => ({
     edge_id: item.id,

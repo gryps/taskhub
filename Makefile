@@ -1,13 +1,23 @@
-.PHONY: install test lint run
+PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
+
+.PHONY: install test lint frontend-test frontend-build check run
 
 install:
-	python3 -m pip install -e '.[dev]'
+	$(PYTHON) -m pip install -e '.[dev]'
 
 test:
-	python3 -m pytest
+	$(PYTHON) -m pytest
 
 lint:
-	python3 -m ruff check .
+	$(PYTHON) -m ruff check .
+
+frontend-test:
+	npm --prefix taskhub-web test
+
+frontend-build:
+	npm --prefix taskhub-web run build
+
+check: lint test frontend-test frontend-build
 
 run:
-	python3 -m uvicorn taskhub_v2.api.app:create_app --factory --host 0.0.0.0 --port 8200
+	$(PYTHON) -m uvicorn taskhub_v2.api.app:create_app --factory --host 0.0.0.0 --port 8200

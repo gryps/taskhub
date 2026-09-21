@@ -31,7 +31,8 @@ def probe() -> dict:
                     context.tracing.stop(path=str(trace))
                     video = page.video
                     context.close()
-                    if not screenshot or not trace.stat().st_size or not Path(video.path()).stat().st_size:
+                    video_size = Path(video.path()).stat().st_size
+                    if not screenshot or not trace.stat().st_size or not video_size:
                         continue
                     capabilities[name] = True
                     versions[name] = browser.version
