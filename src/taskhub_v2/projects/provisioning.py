@@ -334,6 +334,10 @@ class ProjectProvisioner:
                 env=environment,
             )
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=60)
+        except FileNotFoundError as exc:
+            raise ProjectProvisionError(
+                f"{error_prefix}：运行环境缺少命令 {arguments[0]}"
+            ) from exc
         except TimeoutError as exc:
             raise ProjectProvisionError(f"{error_prefix}：操作超时") from exc
         finally:

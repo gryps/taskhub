@@ -1,3 +1,4 @@
+import asyncio
 import subprocess
 from pathlib import Path
 
@@ -9,6 +10,22 @@ from taskhub_v2.api.app import create_app
 from taskhub_v2.config import Settings
 from taskhub_v2.domain.models import ProjectDefinition
 from taskhub_v2.projects import ProjectProvisioner, ProjectProvisionError, ProjectRegistry
+
+
+def test_project_provisioner_explains_missing_runtime_command(tmp_path, monkeypatch):
+    provisioner = ProjectProvisioner(
+        ProjectRegistry(str(tmp_path / "projects.json")),
+        "git@example.test",
+        "/srv/git",
+        str(tmp_path / "repositories"),
+    )
+
+    async def missing(*_args, **_kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "git")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", missing)
+    with pytest.raises(ProjectProvisionError, match="运行环境缺少命令 git"):
+        asyncio.run(provisioner._run("git", "--version", error_prefix="Git 初始化失败"))
 
 
 def git(path: Path, *args: str) -> None:

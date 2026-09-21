@@ -126,6 +126,7 @@ def test_release_images_pin_codex_and_node_has_common_role_tools():
     assert "ARG DEBIAN_MIRROR=" in seed
     assert "ARG DEBIAN_SECURITY_MIRROR=" in seed
     assert "HEALTHCHECK" in seed and "  CMD if [ -n" in seed
+    assert "ca-certificates curl git openssh-client openssl" in seed
     assert "git nodejs npm" in node
     assert "ARG DEBIAN_MIRROR=" in node
     assert "ARG DEBIAN_SECURITY_MIRROR=" in node

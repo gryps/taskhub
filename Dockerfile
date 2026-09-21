@@ -35,7 +35,7 @@ RUN sed -i \
       -e "s|http://deb.debian.org/debian|${DEBIAN_MIRROR}|g" \
       /etc/apt/sources.list.d/debian.sources \
     && apt-get update -o Acquire::Retries=8 \
-    && apt-get install -y -o Acquire::Retries=8 --no-install-recommends ca-certificates curl openssh-client openssl \
+    && apt-get install -y -o Acquire::Retries=8 --no-install-recommends ca-certificates curl git openssh-client openssl \
     && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /opt/codex-home \
     && curl -fsSL --retry 5 https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh \
