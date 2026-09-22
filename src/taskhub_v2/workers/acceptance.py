@@ -169,7 +169,6 @@ class ProjectAcceptanceGateway:
             execution_environment = (
                 project.test_environment.execution_environment() if project.test_environment else {}
             )
-            execution_environment["TASKHUB_GIT_COMMIT"] = actual_commit
             try:
                 if contract.target == "preproduction":
                     prepared, health = await self._prepare_preproduction(
@@ -296,7 +295,6 @@ class ProjectAcceptanceGateway:
     async def _prepare_preproduction(self, run_id, project, workspace: str, commit: str, contract):
         specification = contract.preproduction
         environment = project.test_environment.execution_environment()
-        environment["TASKHUB_GIT_COMMIT"] = commit
         scheduled = await self.scheduler.run(
             f"{run_id}-preproduction-{uuid4().hex[:8]}",
             f"{run_id}-preproduction",
@@ -305,6 +303,7 @@ class ProjectAcceptanceGateway:
             workspace,
             workload="acceptance",
             required_capabilities_override=project.acceptance_capabilities,
+            git_commit=commit,
             execution_environment=environment,
         )
         failed = [test for test in scheduled.tests if test.exit_code]

@@ -232,12 +232,14 @@ required_artifacts: [junit.xml]
     class Scheduler:
         def __init__(self):
             self.job_ids = []
+            self.calls = []
 
         async def preflight_browser(self, commands, capabilities):
             pass
 
         async def run(self, job_id, *args, **kwargs):
             self.job_ids.append(job_id)
+            self.calls.append(kwargs)
             return ScheduledTests(
                 node_id="windows-gui-34",
                 tests=[
@@ -283,6 +285,9 @@ required_artifacts: [junit.xml]
 
     assert len(set(scheduler.job_ids)) == 2
     assert all(job_id.startswith("run-1-browser-") for job_id in scheduler.job_ids)
+    assert all(call["git_commit"] == "a" * 40 for call in scheduler.calls)
+    assert all("TASKHUB_GIT_COMMIT" not in call["execution_environment"]
+               for call in scheduler.calls)
 
 
 def test_preproduction_acceptance_deploys_and_binds_real_target(monkeypatch, tmp_path):
@@ -378,6 +383,8 @@ required_artifacts: [junit.xml]
         "preproduction-deployment", "windows-browser-acceptance"
     ]
     assert scheduler.calls[0][0] == [["python3", "ops/deploy_preproduction.py"]]
+    assert scheduler.calls[0][1]["git_commit"] == "a" * 40
+    assert "TASKHUB_GIT_COMMIT" not in scheduler.calls[0][1]["execution_environment"]
     assert scheduler.calls[1][1]["target_url"] == "https://preprod.example.com"
     assert scheduler.calls[1][1]["execution_environment"]["TASKHUB_TEST_EDGE_HOST"] == (
         "edge.example.com"
