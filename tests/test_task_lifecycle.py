@@ -1,5 +1,6 @@
 """Exercise lifecycle guards through HTTP with real graphs and checkpoints."""
 
+import asyncio
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -66,6 +67,12 @@ async def lifecycle(tmp_path, monkeypatch):
         })
         assert response.status_code == 201
         base = "/api/runs/" + response.json()["run_id"]
+        for _ in range(100):
+            if (await client.get(base)).json()["stage"] == "implementation_blocked":
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("run did not reach implementation recovery")
         yield SimpleNamespace(
             client=client, headers=headers, base=base, projects=projects,
             stream=stream, worker=worker, execute=execute, provider=provider, publisher=publisher,

@@ -60,6 +60,20 @@ class FailureRecoveringWorker(RecordingWorker):
         return ExecutionResult(summary="tests repaired")
 
 
+class TimeoutWorker(RecordingWorker):
+    async def execute(self, *args, **kwargs):
+        self.calls += 1
+        raise WorkerExecutionError(
+            "tests_timeout",
+            "Command failed (exit 124): npm run check\ncommand timed out",
+            diagnostics=[{
+                "command": ["npm", "run", "check"],
+                "exit_code": 124,
+                "output": "command timed out",
+            }],
+        )
+
+
 class RecoveringPublisher:
     def __init__(self):
         self.calls = 0
@@ -374,6 +388,28 @@ def test_test_failure_automatically_returns_diagnostics_to_coder():
             item.title == "Automatic test-failure revision 1 started"
             for item in completed.timeline
         )
+
+    asyncio.run(scenario())
+
+
+def test_test_timeout_waits_for_infrastructure_recovery_without_code_revision():
+    async def scenario():
+        worker = TimeoutWorker()
+        service = RunService(
+            build_main_graph(RecordingProvider(), worker, InMemorySaver())
+        )
+
+        blocked = await service.start(
+            StartRunRequest(project_id="shop", requirement="Run a long quality suite")
+        )
+
+        assert blocked.stage == Stage.IMPLEMENTATION_BLOCKED
+        assert blocked.status == RunStatus.BLOCKED
+        assert blocked.blocking_reason["code"] == "tests_timeout"
+        assert blocked.pending_action["type"] == "implementation_recovery"
+        assert blocked.pending_action["choices"] == ["retry", "cancel"]
+        assert blocked.revision_count == 0
+        assert worker.calls == 1
 
     asyncio.run(scenario())
 
