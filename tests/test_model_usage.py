@@ -6,7 +6,7 @@ from taskhub_v2.services.model_usage import ModelUsageReader
 def test_plus_shows_five_hour_and_weekly_usage(monkeypatch):
     reader = ModelUsageReader("/codex", "http://proxy")
 
-    async def snapshot(_home):
+    async def snapshot(_home, _proxy=None):
         return {"rateLimits": {
             "planType": "plus",
             "primary": {"usedPercent": 35, "windowDurationMins": 300, "resetsAt": 10},
@@ -23,7 +23,7 @@ def test_plus_shows_five_hour_and_weekly_usage(monkeypatch):
 def test_pro_only_shows_weekly_usage(monkeypatch):
     reader = ModelUsageReader("/codex", "http://proxy")
 
-    async def snapshot(_home):
+    async def snapshot(_home, _proxy=None):
         return {"rateLimitsByLimitId": {"codex": {
             "planType": "pro",
             "primary": {"usedPercent": 8, "windowDurationMins": 300},
@@ -40,7 +40,7 @@ def test_pro_only_shows_weekly_usage(monkeypatch):
 def test_api_balance_readers_return_remaining_only(monkeypatch):
     reader = ModelUsageReader("/codex", "http://proxy")
 
-    def response(url, _key):
+    def response(url, _key, _proxy=""):
         if "deepseek" in url:
             return {"is_available": True, "balance_infos": [
                 {"currency": "CNY", "total_balance": "42.50", "granted_balance": "2.50"}

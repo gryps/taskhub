@@ -178,7 +178,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert html.count('class="resource-disclosure-heading"') == 4
         assert html.count('class="resource-order"') == 4
         assert 'id="model-operations"' in html
-        assert "resource-center.js?v=39" in html
+        assert "resource-center.js?v=40" in html
         assert html.count('class="configuration-card"') >= 6
         assert html.count('class="management-card-grid"') >= 3
         assert 'id="login-username"' in html

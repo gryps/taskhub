@@ -72,7 +72,9 @@ class ModelOperationsService:
         runtime = provider.get("runtime_health") or {}
         configured = bool(provider.get("configured"))
         status = str(provider.get("status", "unknown"))
-        if runtime.get("status") in {"cooldown", "recovering", "degraded"}:
+        if provider.get("enabled") is False:
+            operational_state = "disabled"
+        elif runtime.get("status") in {"cooldown", "recovering", "degraded"}:
             operational_state = runtime["status"]
         elif configured and status not in {"unauthenticated", "not_configured"}:
             operational_state = "healthy"
@@ -81,9 +83,11 @@ class ModelOperationsService:
         billing = provider.get("billing") or {}
         return {
             "id": provider.get("id", "unknown"),
+            "display_name": provider.get("display_name", ""),
             "kind": provider.get("kind", "unknown"),
             "model": provider.get("model", ""),
             "configured": configured,
+            "enabled": provider.get("enabled", True),
             "operational_state": operational_state,
             "reason": runtime.get("reason", ""),
             "failure_count": int(runtime.get("failure_count", 0)),

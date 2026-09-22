@@ -11,6 +11,7 @@ class FakeCatalog:
         return {
             "providers": [{
                 "id": "primary",
+                "display_name": "Primary Card",
                 "kind": "api",
                 "configured": True,
                 "status": "cooldown:quota_exceeded",
@@ -86,6 +87,7 @@ async def test_model_operations_combines_health_quota_and_checkpoint_traces():
         "available_runs": 1,
     }
     assert report["providers"][0]["operational_state"] == "cooldown"
+    assert report["providers"][0]["display_name"] == "Primary Card"
     assert report["providers"][0]["reason"] == "quota_exceeded"
     assert report["usage"][0]["roles"] == {"planner": 1, "coder": 1}
     assert report["usage"][0]["average_duration_ms"] == 1000

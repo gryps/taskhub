@@ -169,7 +169,8 @@ def test_onboarding_and_role_overview_layout(tmp_path):
                 "summary": {"providers": 2, "unhealthy_providers": 1, "invocations": 7,
                             "fallback_events": 1, "average_duration_ms": 900,
                             "sampled_runs": 3, "available_runs": 3},
-                "providers": [{"id": "gpt_api", "kind": "api", "model": "gpt-test",
+                "providers": [{"id": "gpt_api", "display_name": "已配置 GPT 卡片",
+                               "kind": "api", "model": "gpt-test",
                                "configured": True, "operational_state": "cooldown",
                                "reason": "quota_exceeded", "failure_count": 3,
                                "recovery_count": 0, "retry_at": 1234,
@@ -185,6 +186,7 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         page.evaluate("loadModelOperations()")
         expect(page.locator("#model-operations-summary")).to_have_text("7 次调用 · 1 次回退")
         expect(page.locator("#model-operations")).to_contain_text("熔断中")
+        expect(page.locator("#model-operations")).to_contain_text("已配置 GPT 卡片")
         expect(page.locator("#model-operations")).to_contain_text("quota_exceeded")
         expect(page.locator("#provider-summary")).to_contain_text("已认证")
         captured_model_test = {}

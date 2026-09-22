@@ -318,7 +318,7 @@ async function loadProviders() {
 }
 
 const operationStateNames = {healthy: "正常", degraded: "降级", cooldown: "熔断中",
-  recovering: "恢复探测", unconfigured: "未配置"};
+  recovering: "恢复探测", unconfigured: "未配置", disabled: "已停用"};
 
 function billingText(billing) {
   if (!billing || billing.status !== "available") return billing?.detail || "未提供额度数据";
@@ -338,7 +338,7 @@ async function loadModelOperations() {
     const providerNames = {chatgpt_plus_account: "ChatGPT Plus", chatgpt_pro_account: "ChatGPT Pro",
       gpt_api: "OpenAI API", deepseek_api: "DeepSeek", minimax_api: "MiniMax"};
     const providers = (data.providers || []).map((item) => `<article class="model-operation-card state-${escapeHtml(item.operational_state)}">
-      <header><div><strong>${escapeHtml(providerNames[item.id] || item.id)}</strong><small>${escapeHtml(item.model || "默认模型")}</small></div><span>${escapeHtml(operationStateNames[item.operational_state] || item.operational_state)}</span></header>
+      <header><div><strong>${escapeHtml(item.display_name || providerNames[item.id] || item.id)}</strong><small>${escapeHtml(item.model || "默认模型")}</small></div><span>${escapeHtml(operationStateNames[item.operational_state] || item.operational_state)}</span></header>
       <p>${escapeHtml(billingText(item.billing))}</p>
       ${item.reason ? `<small>原因：${escapeHtml(item.reason)} · 连续失败 ${item.failure_count}</small>` : ""}
     </article>`).join("");

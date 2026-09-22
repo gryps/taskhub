@@ -602,3 +602,10 @@ Updated: 2026-09-22
   an intentional limit instead of the 600-second default. The static marker is `app.js?v=30`;
   verification passed with `312 passed, 26 skipped`, focused Ruff, and the descendant-timeout
   regression.
+- Model operations now derives provider identity, authentication state, per-card proxy, encrypted
+  API credential presence, role assignment and billing probes from the effective dynamic model
+  cards. It no longer reports the obsolete fixed Plus/Pro/API settings when cards are active.
+  Account quota probes use each card's proxy and API balance probes use each card's credentials;
+  the operations cards show the configured display names. The resource script marker is
+  `resource-center.js?v=40`; verification passed with `313 passed, 26 skipped`, repository-wide
+  Ruff, JavaScript syntax and diff checks.

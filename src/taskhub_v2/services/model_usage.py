@@ -19,9 +19,11 @@ class ModelUsageReader:
         self.proxy_url = proxy_url
         self.timeout = timeout
 
-    async def account(self, home: str, plan: str) -> dict[str, Any]:
+    async def account(
+        self, home: str, plan: str, proxy_url: str | None = None
+    ) -> dict[str, Any]:
         try:
-            payload = await self._account_snapshot(home)
+            payload = await self._account_snapshot(home, proxy_url)
             snapshot = self._codex_snapshot(payload)
             windows = [snapshot.get("primary"), snapshot.get("secondary")]
             metrics = [self._window(item) for item in windows if item]
@@ -39,14 +41,18 @@ class ModelUsageReader:
         except Exception as exc:
             return unavailable("account_limits", self._safe_error(exc))
 
-    async def deepseek_balance(self, api_key: str, base_url: str) -> dict[str, Any]:
+    async def deepseek_balance(
+        self, api_key: str, base_url: str, proxy_url: str = ""
+    ) -> dict[str, Any]:
         if not api_key:
             return unavailable("api_balance", "API Key 未配置")
         url = base_url.rstrip("/")
         if url.endswith("/v1"):
             url = url[:-3]
         try:
-            payload = await asyncio.to_thread(self._get_json, f"{url}/user/balance", api_key)
+            payload = await asyncio.to_thread(
+                self._get_json, f"{url}/user/balance", api_key, proxy_url
+            )
             metrics = [{"label": item.get("currency", "余额"),
                         "value": item.get("total_balance"), "unit": item.get("currency", "")}
                        for item in payload.get("balance_infos", [])]
@@ -55,12 +61,15 @@ class ModelUsageReader:
         except Exception as exc:
             return unavailable("api_balance", self._safe_error(exc))
 
-    async def minimax_balance(self, api_key: str) -> dict[str, Any]:
+    async def minimax_balance(self, api_key: str, proxy_url: str = "") -> dict[str, Any]:
         if not api_key:
             return unavailable("api_balance", "API Key 未配置")
         try:
             payload = await asyncio.to_thread(
-                self._get_json, "https://www.minimaxi.com/v1/token_plan/remains", api_key
+                self._get_json,
+                "https://www.minimaxi.com/v1/token_plan/remains",
+                api_key,
+                proxy_url,
             )
             metrics = self._minimax_metrics(payload)
             return {"kind": "api_balance", "status": "available" if metrics else "unavailable",
@@ -68,12 +77,14 @@ class ModelUsageReader:
         except Exception as exc:
             return unavailable("api_balance", self._safe_error(exc))
 
-    async def _account_snapshot(self, home: str) -> dict[str, Any]:
+    async def _account_snapshot(self, home: str, proxy_url: str | None = None) -> dict[str, Any]:
         process = await asyncio.create_subprocess_exec(
             self.codex_bin, "app-server", "--stdio",
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
-            env=account_environment(dict(os.environ), self.proxy_url, home),
+            env=account_environment(
+                dict(os.environ), self.proxy_url if proxy_url is None else proxy_url, home
+            ),
         )
         messages = [
             {"id": 1, "method": "initialize", "params": {
@@ -104,10 +115,14 @@ class ModelUsageReader:
                 process.kill()
                 await process.wait()
 
-    def _get_json(self, url: str, api_key: str) -> dict[str, Any]:
+    def _get_json(self, url: str, api_key: str, proxy_url: str = "") -> dict[str, Any]:
         request = Request(url, headers={"Authorization": f"Bearer {api_key}",
                                         "Content-Type": "application/json"})
-        opener = build_opener(ProxyHandler({}))
+        opener = build_opener(
+            ProxyHandler(
+                {"http": proxy_url, "https": proxy_url} if proxy_url else {}
+            )
+        )
         with opener.open(request, timeout=self.timeout) as response:
             return json.load(response)
 
