@@ -69,7 +69,12 @@ docker volume inspect taskhub-seed_taskhub-data *> $null
 $LegacyDataExists = $LASTEXITCODE -eq 0
 docker volume inspect taskhub-seed_postgres-data *> $null
 $LegacyPostgresExists = $LASTEXITCODE -eq 0
-if (-not $StandardDataExists -and -not $StandardPostgresExists -and $LegacyDataExists -and $LegacyPostgresExists) {
+$LegacyDataInUse = [bool](docker ps -aq --filter "volume=taskhub-seed_taskhub-data")
+$LegacyPostgresInUse = [bool](docker ps -aq --filter "volume=taskhub-seed_postgres-data")
+if ($LegacyDataExists -and $LegacyPostgresExists -and (
+    (-not $StandardDataExists -and -not $StandardPostgresExists) -or
+    ($LegacyDataInUse -and $LegacyPostgresInUse)
+)) {
     $DataVolume = "taskhub-seed_taskhub-data"
     $PostgresVolume = "taskhub-seed_postgres-data"
 }

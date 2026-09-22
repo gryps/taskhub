@@ -550,3 +550,17 @@ Updated: 2026-09-22
 - Existing live projects were configured without modifying their managed source repositories: `douyin-market-automation` uses `python3 -m pytest -q`, and `ecommerce-operations-platform` uses its repository-owned `npm test` script. Both projects' `quality_commands` and `acceptance` preflight checks returned `passed`.
 - Verification passed with repository-wide Ruff, `306 passed, 23 skipped`, four frontend tests, the Vite production build, JavaScript syntax/diff checks, and the new quality-remediation browser flow at 1440, 768 and 390 pixels.
 - Source commit `55e5dea784f2bcbbab597491e22b26b1dfc9daeb` was pushed to both `.3 Git` and GitHub. The immutable controller at `192.168.31.31:8200` runs healthy with zero restarts on Seed digest `sha256:b66f57c32620bedf868ace5b361befc356982a1669659d1391dc98817cda2cdf`. Aliyun ACR exposes that manifest directly; the GHCR index contains the same `linux/amd64` manifest. The verified pre-update recovery set is `C:\taskhub-seed\deploy\release\backups\20260921T212313Z`.
+
+## Project Preflight and Upgrade Volume Corrections
+
+- Project preflight now reads the active `.taskhub/acceptance.yaml` contract and evaluates its
+  declared command, browser, profile and authentication capabilities against the appropriate
+  execution or acceptance workloads. A run can no longer pass the six-item preflight and then be
+  rejected immediately for a capability the preflight omitted.
+- Windows and Ubuntu release initializers prefer an existing `taskhub-seed_*` data or PostgreSQL
+  volume when an unused standard-named volume also exists. This preserves the active model-account
+  and repository data used by recreated coding nodes after upgrades.
+- System configuration no longer repeats the Seed and node 01/02 sequence in separate navigation
+  cards. The numbered interactive disclosures remain the single source of navigation, while the
+  Seed card's readiness banner carries incomplete onboarding progress. The stylesheet marker is
+  `styles.css?v=62`; real Chrome passed at 1440, 768, 680 and 390 pixels without page overflow.

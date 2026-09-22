@@ -425,6 +425,50 @@ def test_project_preflight_explains_blocking_repository_and_quality_failures(
     assert all(item["remediation"] for item in failures.values())
 
 
+def test_project_preflight_reports_missing_browser_contract_capabilities(tmp_path: Path):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    add_remote(repo, tmp_path / "shop.git")
+    contract_dir = repo / ".taskhub"
+    contract_dir.mkdir()
+    (contract_dir / "acceptance.yaml").write_text(
+        """
+workload: browser_acceptance
+required_capabilities: [windows_gui, playwright, screenshot, trace]
+preview:
+  command: [python3, -m, http.server, "{port}"]
+  health_path: /
+command: [npx, playwright, test]
+browsers: [chromium, edge]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+        )
+    )
+    app.state.projects.add(
+        ProjectDefinition(
+            id="shop",
+            repository=str(repo),
+            authority_remote="origin",
+            test_commands=[["python3", "-m", "pytest"]],
+        )
+    )
+
+    with TestClient(app) as client:
+        client.post("/api/auth/login", json={"token": "admin-secret"})
+        report = client.get("/api/projects/shop/preflight").json()
+
+    acceptance = next(item for item in report["checks"] if item["id"] == "acceptance")
+    assert report["ready"] is False
+    assert acceptance["status"] == "failed"
+    assert "windows_gui" in acceptance["detail"]
+
+
 def test_project_repository_rejects_a_password_in_the_remote_url(tmp_path: Path):
     projects_file = tmp_path / "projects.json"
     repo = repository(tmp_path / "shop")

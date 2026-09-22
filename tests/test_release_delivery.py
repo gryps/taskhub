@@ -94,6 +94,16 @@ def test_release_compose_preloads_unified_node_reference():
     assert "TASKHUB_SESSION_STATE_FILE: /var/lib/taskhub/state/sessions.json" in text
 
 
+def test_initializers_prefer_active_legacy_volumes_over_empty_standard_names():
+    shell = (RELEASE / "init.sh").read_text(encoding="utf-8-sig")
+    powershell = (RELEASE / "init.ps1").read_text(encoding="utf-8-sig")
+
+    assert "docker ps -aq --filter volume=taskhub-seed_taskhub-data" in shell
+    assert "docker ps -aq --filter volume=taskhub-seed_postgres-data" in shell
+    assert 'docker ps -aq --filter "volume=taskhub-seed_taskhub-data"' in powershell
+    assert 'docker ps -aq --filter "volume=taskhub-seed_postgres-data"' in powershell
+
+
 def test_backup_restore_binds_encryption_key_to_database_identity():
     for name in (
         "backup.sh", "backup.ps1", "restore.sh", "restore.ps1",

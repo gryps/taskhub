@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
+from taskhub_v2.browser.contract import load_acceptance_contract
+from taskhub_v2.execution.scheduler import required_capabilities
 from taskhub_v2.services.onboarding import model_ready
 
 
@@ -134,26 +137,62 @@ class ProjectPreflightService:
             )
         )
 
-        missing_capabilities = sorted(
+        missing_capabilities = {
             capability
             for capability in project.acceptance_capabilities
             if not any(
-                item.get("capabilities", {}).get(capability) for item in online
+                "acceptance" in item.get("workloads", [])
+                and item.get("capabilities", {}).get(capability)
+                for item in online
             )
-        )
+        }
+        browser_contract_path = Path(project.repository) / ".taskhub" / "acceptance.yaml"
+        browser_contract_error = ""
+        if browser_contract_path.is_file():
+            try:
+                browser_contract = load_acceptance_contract(project.repository)
+                browser_required = (
+                    browser_contract.required_capabilities
+                    | required_capabilities([browser_contract.command])
+                    | {"browser_profile", "browser_authenticated"}
+                )
+                browser_nodes = [
+                    item
+                    for item in online
+                    if "browser_acceptance" in item.get("workloads", [])
+                ]
+                missing_capabilities.update(
+                    capability
+                    for capability in browser_required
+                    if not any(
+                        item.get("capabilities", {}).get(capability)
+                        for item in browser_nodes
+                    )
+                )
+            except (OSError, ValueError) as exc:
+                browser_contract_error = str(exc)
+        missing_capabilities = sorted(missing_capabilities)
+        acceptance_failed = bool(missing_capabilities or browser_contract_error)
         checks.append(
             self._check(
                 "acceptance",
                 "验收依赖",
-                "failed" if missing_capabilities else "passed",
+                "failed" if acceptance_failed else "passed",
                 (
+                    "浏览器验收契约无效：" + browser_contract_error
+                    if browser_contract_error
+                    else
                     "缺少验收能力：" + "、".join(missing_capabilities)
                     if missing_capabilities
-                    else "项目声明的验收能力均可用"
-                    if project.acceptance_capabilities
+                    else "项目声明的验收能力与浏览器契约均可用"
+                    if project.acceptance_capabilities or browser_contract_path.is_file()
                     else "项目未声明额外验收能力"
                 ),
-                remediation="启用具备所需能力的 Seed 本机节点。",
+                remediation=(
+                    "修正 .taskhub/acceptance.yaml。"
+                    if browser_contract_error
+                    else "启用具备所需能力和工作负载的验收节点。"
+                ),
                 target="test-environment",
             )
         )

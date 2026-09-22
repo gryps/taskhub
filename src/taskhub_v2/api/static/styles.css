@@ -615,33 +615,6 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
 .blocking-metadata dd { margin: 3px 0 0; font-size: 12px; overflow-wrap: anywhere; }
 
 .resource-title h1 { margin-top: 3px; }
-.system-setup-flow {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
-}
-.system-setup-flow button {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 2px 10px;
-  min-height: 64px;
-  padding: 10px 12px;
-  border-color: var(--border);
-  color: var(--text);
-  background: var(--surface);
-  text-align: left;
-}
-.system-setup-flow button:hover { border-color: var(--accent); background: var(--accent-soft); }
-.system-setup-flow button > span {
-  grid-row: 1 / 3;
-  align-self: center;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 800;
-}
-.system-setup-flow button strong { font-size: 13px; }
-.system-setup-flow button small { color: var(--text-secondary); font-size: 11px; }
 .providers-section { margin-top: 12px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
 .resource-page > .providers-section:first-of-type { margin-top: 0; }
 .advanced-resource { border-style: dashed; box-shadow: none; }
@@ -1211,7 +1184,6 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .side-menu button i { width: 15px; font-size: 13px; }
   .menu-label { margin-left: 7px; }
   .page-head { align-items: flex-start; }
-  .system-setup-flow { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .container-form-grid { grid-template-columns: 1fr; }
   .configuration-grid { grid-template-columns: 1fr; }
@@ -1258,8 +1230,6 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .92em; }
   .page-head { min-height: 0; margin-bottom: 16px; }
   .page-head { flex-direction: column; }
   .model-test-result label { grid-template-columns: 1fr; }
-  .system-setup-flow { gap: 7px; }
-  .system-setup-flow button { min-height: 56px; }
   .resource-collapse-shortcut { right: 12px; bottom: 12px; min-height: 44px; }
   .page-head h1 { font-size: 22px; }
   .page-actions { width: 100%; justify-content: flex-start; }

@@ -153,7 +153,7 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         page.locator("#nav-resources").click()
         expect(page.locator(".resource-disclosure-heading")).to_have_count(4)
         expect(page.locator(".resource-order")).to_have_count(4)
-        expect(page.locator(".system-setup-flow button")).to_have_count(2)
+        expect(page.locator(".system-setup-flow")).to_have_count(0)
         expect(page.locator("#hosts-disclosure")).to_have_count(0)
         expect(page.locator("#nodes-disclosure > summary")).to_contain_text("TaskHub 节点")
         page.locator("#platform-disclosure").evaluate("element => { element.open = true; }")

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
-  <link rel="stylesheet" href="/static/styles.css?v=61">
+  <link rel="stylesheet" href="/static/styles.css?v=62">
 </head>
 <body>
   <header class="app-header">
@@ -514,10 +514,6 @@
       </div>
       <div class="page-actions"><button id="open-onboarding" type="button" class="secondary">首次启动向导</button></div>
     </div>
-    <nav class="system-setup-flow" aria-label="TaskHub 节点配置流程">
-      <button type="button" data-resource-target="system-disclosure"><span>01</span><strong>确认 Seed</strong><small>控制面与持久化</small></button>
-      <button type="button" data-resource-target="nodes-disclosure"><span>02</span><strong>部署本机节点</strong><small>角色与运行配额</small></button>
-    </nav>
     <details id="system-disclosure" class="providers-section resource-disclosure primary-resource" open>
       <summary><span class="resource-disclosure-heading"><span class="resource-order">01</span><span><strong>Seed 状态</strong><small>控制器、持久化与运行就绪</small></span></span><span id="system-summary" class="muted">正在检查</span></summary>
       <div class="section-head resource-actions">

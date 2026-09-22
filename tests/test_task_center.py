@@ -167,7 +167,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert "styles.css?v=61" in html
+        assert "styles.css?v=62" in html
         assert 'href="/canvas/"' in html and "打开生产画布" in html
         assert "app.js?v=29" in html
         assert 'id="exception-center"' in html
@@ -205,7 +205,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert "<strong>TaskHub 节点</strong><small>Seed 本机 Docker 运行角色</small>" in html
         assert "<strong>模型服务</strong><small>高级 · 认证、角色路由与主备切换</small>" in html
         assert "<strong>高级设置</strong><small>镜像策略、安全、备份与平台参数</small>" in html
-        assert html.count('data-resource-target=') == 2
+        assert html.count('data-resource-target=') == 0
         assert "<strong>预生产验收</strong><small>按项目启用的访问与验收环境</small>" in html
         assert "<strong>代码仓库</strong><small>项目级 Git 来源、基准分支与发布目标</small>" in html
         assert "<strong>产品规格</strong><small>需求产品化、待决策事项与批准版本</small>" in html

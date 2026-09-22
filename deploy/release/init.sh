@@ -111,10 +111,16 @@ docker compose version >/dev/null 2>&1 || {
 
 data_volume=taskhub-data
 postgres_volume=taskhub-postgres-data
-if ! docker volume inspect taskhub-data >/dev/null 2>&1 &&
-  ! docker volume inspect taskhub-postgres-data >/dev/null 2>&1 &&
-  docker volume inspect taskhub-seed_taskhub-data >/dev/null 2>&1 &&
-  docker volume inspect taskhub-seed_postgres-data >/dev/null 2>&1; then
+legacy_data_in_use=$(docker ps -aq --filter volume=taskhub-seed_taskhub-data | head -n 1)
+legacy_postgres_in_use=$(docker ps -aq --filter volume=taskhub-seed_postgres-data | head -n 1)
+if docker volume inspect taskhub-seed_taskhub-data >/dev/null 2>&1 &&
+  docker volume inspect taskhub-seed_postgres-data >/dev/null 2>&1 &&
+  { {
+      ! docker volume inspect taskhub-data >/dev/null 2>&1 &&
+      ! docker volume inspect taskhub-postgres-data >/dev/null 2>&1
+    } || {
+      [ -n "$legacy_data_in_use" ] && [ -n "$legacy_postgres_in_use" ]
+    }; }; then
   data_volume=taskhub-seed_taskhub-data
   postgres_volume=taskhub-seed_postgres-data
 fi
