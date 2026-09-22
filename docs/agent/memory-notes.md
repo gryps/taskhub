@@ -624,3 +624,9 @@ Updated: 2026-09-22
   applicable. Long multi-command gates therefore return their real cached pass/fail result instead
   of timing out at the controller and needlessly failing over to another node. Verification passed
   with `317 passed, 26 skipped` and repository-wide Ruff.
+- Coding nodes persist the latest change bundle with the semantic request and stable input/output
+  workspace fingerprints outside the uploaded workspace. If Seed restarts after coding completed
+  but before the enclosing implementation checkpoint commits, replaying the same task against
+  either the original input or the already-modified output reuses that bundle instead of invoking
+  the model again. Changed requirements, plans, feedback or workspace contents still force a fresh
+  coding pass.

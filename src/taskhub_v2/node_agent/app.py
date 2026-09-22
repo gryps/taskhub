@@ -21,6 +21,7 @@ from taskhub_v2.node_agent.browser_capabilities import (
 )
 from taskhub_v2.node_agent.browser_dependencies import prepare_browser_dependencies
 from taskhub_v2.node_agent.coding import coding_available, modify_workspace, provider_health
+from taskhub_v2.node_agent.coding_cache import CodingResultCache, workspace_fingerprint
 from taskhub_v2.node_agent.runtime import (
     UnsafeArchiveError,
     extract_workspace,
@@ -302,6 +303,16 @@ def create_node_app() -> FastAPI:
             raise HTTPException(status_code=409, detail="workspace version changed")
         lock = runtime.locks.setdefault(job_id, asyncio.Lock())
         async with lock:
+            cache = CodingResultCache(
+                runtime.root,
+                job_id,
+                payload.model_dump(exclude={"archive_sha256"}, mode="json"),
+            )
+            input_fingerprint = workspace_fingerprint(target)
+            cached_bundle = cache.read(target)
+            if cached_bundle is not None:
+                runtime.record("coding_reused", job_id=job_id)
+                return Response(content=cached_bundle, media_type="application/gzip")
             try:
                 bundle = await modify_workspace(
                     target, payload.requirement, payload.plan, payload.feedback
@@ -310,6 +321,7 @@ def create_node_app() -> FastAPI:
                 runtime.record("coding_finished", job_id=job_id, result="failed")
                 reason = getattr(exc, "reason", exc.__class__.__name__)
                 raise HTTPException(status_code=502, detail=str(reason)[:200]) from exc
+            cache.write(target, bundle, input_fingerprint)
             runtime.record("coding_finished", job_id=job_id)
         return Response(content=bundle, media_type="application/gzip")
 

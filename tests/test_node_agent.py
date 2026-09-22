@@ -359,7 +359,11 @@ def test_remote_runner_applies_coding_result(tmp_path, monkeypatch):
     monkeypatch.setenv("TASKHUB_NODE_WORK_ROOT", str(jobs))
     monkeypatch.setattr(agent_module, "coding_available", lambda: True)
 
+    calls = 0
+
     async def fake_modify(workdir, requirement, plan, feedback):
+        nonlocal calls
+        calls += 1
         (workdir / "value.txt").write_text("changed\n", encoding="utf-8")
         output = io.BytesIO()
         with tarfile.open(fileobj=output, mode="w:gz") as bundle:
@@ -404,6 +408,33 @@ def test_remote_runner_applies_coding_result(tmp_path, monkeypatch):
     assert result.node_id == "remote-coder"
     assert result.result.content.summary == "changed value"
     assert (worktree / "value.txt").read_text() == "changed\n"
+
+    replay = asyncio.run(
+        runner.run_coding(
+            NodeDefinition(id="remote-coder", kind="remote", url="http://node"),
+            "job-code",
+            "change value",
+            Plan(summary="change", steps=["edit"], acceptance=["changed"]),
+            "",
+            30,
+            str(worktree),
+        )
+    )
+    assert replay.result.content.summary == "changed value"
+    assert calls == 1
+
+    asyncio.run(
+        runner.run_coding(
+            NodeDefinition(id="remote-coder", kind="remote", url="http://node"),
+            "job-code",
+            "change value",
+            Plan(summary="change", steps=["edit"], acceptance=["changed"]),
+            "address new review feedback",
+            30,
+            str(worktree),
+        )
+    )
+    assert calls == 2
 
 
 def test_node_health_disables_coding_when_workspace_sandbox_fails(tmp_path, monkeypatch):
