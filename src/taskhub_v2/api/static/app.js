@@ -979,9 +979,10 @@ function renderProjectRepository(project) {
   ).join("\n");
   byId("project-quality-tests").value = formatCommands(project?.test_commands);
   byId("project-quality-acceptance").value = formatCommands(project?.acceptance_commands);
+  byId("project-quality-timeout").value = project?.test_timeout_seconds || 600;
   byId("project-quality-test-database").checked = Boolean(project?.test_database);
   const allowed = Boolean(project && canPermission("projects:manage"));
-  for (const id of ["project-repository-url", "project-repository-remote", "project-repository-branch", "check-project-repository", "save-project-repository", "project-quality-tests", "project-quality-acceptance", "project-quality-test-database", "save-project-quality"]) {
+  for (const id of ["project-repository-url", "project-repository-remote", "project-repository-branch", "check-project-repository", "save-project-repository", "project-quality-tests", "project-quality-acceptance", "project-quality-timeout", "project-quality-test-database", "save-project-quality"]) {
     byId(id).disabled = !allowed;
   }
   byId("project-repository-message").textContent = "";
@@ -999,6 +1000,7 @@ async function saveProjectQuality() {
       body: JSON.stringify({
         test_commands: byId("project-quality-tests").value,
         acceptance_commands: byId("project-quality-acceptance").value,
+        test_timeout_seconds: Number(byId("project-quality-timeout").value),
         test_database: byId("project-quality-test-database").checked,
       }),
     });

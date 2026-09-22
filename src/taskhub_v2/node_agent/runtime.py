@@ -1,9 +1,12 @@
 import asyncio
 import os
 import shutil
+import signal
+import subprocess
 import sys
 import tarfile
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 
 FORBIDDEN_NAMES = {".env", ".env.local", "auth.json", "credentials.json"}
@@ -22,6 +25,32 @@ class UnsafeArchiveError(ValueError):
 
 
 WINDOWS_COMMANDS = {"python3": "python.exe", "npm": "npm.cmd", "npx": "npx.cmd"}
+
+
+def subprocess_group_options() -> dict[str, object]:
+    """Start commands in an isolated group so timeouts can stop descendants."""
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+async def kill_process_tree(process: asyncio.subprocess.Process) -> None:
+    """Force-stop a timed-out command and every process it spawned."""
+    if process.returncode is not None:
+        return
+    if os.name == "nt":
+        await asyncio.to_thread(
+            subprocess.run,
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    else:
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+    with suppress(ProcessLookupError):
+        await process.wait()
 
 
 def normalize_command(command: list[str], *, windows: bool | None = None) -> list[str]:
@@ -102,6 +131,7 @@ async def run_commands(
                 env=environment,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
+                **subprocess_group_options(),
             )
         except FileNotFoundError:
             results.append(
@@ -113,8 +143,7 @@ async def run_commands(
             exit_code = process.returncode
             output = stdout.decode(errors="replace")[-32_000:]
         except TimeoutError:
-            process.kill()
-            await process.wait()
+            await kill_process_tree(process)
             exit_code = 124
             output = "command timed out"
         results.append(

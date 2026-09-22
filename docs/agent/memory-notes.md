@@ -595,3 +595,10 @@ Updated: 2026-09-22
 - Cross-platform release image builders now forward optional `TASKHUB_BUILD_PROXY` as BuildKit
   `HTTP_PROXY` and `HTTPS_PROXY` arguments. This lets package and Codex CLI downloads use the
   operator-configured egress route without baking the proxy into the resulting image.
+- The BE-012 pilot exposed that a timed-out quality command killed only its immediate process and
+  left npm/pytest descendants consuming a node. Node and local execution now start each command in
+  an isolated process group and terminate the whole process tree on timeout. Project quality
+  settings also expose the persisted per-command timeout (1–3600 seconds), so large suites can use
+  an intentional limit instead of the 600-second default. The static marker is `app.js?v=30`;
+  verification passed with `312 passed, 26 skipped`, focused Ruff, and the descendant-timeout
+  regression.

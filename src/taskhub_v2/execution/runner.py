@@ -21,6 +21,7 @@ from taskhub_v2.domain.models import (
     ScheduledTests,
     TestExecution,
 )
+from taskhub_v2.node_agent.runtime import kill_process_tree, subprocess_group_options
 from taskhub_v2.providers.egress import direct_environment
 
 EXCLUDED_PARTS = {
@@ -298,12 +299,12 @@ class NodeRunner:
                 },
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
+                **subprocess_group_options(),
             )
             try:
                 stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
             except TimeoutError:
-                process.kill()
-                await process.wait()
+                await kill_process_tree(process)
                 results.append(
                     TestExecution(command=command, exit_code=124, output_tail="command timed out")
                 )

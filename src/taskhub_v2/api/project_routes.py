@@ -57,6 +57,7 @@ class ProjectQualityRequest(BaseModel):
     test_commands: str = Field(default="", max_length=4000)
     acceptance_commands: str = Field(default="", max_length=4000)
     test_database: bool = False
+    test_timeout_seconds: int | None = Field(default=None, ge=1, le=3600)
 
 
 class ProjectSchedulingPolicyRequest(ProjectSchedulingPolicy):
@@ -83,6 +84,7 @@ def project_view(item: ProjectDefinition, registry=None) -> dict:
         "base_ref": item.base_ref,
         "test_commands": item.test_commands,
         "acceptance_commands": item.acceptance_commands,
+        "test_timeout_seconds": item.test_timeout_seconds,
         "test_database": "test_database" in item.acceptance_capabilities,
         "test_environment": (
             item.test_environment.model_dump(mode="json") if item.test_environment else None
@@ -224,6 +226,11 @@ async def update_project_quality(
                     "acceptance_capabilities": (
                         {"test_database"} if payload.test_database else set()
                     ),
+                    "test_timeout_seconds": (
+                        payload.test_timeout_seconds
+                        if payload.test_timeout_seconds is not None
+                        else project.test_timeout_seconds
+                    ),
                 }
             )
         )
@@ -234,6 +241,7 @@ async def update_project_quality(
             project_id=project_id,
             test_command_count=len(updated.test_commands),
             acceptance_command_count=len(updated.acceptance_commands),
+            test_timeout_seconds=updated.test_timeout_seconds,
             test_database=payload.test_database,
         )
         return project_view(updated, request.app.state.projects)

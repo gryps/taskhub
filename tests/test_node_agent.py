@@ -1,7 +1,9 @@
+import asyncio
 import hashlib
 import io
 import sys
 import tarfile
+import time
 
 import httpx
 from fastapi.testclient import TestClient
@@ -10,6 +12,7 @@ from taskhub_v2.config import Settings
 from taskhub_v2.domain.models import NodeDefinition, Plan
 from taskhub_v2.execution.runner import NodeRunner
 from taskhub_v2.node_agent import create_node_app
+from taskhub_v2.node_agent.runtime import run_commands
 from taskhub_v2.node_agent.system_load import RollingLoadSampler
 
 
@@ -235,8 +238,6 @@ def test_browser_node_installs_npm_dependencies_before_npx(tmp_path, monkeypatch
 
 
 def test_local_runner_uses_its_own_python_environment(tmp_path):
-    import asyncio
-
     expected = sys.executable
     result = asyncio.run(NodeRunner._run_local(
         [["python3", "-c", f"import sys; assert sys.executable == {expected!r}"]],
@@ -246,6 +247,28 @@ def test_local_runner_uses_its_own_python_environment(tmp_path):
 
     assert result[0].command[0] == expected
     assert result[0].exit_code == 0
+
+
+def test_node_timeout_stops_spawned_descendants(tmp_path):
+    marker = tmp_path / "orphan-finished.txt"
+    child_code = (
+        "import pathlib,time; time.sleep(0.8); "
+        f"pathlib.Path({str(marker)!r}).write_text('orphaned')"
+    )
+    parent_code = (
+        "import subprocess,sys,time; "
+        f"subprocess.Popen([sys.executable, '-c', {child_code!r}]); "
+        "time.sleep(10)"
+    )
+
+    result = asyncio.run(
+        run_commands(tmp_path, [[sys.executable, "-c", parent_code]], 0.1)
+    )
+    time.sleep(1)
+
+    assert result[0]["exit_code"] == 124
+    assert result[0]["output_tail"] == "command timed out"
+    assert not marker.exists()
 
 
 def test_node_rejects_archive_path_traversal(tmp_path, monkeypatch):

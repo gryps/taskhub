@@ -320,6 +320,7 @@ def test_project_quality_settings_can_be_updated_after_attach(tmp_path: Path):
             json={
                 "test_commands": "python3 -m pytest -q\nnpm run lint",
                 "acceptance_commands": "npm run test:e2e",
+                "test_timeout_seconds": 1800,
                 "test_database": True,
             },
         )
@@ -330,9 +331,11 @@ def test_project_quality_settings_can_be_updated_after_attach(tmp_path: Path):
         ["npm", "run", "lint"],
     ]
     assert response.json()["acceptance_commands"] == [["npm", "run", "test:e2e"]]
+    assert response.json()["test_timeout_seconds"] == 1800
     assert response.json()["test_database"] is True
     stored = app.state.projects.get("shop")
     assert stored.acceptance_capabilities == {"test_database"}
+    assert stored.test_timeout_seconds == 1800
 
 
 def test_project_quality_settings_reject_an_invalid_command(tmp_path: Path):

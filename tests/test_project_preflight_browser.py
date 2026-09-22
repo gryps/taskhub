@@ -106,11 +106,13 @@ def test_attached_project_quality_can_be_repaired_in_place(tmp_path, width):
         expect(page.locator("#project-preflight-state")).to_have_text("1 项阻塞")
         page.locator("#project-repository-disclosure > summary").click()
         page.locator("#project-quality-tests").fill("python3 -m pytest -q")
+        page.locator("#project-quality-timeout").fill("1800")
         page.locator("#save-project-quality").click()
         expect(page.locator("#project-quality-message")).to_have_text(
             "质量配置已保存，项目预检已刷新"
         )
         expect(page.locator("#project-preflight-state")).to_have_text("可以启动")
+        expect(page.locator("#project-quality-timeout")).to_have_value("1800")
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         assert not errors
         browser.close()

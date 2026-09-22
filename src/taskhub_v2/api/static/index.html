@@ -215,6 +215,7 @@
               <div class="form-grid project-repository-fields">
                 <label class="wide">质量命令<textarea id="project-quality-tests" maxlength="4000" spellcheck="false" placeholder="例如：python3 -m pytest -q"></textarea><span class="field-help">至少配置一条，用于提交前的自动质量门禁。</span></label>
                 <label class="wide">验收命令（可选）<textarea id="project-quality-acceptance" maxlength="4000" spellcheck="false" placeholder="例如：npm run test:e2e"></textarea></label>
+                <label>单条命令超时（秒）<input id="project-quality-timeout" type="number" min="1" max="3600" step="1" value="600"><span class="field-help">大型项目建议 1800 秒；超时后会终止命令及其子进程。</span></label>
                 <label class="check wide"><input id="project-quality-test-database" type="checkbox"> 验收需要隔离 PostgreSQL 测试数据库</label>
               </div>
               <div class="form-actions project-repository-actions">
@@ -708,7 +709,7 @@
   </main>
   <script src="/static/revision-center.js?v=1"></script>
   <script src="/static/capability-center.js?v=1"></script>
-  <script src="/static/app.js?v=29"></script>
+  <script src="/static/app.js?v=30"></script>
   <script src="/static/task-center.js?v=15"></script>
   <script src="/static/resource-center.js?v=39"></script>
   <script src="/static/onboarding.js?v=3"></script>

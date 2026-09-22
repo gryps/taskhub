@@ -169,7 +169,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="platform-config-audit"' in html
         assert "styles.css?v=62" in html
         assert 'href="/canvas/"' in html and "打开生产画布" in html
-        assert "app.js?v=29" in html
+        assert "app.js?v=30" in html
         assert 'id="exception-center"' in html
         assert 'id="evidence-center"' in html
         assert "task-center.js?v=15" in html
@@ -222,7 +222,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="execution-tasks"' in html
         assert 'id="capability-disclosure"' in html
         assert 'id="capability-inventory-disclosure"' in html
-        assert "/static/app.js?v=29" in html
+        assert "/static/app.js?v=30" in html
         assert 'id="project-remote-url" required' in html
         assert 'id="project-local-path" required' in html
         assert 'id="attach-project-remote-url" required' in html
