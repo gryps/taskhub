@@ -1,9 +1,20 @@
 import json
+import time
 
 from fastapi.testclient import TestClient
 
 from taskhub_v2.api.app import _required_permission, create_app
 from taskhub_v2.config import Settings
+
+
+def wait_for_run(client, run_id, predicate, timeout=3):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        run = client.get(f"/api/runs/{run_id}").json()
+        if predicate(run):
+            return run
+        time.sleep(0.01)
+    return client.get(f"/api/runs/{run_id}").json()
 
 
 def productization_settings(tmp_path):
@@ -139,6 +150,11 @@ def test_product_spec_must_be_approved_before_run(tmp_path):
         )
         assert started.status_code == 201
         run = started.json()
+        run = wait_for_run(
+            client,
+            run["run_id"],
+            lambda item: (item["execution_plan"] or {}).get("status") == "completed",
+        )
         assert run["product_spec_id"] == spec["spec_id"]
         assert run["product_spec_version"] == 1
         assert run["project_contract_id"] == contract["contract_id"]

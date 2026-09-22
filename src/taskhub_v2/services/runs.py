@@ -4,7 +4,6 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from typing import Any
-from uuid import uuid4
 
 from langgraph.types import Command
 
@@ -17,6 +16,7 @@ from taskhub_v2.domain.models import (
     Stage,
     StartRunRequest,
 )
+from taskhub_v2.services.run_start import build_start_payload
 from taskhub_v2.services.task_state import NODE_STAGES, checkpoint_values, workflow_steps
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,7 @@ class RunService:
         self.projects = projects
         self.task_index = task_index
         self._action_locks: dict[str, asyncio.Lock] = {}
+        self._background_tasks: set[asyncio.Task] = set()
 
     def _action_lock(self, run_id: str) -> asyncio.Lock:
         return self._action_locks.setdefault(run_id, asyncio.Lock())
@@ -47,47 +48,39 @@ class RunService:
     async def start(
         self, request: StartRunRequest, *, project_contract: dict[str, Any] | None = None
     ) -> RunView:
-        max_revisions = 2
-        if self.projects is not None:
-            max_revisions = self.projects.get(request.project_id).max_revision_attempts
-        run_id = str(uuid4())
-        initial = {
-            "run_id": run_id,
-            "project_id": request.project_id,
-            "production_line": request.production_line,
-            "product_spec_id": request.product_spec_id,
-            "product_spec_version": request.product_spec_version,
-            "project_contract_id": request.project_contract_id,
-            "project_contract_version": request.project_contract_version,
-            "project_contract": project_contract,
-            "requirement": request.requirement,
-            "requirement_version": 1,
-            "current_stage": Stage.INTAKE.value,
-            "status": RunStatus.RUNNING.value,
-            "plan": None,
-            "execution_plan": None,
-            "production_tasks": [],
-            "execution_batches": [],
-            "dag_snapshot": None,
-            "implementation": None,
-            "acceptance": None,
-            "review": None,
-            "risk": None,
-            "supervision": None,
-            "publication": None,
-            "decision": None,
-            "attempt": 0,
-            "revision_count": 0,
-            "max_revision_attempts": max_revisions,
-            "revision_feedback": "",
-            "acceptance_contract_bootstrap_attempted": False,
-            "pending_action": None,
-            "blocking_reason": None,
-            "model_runs": [],
-            "timeline": [],
-        }
+        run_id, initial = build_start_payload(self.projects, request, project_contract)
         await self._execute(run_id, initial)
         return await self.get(run_id, production_line=request.production_line, sync=True)
+
+    async def launch(
+        self, request: StartRunRequest, *, project_contract: dict[str, Any] | None = None
+    ) -> RunView:
+        """Start a durable run without holding the management HTTP request open."""
+        run_id, initial = build_start_payload(self.projects, request, project_contract)
+        task = asyncio.create_task(self._execute(run_id, initial))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_task_done)
+        for _ in range(500):
+            try:
+                return await self.get(
+                    run_id, production_line=request.production_line, sync=True
+                )
+            except RunNotFoundError:
+                if task.done():
+                    await task
+                await asyncio.sleep(0.01)
+        raise RunConflictError("run initialization did not create a durable checkpoint")
+
+    def _background_task_done(self, task: asyncio.Task) -> None:
+        self._background_tasks.discard(task)
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None:
+            logger.exception(
+                "background run execution failed",
+                exc_info=(type(error), error, error.__traceback__),
+            )
 
     async def get(
         self, run_id: str, production_line: str | None = None, sync: bool = False

@@ -1,4 +1,5 @@
 import json
+import time
 
 from fastapi.testclient import TestClient
 
@@ -31,7 +32,13 @@ def test_http_run_automatically_implements_and_publishes():
             headers=headers,
         )
         assert response.status_code == 201
-        completed = response.json()
+        created = response.json()
+        assert created["status"] == "running"
+        completed = created
+        deadline = time.monotonic() + 3
+        while completed["status"] == "running" and time.monotonic() < deadline:
+            time.sleep(0.01)
+            completed = client.get(f"/api/runs/{created['run_id']}").json()
         assert completed["stage"] == "completed"
         assert completed["status"] == "completed"
         assert completed["pending_action"] is None

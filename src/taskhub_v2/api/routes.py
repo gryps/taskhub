@@ -96,7 +96,7 @@ async def start_run(payload: StartRunRequest, request: Request, service: Service
                 }
             )
         if request.app.state.settings.worker_mode != "git":
-            return await service.start(
+            return await service.launch(
                 payload,
                 project_contract=(
                     {
@@ -138,7 +138,7 @@ async def start_run(payload: StartRunRequest, request: Request, service: Service
             await request.app.state.node_scheduler.preflight_browser(
                 [contract.command], contract.required_capabilities
             )
-        return await service.start(
+        return await service.launch(
             payload,
             project_contract=(
                 {

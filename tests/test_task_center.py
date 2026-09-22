@@ -1,4 +1,5 @@
 import asyncio
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -25,6 +26,16 @@ def settings():
 def login(client):
     client.post("/api/auth/login", json={"token": "admin-secret"})
     return {"X-CSRF-Token": client.cookies.get("taskhub_v2_csrf")}
+
+
+def wait_for_run(client, run_id, predicate, timeout=3):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        run = client.get(f"/api/runs/{run_id}").json()
+        if predicate(run):
+            return run
+        time.sleep(0.01)
+    return client.get(f"/api/runs/{run_id}").json()
 
 
 def test_memory_task_index_filters_and_preserves_created_time():
@@ -125,6 +136,9 @@ def test_task_center_lists_three_tasks_and_filters_production_lines():
                 },
             )
             assert response.status_code == 201
+            wait_for_run(
+                client, response.json()["run_id"], lambda run: run["status"] == "completed"
+            )
         page = client.get("/api/runs").json()
         assert page["total"] == 3
         filtered = client.get("/api/runs?production_line=A&status=completed").json()
@@ -141,6 +155,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
             headers=headers,
             json={"project_id": "demo", "requirement": "Build task details"},
         ).json()
+        run = wait_for_run(client, run["run_id"], lambda item: item["status"] == "completed")
         detail = client.get(f"/api/runs/{run['run_id']}").json()
         assert detail["pending_action"] is None
         assert len(detail["workflow_steps"]) == 9
@@ -337,7 +352,7 @@ def test_task_center_publication_recovery_does_not_repeat_completed_work():
         run_id = client.get("/api/runs").json()["items"][0]["run_id"]
         assert run_id == run["run_id"]
         base = f"/api/runs/{run_id}"
-        blocked = client.get(base).json()
+        blocked = wait_for_run(client, run_id, lambda item: bool(item["blocking_reason"]))
         assert blocked["blocking_reason"]["detail"] == "temporary publication failure"
         assert blocked["pending_action"]["choices"] == ["retry", "cancel"]
         assert blocked["workflow_steps"][7]["state"] == "blocked"
