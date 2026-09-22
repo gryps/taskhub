@@ -558,7 +558,12 @@ def test_preview_cancellation_cleans_schema_process_and_state(monkeypatch, tmp_p
         return function(*args, **kwargs)
     monkeypatch.setattr(asyncio, "to_thread", in_thread)
     calls = []
-    manager = PreviewManager("postgresql://unused", host="127.0.0.1", ports=[8499])
+    manager = PreviewManager(
+        "postgresql://unused",
+        host="127.0.0.1",
+        ports=[8499],
+        public_url="http://seed.example:8200",
+    )
     monkeypatch.setattr(manager, "_create_schema", lambda schema: calls.append(("create", schema)))
     monkeypatch.setattr(manager, "_drop_schema", lambda schema: calls.append(("drop", schema)))
     monkeypatch.setattr(subprocess, "run", lambda command, **kwargs:
@@ -566,7 +571,9 @@ def test_preview_cancellation_cleans_schema_process_and_state(monkeypatch, tmp_p
 
     async def exercise():
         ready = asyncio.Event()
+        health_urls = []
         async def wait(*args, **kwargs):
+            health_urls.append(args[0])
             ready.set()
             await asyncio.Event().wait()
         monkeypatch.setattr(manager, "_wait_ready", wait)
@@ -583,6 +590,8 @@ def test_preview_cancellation_cleans_schema_process_and_state(monkeypatch, tmp_p
             await task
         assert ready.is_set()
         instance = manager._instances["run"]
+        assert instance.url == "http://seed.example:8499"
+        assert health_urls == ["http://127.0.0.1:8499/api/health"]
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task

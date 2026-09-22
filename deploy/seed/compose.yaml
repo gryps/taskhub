@@ -34,6 +34,7 @@ services:
         condition: service_healthy
     ports:
       - "${TASKHUB_PORT:-8200}:8200"
+      - "${TASKHUB_PREVIEW_BIND_ADDRESS:-0.0.0.0}:8400-8499:8400-8499"
     environment:
       PYTHONPATH: /opt/taskhub/src
       TASKHUB_ENV: seed

@@ -45,6 +45,11 @@ Preview startup requires a clean committed worktree. The controller supplies
 `TASKHUB_PREVIEW_STATE_DIR`; the Agent supplies `TASKHUB_TARGET_URL` and
 `TASKHUB_GIT_COMMIT` to the test process. JUnit must repeat both values on each
 case, identify both browsers, and contain no skipped, failed or empty suites.
+The packaged controller publishes ports 8400-8499 for these short-lived previews.
+Set `TASKHUB_PREVIEW_BIND_ADDRESS` to the interface reachable from remote browser
+nodes. The controller probes each preview over its container-local loopback address,
+while browser nodes receive the routable Seed host (or an explicit
+`TASKHUB_PREVIEW_HOST`), so host routing and internal health checks remain separate.
 
 Windows services run in session 0 and cannot establish the required interactive
 desktop. The installer therefore uses an interactive at-logon scheduled task.

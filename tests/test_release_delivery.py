@@ -66,7 +66,10 @@ def test_release_compose_is_immutable_and_keeps_postgres_private():
 
     assert "build" not in controller
     assert all("/opt/taskhub/src" not in item for item in controller["volumes"])
-    assert controller["ports"] == ["${TASKHUB_PORT:-8200}:8200"]
+    assert controller["ports"] == [
+        "${TASKHUB_PORT:-8200}:8200",
+        "${TASKHUB_PREVIEW_BIND_ADDRESS:-0.0.0.0}:8400-8499:8400-8499",
+    ]
     assert "ports" not in postgres
     assert payload["volumes"]["taskhub-data"]["name"] == "${TASKHUB_DATA_VOLUME:-taskhub-data}"
     assert payload["volumes"]["postgres-data"]["name"] == (

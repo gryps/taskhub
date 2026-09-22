@@ -113,7 +113,9 @@ class PreviewManager:
             self._instances[run_id] = instance
         try:
             await self._wait_ready(
-                instance.url + contract.health_path, contract.timeout_seconds, commit,
+                f"http://127.0.0.1:{instance.port}" + contract.health_path,
+                contract.timeout_seconds,
+                commit,
                 process=instance.process, log_path=instance.log_path,
             )
             return instance

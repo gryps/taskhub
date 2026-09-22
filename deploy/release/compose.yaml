@@ -29,6 +29,7 @@ services:
         condition: service_started
     ports:
       - "${TASKHUB_PORT:-8200}:8200"
+      - "${TASKHUB_PREVIEW_BIND_ADDRESS:-0.0.0.0}:8400-8499:8400-8499"
     environment:
       TASKHUB_ENV: seed
       TASKHUB_CHECKPOINTER: postgres
