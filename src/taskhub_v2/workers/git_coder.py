@@ -79,6 +79,17 @@ class GitCodingWorker:
             ]
             return existing
 
+        # A failed quality command leaves the model's edits uncommitted in the
+        # run-specific workspace.  Retry those edits once before asking the
+        # coding model to change them again: transient registry/network failures
+        # should not consume another model call or perturb a valid implementation.
+        if revision:
+            recovered = await self._recover_uncommitted_if_valid(
+                run_id, revision, workspace, project, feedback
+            )
+            if recovered:
+                return recovered
+
         model_results = []
         coding_options = {"feedback": feedback}
         if task_context:
@@ -196,6 +207,68 @@ class GitCodingWorker:
     async def _has_implementation(self, workdir: str, base_commit: str) -> bool:
         head = (await self._git(workdir, "rev-parse", "HEAD")).strip()
         return head != base_commit
+
+    async def _recover_uncommitted_if_valid(
+        self, run_id, revision, workspace, project, feedback
+    ) -> ExecutionResult | None:
+        changed_files = await self._changed_files(workspace.path)
+        if not changed_files:
+            return None
+        forbidden = [name for name in changed_files if Path(name).name in FORBIDDEN_FILES]
+        generated = [name for name in changed_files if self._is_generated(name)]
+        if forbidden or generated:
+            return None
+        scheduled = await self.test_scheduler.run(
+            f"{run_id}-r{revision}-retest",
+            run_id,
+            project.test_commands,
+            project.test_timeout_seconds,
+            workspace.path,
+        )
+        if any(test.exit_code for test in scheduled.tests):
+            return None
+        await self._cleanup_generated_untracked(workspace.path)
+        changed_files = await self._changed_files(workspace.path)
+        await self._git(workspace.path, "add", "-A", "--", *changed_files)
+        commit_metadata = (
+            f"TaskHub-Run: {run_id}\nTaskHub-Revision: {revision}\n"
+            "TaskHub-Recovery: quality-retest"
+        )
+        if feedback:
+            commit_metadata += f"\nTaskHub-Feedback: {self._feedback_key(feedback)}"
+        await self._git(
+            workspace.path,
+            "-c",
+            "user.name=TaskHub V2",
+            "-c",
+            "user.email=taskhub@local",
+            "commit",
+            "-m",
+            "taskhub: recover implementation after successful quality retest",
+            "-m",
+            commit_metadata,
+        )
+        commit = (await self._git(workspace.path, "rev-parse", "HEAD")).strip()
+        diff = await self._git(
+            workspace.path, "diff", "--binary", f"{workspace.base_commit}..{commit}"
+        )
+        aggregate_files = await self._git(
+            workspace.path, "diff", "--name-only", f"{workspace.base_commit}..{commit}"
+        )
+        artifact = self.artifacts.write_text(
+            run_id, self._artifact_name(revision), "git_diff", diff
+        )
+        return ExecutionResult(
+            summary="Recovered existing implementation after a successful quality retest",
+            evidence=diff[-50_000:],
+            workspace=workspace,
+            commit=commit,
+            changed_files=[line for line in aggregate_files.splitlines() if line],
+            artifacts=[artifact],
+            tests=scheduled.tests,
+            execution_node=scheduled.node_id,
+            coding_node="workspace-recovery",
+        )
 
     async def _evidence_only_result(
         self, run_id, revision, workspace, project, model_result

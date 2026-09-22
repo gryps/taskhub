@@ -123,6 +123,74 @@ def test_git_worker_changes_tests_artifacts_and_commits(tmp_path: Path):
     assert second.commit == first.commit
 
 
+def test_git_worker_retests_uncommitted_changes_before_revision_coding(tmp_path: Path):
+    repository = tmp_path / "authority"
+    repository.mkdir()
+    git(repository, "init", "-b", "main")
+    git(repository, "config", "user.email", "test@taskhub.local")
+    git(repository, "config", "user.name", "TaskHub Test")
+    (repository / "README.md").write_text("authority\n", encoding="utf-8")
+    git(repository, "add", "README.md")
+    git(repository, "commit", "-m", "initial")
+    gate = tmp_path / "registry-online"
+    projects_file = tmp_path / "projects.json"
+    projects_file.write_text(
+        json.dumps(
+            {
+                "projects": [
+                    {
+                        "id": "demo",
+                        "repository": str(repository),
+                        "test_commands": [
+                            [
+                                "python3",
+                                "-c",
+                                "from pathlib import Path; "
+                                f"assert Path({str(gate)!r}).exists()",
+                            ]
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    coder = FileWritingCoder()
+    worker = GitCodingWorker(
+        ProjectRegistry(str(projects_file)),
+        GitWorkspaceManager(str(tmp_path / "workspaces")),
+        coder,
+        ArtifactStore(str(tmp_path / "artifacts")),
+    )
+    plan = Plan(summary="Plan", steps=["Add file"], acceptance=["Test passes"])
+
+    try:
+        asyncio.run(worker.execute("run-retest", "demo", "Add feature", plan))
+    except WorkerExecutionError as exc:
+        assert exc.reason == "tests_failed"
+    else:
+        raise AssertionError("the initial transient test failure must block the run")
+    gate.write_text("online\n", encoding="utf-8")
+
+    recovered = asyncio.run(
+        worker.execute(
+            "run-retest",
+            "demo",
+            "Add feature",
+            plan,
+            revision=1,
+            feedback="npm registry timed out",
+        )
+    )
+
+    assert coder.calls == 1
+    assert recovered.changed_files == ["feature.txt"]
+    assert recovered.coding_node == "workspace-recovery"
+    assert recovered.tests[0].exit_code == 0
+    message = git(Path(recovered.workspace.path), "log", "-1", "--format=%B")
+    assert "TaskHub-Recovery: quality-retest" in message
+
+
 def test_git_worker_does_not_commit_test_generated_files(tmp_path: Path):
     repository = tmp_path / "authority"
     repository.mkdir()

@@ -583,3 +583,9 @@ Updated: 2026-09-22
   `sha256:3ff3d46d85d73276b631ceaa114355a5e26811ac52fe3f76c5f04f90e87089ba` and Node config digest
   `sha256:9256365ae9636d8403bdf6bdf79237bd0a374a5d32442727c5bd7f79612da5b7`. The recreated coding nodes are healthy, report Node.js
   `v22.23.2`, and resumed the blocked BE-012 pilot through TaskHub.
+- A quality-command failure leaves the coder's edits uncommitted in its isolated run workspace.
+  Revision recovery now retests those edits before invoking the coding model again; a successful
+  retest commits the existing implementation with explicit `TaskHub-Recovery: quality-retest`
+  provenance. This prevents transient package-registry failures from consuming another model call
+  or perturbing otherwise valid work. Verification passed with `310 passed, 26 skipped`, Ruff and
+  four frontend tests.
