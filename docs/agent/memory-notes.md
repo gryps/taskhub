@@ -568,3 +568,18 @@ Updated: 2026-09-22
   Node.js 18 packages even though the documented execution baseline is Node.js 22. The image now
   copies the official Node 22 runtime into the Python 3.12 base and verifies `node` and `npm` during
   the build, preventing project compatibility shims from changing quality-gate behavior.
+- Source commits `f459604dc2cef2d673ee331241ed127c705ade56` and
+  `25e123e1546615f156622edd20a994edf23b7315` were pushed to both `.3 Git` and GitHub. Verification
+  passed with `309 passed, 26 skipped`, four React tests, the Vite production build and real Chrome
+  at 1440, 768, 680 and 390 pixels.
+- The controller at `192.168.31.31:8200` runs the healthy Seed built from `f459604`, serves
+  `styles.css?v=62`, and no longer emits the duplicate setup-flow markup. The pre-release backup is
+  `C:\taskhub-seed\deploy\release\backups\20260922T120804Z`; the prior Seed is retained as
+  `taskhub-seed:rollback-pre-f459604`.
+- GHCR and Aliyun ACR both expose the rebuilt `0.1.0-alpha` Seed manifest
+  `sha256:5ad37d2c6adc2bbe6af2c6c798224d33b239675253f2051a1283a29723b61889` and Node manifest
+  `sha256:fd9be1edf02b4634a46bbd079830b87d4bbf2954a610ffc17c2eee6d1297f506`.
+  Anonymous manifest reads returned the matching Seed config digest
+  `sha256:3ff3d46d85d73276b631ceaa114355a5e26811ac52fe3f76c5f04f90e87089ba` and Node config digest
+  `sha256:9256365ae9636d8403bdf6bdf79237bd0a374a5d32442727c5bd7f79612da5b7`. The recreated coding nodes are healthy, report Node.js
+  `v22.23.2`, and resumed the blocked BE-012 pilot through TaskHub.
