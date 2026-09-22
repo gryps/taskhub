@@ -1,22 +1,15 @@
-import json
-
 from langgraph.graph import END, START, StateGraph
 
 from taskhub_v2.domain.models import RunStatus, Stage
 from taskhub_v2.providers.base import ModelProvider
 from taskhub_v2.providers.fallback import ProvidersExhaustedError
+from taskhub_v2.workflows.evidence import delivery_evidence
 from taskhub_v2.workflows.state import StepState, event, model_run
 
 
 def build_risk_graph(provider: ModelProvider):
     async def assess(state: StepState) -> dict:
-        evidence = json.dumps(
-            {
-                "implementation": state["implementation"] or {},
-                "acceptance": state.get("acceptance") or {},
-            },
-            ensure_ascii=False,
-        )
+        evidence = delivery_evidence(state)
         try:
             result = await provider.assess_risk(state["requirement"], evidence)
         except ProvidersExhaustedError as exc:

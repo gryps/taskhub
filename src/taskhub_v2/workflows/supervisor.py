@@ -1,10 +1,9 @@
-import json
-
 from langgraph.graph import END, START, StateGraph
 
 from taskhub_v2.domain.models import RunStatus, Stage
 from taskhub_v2.providers.base import ModelProvider
 from taskhub_v2.providers.fallback import ProvidersExhaustedError
+from taskhub_v2.workflows.evidence import delivery_evidence
 from taskhub_v2.workflows.state import StepState, event, model_run
 
 
@@ -13,13 +12,7 @@ def build_supervisor_graph(provider: ModelProvider):
         try:
             result = await provider.supervise(
                 state["requirement"],
-                json.dumps(
-                    {
-                        "implementation": state.get("implementation") or {},
-                        "acceptance": state.get("acceptance") or {},
-                    },
-                    ensure_ascii=False,
-                ),
+                delivery_evidence(state),
                 state.get("review") or "",
                 state.get("risk") or "",
             )
