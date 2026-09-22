@@ -1,6 +1,6 @@
 # TaskHub V2 Memory Notes
 
-Updated: 2026-09-13
+Updated: 2026-09-22
 
 ## Phase 7 Single-Seed Backend and Quality Baseline
 
@@ -542,3 +542,11 @@ Updated: 2026-09-13
 - Static markers are `styles.css?v=60`, `app.js?v=28`, `task-center.js?v=15` and `resource-center.js?v=39`. The next Phase 7 item is full regression and release/security documentation closure. No deployment, image build or image publication has been performed for this source batch.
 - Phase 7 source closure passed repository-wide Ruff; `302 passed, 23 skipped` Python tests; four React tests; the Vite production build; all 15 opt-in real-Chrome browser cases; and six focused PostgreSQL/restart/release cases. GitHub Actions YAML, shell syntax, PowerShell BOM requirements, diff whitespace and a redacted credential-pattern scan passed. The only initial browser mismatch was an obsolete assertion expecting an active plan after automatic completion; it now correctly expects the completed state.
 - Temporary PostgreSQL used on `.31` ran with `--rm`; its SSH tunnel was stopped and the container stop returned its name with no retained listing. The source is ready for Git publication. Building/publishing replacement Seed and node images, deploying them, and running a destructive target restore drill remain explicit release actions.
+
+## Project Preflight Remediation
+
+- On 2026-09-22, attached projects gained an editable “质量与验收” section under the current-project repository card. Project owners can update quality commands, optional acceptance commands and the isolated PostgreSQL requirement after attachment; saving refreshes the authoritative project preflight immediately. Static markers are `styles.css?v=61` and `app.js?v=29`.
+- The formal Seed Compose now injects its PostgreSQL administrator DSN only into test and preproduction node containers. Execution nodes do not receive it. The three live acceptance-capable nodes reported PostgreSQL 16.15 connectivity and create-database permission after credential rotation/recreation.
+- Existing live projects were configured without modifying their managed source repositories: `douyin-market-automation` uses `python3 -m pytest -q`, and `ecommerce-operations-platform` uses its repository-owned `npm test` script. Both projects' `quality_commands` and `acceptance` preflight checks returned `passed`.
+- Verification passed with repository-wide Ruff, `306 passed, 23 skipped`, four frontend tests, the Vite production build, JavaScript syntax/diff checks, and the new quality-remediation browser flow at 1440, 768 and 390 pixels.
+- Source commit `55e5dea784f2bcbbab597491e22b26b1dfc9daeb` was pushed to both `.3 Git` and GitHub. The immutable controller at `192.168.31.31:8200` runs healthy with zero restarts on Seed digest `sha256:b66f57c32620bedf868ace5b361befc356982a1669659d1391dc98817cda2cdf`. Aliyun ACR exposes that manifest directly; the GHCR index contains the same `linux/amd64` manifest. The verified pre-update recovery set is `C:\taskhub-seed\deploy\release\backups\20260921T212313Z`.
