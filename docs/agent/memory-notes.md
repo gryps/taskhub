@@ -589,3 +589,6 @@ Updated: 2026-09-22
   provenance. This prevents transient package-registry failures from consuming another model call
   or perturbing otherwise valid work. Verification passed with `310 passed, 26 skipped`, Ruff and
   four frontend tests.
+- Seed and Node image builds retry all transient Codex installer download errors, including TLS
+  handshake failures, with an explicit connection timeout. This closes a release failure observed
+  while publishing the quality-retest fix from the Windows Docker Desktop release host.

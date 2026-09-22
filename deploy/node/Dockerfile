@@ -34,7 +34,8 @@ RUN sed -i \
     && node --version \
     && npm --version
 RUN mkdir -p /opt/codex-home \
-    && curl -fsSL --retry 5 https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh \
+    && curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 30 \
+       https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh \
     && HOME=/opt/codex-home CODEX_RELEASE="${CODEX_VERSION}" CODEX_INSTALL_DIR=/usr/local/bin \
        CODEX_NON_INTERACTIVE=1 sh /tmp/install-codex.sh \
     && codex --version \
