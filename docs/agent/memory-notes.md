@@ -564,3 +564,7 @@ Updated: 2026-09-22
   cards. The numbered interactive disclosures remain the single source of navigation, while the
   Seed card's readiness banner carries incomplete onboarding progress. The stylesheet marker is
   `styles.css?v=62`; real Chrome passed at 1440, 768, 680 and 390 pixels without page overflow.
+- The first managed ecommerce run exposed that the unified Node Dockerfile was installing Debian's
+  Node.js 18 packages even though the documented execution baseline is Node.js 22. The image now
+  copies the official Node 22 runtime into the Python 3.12 base and verifies `node` and `npm` during
+  the build, preventing project compatibility shims from changing quality-gate behavior.

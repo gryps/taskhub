@@ -1,3 +1,5 @@
+FROM node:22-bookworm-slim AS node-runtime
+
 FROM python:3.12-slim-bookworm
 
 ARG TASKHUB_VERSION=0.1.0-alpha
@@ -18,15 +20,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TASKHUB_CODEX_PRO_HOME=/var/lib/taskhub-node/codex/pro \
     TASKHUB_CODEX_API_HOME=/var/lib/taskhub-node/codex/api
 
+COPY --from=node-runtime /usr/local/ /usr/local/
+
 RUN sed -i \
       -e "s|http://deb.debian.org/debian-security|${DEBIAN_SECURITY_MIRROR}|g" \
       -e "s|http://deb.debian.org/debian|${DEBIAN_MIRROR}|g" \
       /etc/apt/sources.list.d/debian.sources \
     && apt-get update -o Acquire::Retries=8 \
-    && apt-get install -y -o Acquire::Retries=8 --no-install-recommends ca-certificates curl git nodejs npm openssh-client \
+    && apt-get install -y -o Acquire::Retries=8 --no-install-recommends ca-certificates curl git openssh-client \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 taskhub \
-    && useradd --uid 10001 --gid taskhub --create-home --shell /usr/sbin/nologin taskhub
+    && useradd --uid 10001 --gid taskhub --create-home --shell /usr/sbin/nologin taskhub \
+    && node --version \
+    && npm --version
 RUN mkdir -p /opt/codex-home \
     && curl -fsSL --retry 5 https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh \
     && HOME=/opt/codex-home CODEX_RELEASE="${CODEX_VERSION}" CODEX_INSTALL_DIR=/usr/local/bin \
