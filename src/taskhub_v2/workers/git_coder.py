@@ -79,19 +79,21 @@ class GitCodingWorker:
             ]
             return existing
 
-        # A failed quality command leaves the model's edits uncommitted in the
-        # run-specific workspace.  Retry those edits once before asking the
-        # coding model to change them again: transient registry/network failures
-        # should not consume another model call or perturb a valid implementation.
+        # Retest uncommitted edits once before spending another model call.
+        retest_feedback = ""
         if revision:
-            recovered = await self._recover_uncommitted_if_valid(
+            recovered, retest_feedback = await self._recover_uncommitted_if_valid(
                 run_id, revision, workspace, project, feedback
             )
             if recovered:
                 return recovered
 
         model_results = []
-        coding_options = {"feedback": feedback}
+        coding_feedback = feedback
+        if retest_feedback:
+            coding_feedback = f"{feedback}\n\nLatest quality retest failed:\n{retest_feedback}"
+            coding_feedback = coding_feedback.strip()[-16_000:]
+        coding_options = {"feedback": coding_feedback}
         if task_context:
             coding_options["task_context"] = task_context
         model_result = await self.coder.modify(requirement, plan, workspace.path, **coding_options)
@@ -210,14 +212,14 @@ class GitCodingWorker:
 
     async def _recover_uncommitted_if_valid(
         self, run_id, revision, workspace, project, feedback
-    ) -> ExecutionResult | None:
+    ) -> tuple[ExecutionResult | None, str]:
         changed_files = await self._changed_files(workspace.path)
         if not changed_files:
-            return None
+            return None, ""
         forbidden = [name for name in changed_files if Path(name).name in FORBIDDEN_FILES]
         generated = [name for name in changed_files if self._is_generated(name)]
         if forbidden or generated:
-            return None
+            return None, ""
         scheduled = await self.test_scheduler.run(
             f"{run_id}-r{revision}-retest",
             run_id,
@@ -226,7 +228,8 @@ class GitCodingWorker:
             workspace.path,
         )
         if any(test.exit_code for test in scheduled.tests):
-            return None
+            detail, _ = failed_test_diagnostics(scheduled.tests)
+            return None, detail
         await self._cleanup_generated_untracked(workspace.path)
         changed_files = await self._changed_files(workspace.path)
         await self._git(workspace.path, "add", "-A", "--", *changed_files)
@@ -268,7 +271,7 @@ class GitCodingWorker:
             tests=scheduled.tests,
             execution_node=scheduled.node_id,
             coding_node="workspace-recovery",
-        )
+        ), ""
 
     async def _evidence_only_result(
         self, run_id, revision, workspace, project, model_result

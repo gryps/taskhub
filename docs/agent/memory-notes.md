@@ -609,3 +609,8 @@ Updated: 2026-09-22
   the operations cards show the configured display names. The resource script marker is
   `resource-center.js?v=40`; verification passed with `313 passed, 26 skipped`, repository-wide
   Ruff, JavaScript syntax and diff checks.
+- The BE-012 pilot also exposed overlapping automatic recovery and manual retry of the same run.
+  Run actions are now serialized per run before their state is revalidated, preventing duplicate
+  coding or quality jobs in a single Seed process. When an uncommitted recovery retest fails, its
+  bounded diagnostics are included in the next coding request so the model can repair the actual
+  project failure instead of receiving only the earlier generic feedback.

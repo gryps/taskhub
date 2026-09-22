@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from typing import Any
@@ -34,6 +35,10 @@ class RunService:
         self.graph = graph
         self.projects = projects
         self.task_index = task_index
+        self._action_locks: dict[str, asyncio.Lock] = {}
+
+    def _action_lock(self, run_id: str) -> asyncio.Lock:
+        return self._action_locks.setdefault(run_id, asyncio.Lock())
 
     @staticmethod
     def _config(run_id: str) -> dict[str, Any]:
@@ -249,6 +254,10 @@ class RunService:
                 )
 
     async def approve(self, run_id: str, request: ApprovalRequest) -> RunView:
+        async with self._action_lock(run_id):
+            return await self._approve(run_id, request)
+
+    async def _approve(self, run_id: str, request: ApprovalRequest) -> RunView:
         current = await self.get(run_id)
         if current.archived_at:
             raise RunConflictError("task is archived; workflow actions are disabled")
@@ -268,6 +277,10 @@ class RunService:
         return await self.get(run_id, sync=True)
 
     async def resume(self, run_id: str, request: ResumeRequest) -> RunView:
+        async with self._action_lock(run_id):
+            return await self._resume(run_id, request)
+
+    async def _resume(self, run_id: str, request: ResumeRequest) -> RunView:
         current = await self.get(run_id)
         if current.archived_at:
             raise RunConflictError("task is archived; workflow actions are disabled")
@@ -297,6 +310,10 @@ class RunService:
         return await self.get(run_id, sync=True)
 
     async def replay(self, run_id: str) -> RunView:
+        async with self._action_lock(run_id):
+            return await self._replay(run_id)
+
+    async def _replay(self, run_id: str) -> RunView:
         current = await self.get(run_id)
         if current.archived_at:
             raise RunConflictError("task is archived; workflow actions are disabled")

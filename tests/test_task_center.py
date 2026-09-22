@@ -7,7 +7,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from taskhub_v2.api.app import create_app
 from taskhub_v2.config import Settings
-from taskhub_v2.domain.models import RunStatus, StartRunRequest
+from taskhub_v2.domain.models import ResumeRequest, RunStatus, StartRunRequest
 from taskhub_v2.persistence.task_index import MemoryTaskIndex
 from taskhub_v2.services.runs import RunConflictError, RunService
 from taskhub_v2.services.task_state import checkpoint_values, workflow_steps
@@ -422,6 +422,33 @@ def test_replay_rejects_tasks_waiting_for_owner_action():
 
         with pytest.raises(RunConflictError, match="only running tasks|explicit owner action"):
             await service.replay(waiting.run_id)
+
+    asyncio.run(scenario())
+
+
+def test_same_run_actions_are_serialized():
+    async def scenario():
+        service = RunService(graph=None)
+        active = 0
+        peak = 0
+
+        async def fake_resume(run_id, request):
+            nonlocal active, peak
+            assert request.decision == "retry"
+            active += 1
+            peak = max(peak, active)
+            await asyncio.sleep(0.02)
+            active -= 1
+            return run_id
+
+        service._resume = fake_resume
+        results = await asyncio.gather(
+            service.resume("same-run", ResumeRequest(decision="retry")),
+            service.resume("same-run", ResumeRequest(decision="retry")),
+        )
+
+        assert results == ["same-run", "same-run"]
+        assert peak == 1
 
     asyncio.run(scenario())
 
