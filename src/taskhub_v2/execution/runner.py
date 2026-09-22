@@ -1,4 +1,5 @@
 import asyncio
+import gzip
 import hashlib
 import importlib.util
 import io
@@ -246,7 +247,10 @@ class NodeRunner:
     @staticmethod
     def _archive(workdir: Path) -> bytes:
         output = io.BytesIO()
-        with tarfile.open(fileobj=output, mode="w:gz") as bundle:
+        with (
+            gzip.GzipFile(fileobj=output, mode="wb", mtime=0) as compressed,
+            tarfile.open(fileobj=compressed, mode="w") as bundle,
+        ):
             for path in sorted(workdir.rglob("*")):
                 relative = path.relative_to(workdir)
                 if (
@@ -257,7 +261,14 @@ class NodeRunner:
                     continue
                 if path.is_symlink() or not path.is_file():
                     continue
-                bundle.add(path, arcname=str(relative), recursive=False)
+                info = bundle.gettarinfo(str(path), arcname=str(relative))
+                info.uid = 0
+                info.gid = 0
+                info.uname = ""
+                info.gname = ""
+                info.mtime = 0
+                with path.open("rb") as source:
+                    bundle.addfile(info, source)
         return output.getvalue()
 
     @staticmethod
