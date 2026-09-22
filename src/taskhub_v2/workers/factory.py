@@ -100,7 +100,11 @@ def build_acceptance(settings: Settings, test_scheduler=None, project_contracts=
         ProjectRegistry(settings.projects_file),
         test_scheduler or build_test_scheduler(settings),
         ArtifactStore(settings.artifact_root),
-        PreviewManager(settings.postgres_dsn, host=settings.preview_host),
+        PreviewManager(
+            settings.postgres_dsn,
+            host=settings.preview_host,
+            public_url=settings.seed_public_url,
+        ),
         project_contracts=project_contracts,
     )
 

@@ -632,6 +632,30 @@ def test_preview_manager_uses_configured_reachable_host(tmp_path):
     assert manager.host == "192.168.31.51"
 
 
+def test_preview_manager_reuses_seed_public_host_when_default_is_loopback():
+    from taskhub_v2.browser.preview import PreviewManager
+
+    manager = PreviewManager(
+        "postgresql://unused",
+        host="127.0.0.1",
+        public_url="http://192.168.31.31:8200",
+    )
+
+    assert manager.host == "192.168.31.31"
+
+
+def test_preview_manager_keeps_explicit_routable_host():
+    from taskhub_v2.browser.preview import PreviewManager
+
+    manager = PreviewManager(
+        "postgresql://unused",
+        host="preview.internal",
+        public_url="http://seed.internal:8200",
+    )
+
+    assert manager.host == "preview.internal"
+
+
 def test_preview_host_is_loaded_from_environment(monkeypatch):
     from taskhub_v2.config import get_settings
 

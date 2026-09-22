@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import os
 import re
 import shutil
@@ -7,6 +8,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -31,9 +33,15 @@ class PreviewInstance:
 class PreviewManager:
     """Owns preview ports/processes and always tears down their database schema."""
 
-    def __init__(self, postgres_dsn: str, host: str = "127.0.0.1", ports=range(8400, 8500)):
+    def __init__(
+        self,
+        postgres_dsn: str,
+        host: str = "127.0.0.1",
+        ports=range(8400, 8500),
+        public_url: str = "",
+    ):
         self.postgres_dsn = postgres_dsn
-        self.host = host
+        self.host = reachable_preview_host(host, public_url)
         self.ports = tuple(ports)
         self._instances: dict[str, PreviewInstance] = {}
         self._lock = asyncio.Lock()
@@ -163,3 +171,24 @@ class PreviewManager:
     def _drop_schema(self, schema: str) -> None:
         with psycopg.connect(self.postgres_dsn) as connection:
             connection.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+
+
+def reachable_preview_host(configured_host: str, seed_public_url: str) -> str:
+    """Prefer an explicit routable host, otherwise reuse the Seed public host."""
+    configured = configured_host.strip() or "127.0.0.1"
+    if not _local_only_host(configured):
+        return configured
+    public_host = urlsplit(seed_public_url).hostname if seed_public_url else None
+    if public_host and not _local_only_host(public_host):
+        return public_host
+    return configured
+
+
+def _local_only_host(host: str) -> bool:
+    if host.lower() == "localhost":
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_unspecified
