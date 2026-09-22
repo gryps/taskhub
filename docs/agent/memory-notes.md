@@ -614,3 +614,8 @@ Updated: 2026-09-22
   coding or quality jobs in a single Seed process. When an uncommitted recovery retest fails, its
   bounded diagnostics are included in the next coding request so the model can repair the actual
   project failure instead of receiving only the earlier generic feedback.
+- Coding-node model configuration refreshes now preserve the `node-runtime` directory inode used
+  by Docker volume-subpath mounts. The controller replaces only configuration children, so a Seed
+  restart no longer leaves already-running execution nodes attached to an unlinked empty directory
+  and falsely reporting `coding=false`. The regression verifies inode stability, stale-account
+  removal and replacement-account visibility across consecutive refreshes.

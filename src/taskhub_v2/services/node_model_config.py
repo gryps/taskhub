@@ -37,7 +37,25 @@ def write_node_model_configuration(settings) -> Path | None:
         encoding="utf-8",
     )
     target.chmod(0o600)
-    if runtime_root.exists():
-        shutil.rmtree(runtime_root)
-    temporary_root.replace(runtime_root)
+    # Docker's volume-subpath mount is bound to this directory inode. Replacing
+    # the directory leaves already-running coding nodes attached to an unlinked,
+    # empty directory. Keep the root stable and replace only its children.
+    runtime_root.mkdir(mode=0o700, exist_ok=True)
+    desired = {child.name for child in temporary_root.iterdir()}
+    for child in runtime_root.iterdir():
+        if child.name in desired:
+            continue
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+    for child in temporary_root.iterdir():
+        destination = runtime_root / child.name
+        if child.is_dir():
+            if destination.exists():
+                shutil.rmtree(destination)
+            child.replace(destination)
+        else:
+            child.replace(destination)
+    temporary_root.rmdir()
     return runtime_root / NODE_MODEL_CONFIG_FILENAME

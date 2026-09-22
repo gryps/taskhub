@@ -625,6 +625,49 @@ def test_node_model_configuration_exposes_only_coder_credentials(tmp_path):
     assert target.stat().st_mode & 0o777 == 0o600
 
 
+def test_node_model_configuration_preserves_runtime_root_for_volume_subpath(tmp_path):
+    account_root = tmp_path / "accounts"
+    for model_id in ("first", "second"):
+        source = account_root / model_id
+        source.mkdir(parents=True)
+        (source / "auth.json").write_text(
+            f'{{"account":"{model_id}"}}', encoding="utf-8"
+        )
+    settings = configured_settings(
+        data_volume_name="taskhub-data",
+        model_accounts_volume_subpath="config/model-accounts/node-runtime",
+        model_account_root=str(account_root),
+        model_cards=[
+            {
+                "model_id": "first",
+                "service_type": "openai",
+                "auth_mode": "account",
+                "enabled": True,
+                "assignments": [{"role": "coder", "priority": 0}],
+            }
+        ],
+    )
+    write_node_model_configuration(settings)
+    runtime_root = account_root / "node-runtime"
+    original_inode = runtime_root.stat().st_ino
+
+    settings.model_cards = [
+        {
+            "model_id": "second",
+            "service_type": "openai",
+            "auth_mode": "account",
+            "enabled": True,
+            "assignments": [{"role": "coder", "priority": 0}],
+        }
+    ]
+    target = write_node_model_configuration(settings)
+
+    assert runtime_root.stat().st_ino == original_inode
+    assert not (runtime_root / "first").exists()
+    assert (runtime_root / "second/auth.json").is_file()
+    assert '"model_id":"second"' in target.read_text(encoding="utf-8")
+
+
 def test_coder_uses_model_card_proxy_before_global_proxy():
     settings = configured_settings(
         openai_proxy_url="http://global-proxy.test:7890",
