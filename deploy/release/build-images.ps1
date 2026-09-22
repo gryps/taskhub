@@ -8,6 +8,10 @@ $CodexVersion = if ($env:CODEX_VERSION) { $env:CODEX_VERSION } else { "0.153.4" 
 $Platform = if ($env:TASKHUB_PLATFORM) { $env:TASKHUB_PLATFORM } else { "linux/amd64" }
 $Registry = if ($env:TASKHUB_REGISTRY) { $env:TASKHUB_REGISTRY.TrimEnd('/') + "/" } else { "" }
 $MirrorArgs = @()
+if ($env:TASKHUB_BUILD_PROXY) {
+    $MirrorArgs += @("--build-arg", "HTTP_PROXY=$($env:TASKHUB_BUILD_PROXY)")
+    $MirrorArgs += @("--build-arg", "HTTPS_PROXY=$($env:TASKHUB_BUILD_PROXY)")
+}
 if ($env:NPM_REGISTRY) { $MirrorArgs += @("--build-arg", "NPM_REGISTRY=$($env:NPM_REGISTRY)") }
 if ($env:DEBIAN_MIRROR) { $MirrorArgs += @("--build-arg", "DEBIAN_MIRROR=$($env:DEBIAN_MIRROR)") }
 if ($env:DEBIAN_SECURITY_MIRROR) { $MirrorArgs += @("--build-arg", "DEBIAN_SECURITY_MIRROR=$($env:DEBIAN_SECURITY_MIRROR)") }

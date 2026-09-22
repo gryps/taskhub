@@ -15,6 +15,10 @@ mirror_args=""
 if [ -n "$registry" ]; then
   prefix="${registry%/}/"
 fi
+if [ -n "${TASKHUB_BUILD_PROXY:-}" ]; then
+  mirror_args="$mirror_args --build-arg HTTP_PROXY=${TASKHUB_BUILD_PROXY}"
+  mirror_args="$mirror_args --build-arg HTTPS_PROXY=${TASKHUB_BUILD_PROXY}"
+fi
 if [ -n "${NPM_REGISTRY:-}" ]; then
   mirror_args="$mirror_args --build-arg NPM_REGISTRY=${NPM_REGISTRY}"
 fi

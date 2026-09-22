@@ -592,3 +592,6 @@ Updated: 2026-09-22
 - Seed and Node image builds retry all transient Codex installer download errors, including TLS
   handshake failures, with an explicit connection timeout. This closes a release failure observed
   while publishing the quality-retest fix from the Windows Docker Desktop release host.
+- Cross-platform release image builders now forward optional `TASKHUB_BUILD_PROXY` as BuildKit
+  `HTTP_PROXY` and `HTTPS_PROXY` arguments. This lets package and Codex CLI downloads use the
+  operator-configured egress route without baking the proxy into the resulting image.

@@ -49,6 +49,16 @@ def test_windows_scripts_are_powershell_51_safe():
         assert '$PSDefaultParameterValues["*:ErrorAction"] = "Stop"' in text
 
 
+def test_release_image_builds_forward_optional_outbound_proxy():
+    shell = (RELEASE / "build-images.sh").read_text(encoding="utf-8")
+    powershell = (RELEASE / "build-images.ps1").read_text(encoding="utf-8-sig")
+
+    for script in (shell, powershell):
+        assert "TASKHUB_BUILD_PROXY" in script
+        assert "HTTP_PROXY" in script
+        assert "HTTPS_PROXY" in script
+
+
 def test_release_compose_is_immutable_and_keeps_postgres_private():
     payload = yaml.safe_load((RELEASE / "compose.yaml").read_text(encoding="utf-8"))
     controller = payload["services"]["controller"]
