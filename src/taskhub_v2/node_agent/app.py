@@ -205,14 +205,14 @@ def create_node_app() -> FastAPI:
             raise HTTPException(status_code=409, detail="workspace version changed")
         lock = runtime.locks.setdefault(job_id, asyncio.Lock())
         async with lock:
-            request_key = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
+            request_key = _execution_request_key(payload)
             result_file = runtime.result_file(target)
-            if repair_managed_virtualenv(target):
-                result_file.unlink(missing_ok=True)
             if result_file.is_file():
                 saved = json.loads(result_file.read_text(encoding="utf-8"))
                 if saved.get("request_key") == request_key:
                     return saved["result"]
+            if repair_managed_virtualenv(target):
+                result_file.unlink(missing_ok=True)
             started_at = datetime.now(UTC)
             tests = await prepare_browser_dependencies(
                 target, payload.commands, payload.required_capabilities, payload.timeout_seconds
@@ -326,6 +326,16 @@ def create_node_app() -> FastAPI:
         return Response(content=bundle, media_type="application/gzip")
 
     return app
+
+
+def _execution_request_key(payload: ExecuteRequest) -> str:
+    encoded = json.dumps(
+        payload.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def detect_capabilities() -> dict[str, bool]:
