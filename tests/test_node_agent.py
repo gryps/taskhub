@@ -333,6 +333,19 @@ def test_remote_runner_uploads_and_executes_workspace(tmp_path, monkeypatch):
     assert result.tests[0].exit_code == 0
 
 
+def test_remote_runner_timeout_covers_each_command_and_browser_setup():
+    assert NodeRunner._remote_request_timeout(
+        [["npm", "run", "bootstrap"], ["npm", "run", "check"]],
+        1800,
+        set(),
+    ) == 3630
+    assert NodeRunner._remote_request_timeout(
+        [["npx", "playwright", "test"]],
+        300,
+        {"playwright"},
+    ) == 630
+
+
 def test_remote_runner_applies_coding_result(tmp_path, monkeypatch):
     import json
 

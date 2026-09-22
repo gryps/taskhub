@@ -619,3 +619,8 @@ Updated: 2026-09-22
   restart no longer leaves already-running execution nodes attached to an unlinked empty directory
   and falsely reporting `coding=false`. The regression verifies inode stability, stale-account
   removal and replacement-account visibility across consecutive refreshes.
+- Remote execution HTTP waits now budget every configured command separately, matching the node's
+  per-command timeout semantics, plus the bounded Playwright dependency-setup allowance when it is
+  applicable. Long multi-command gates therefore return their real cached pass/fail result instead
+  of timing out at the controller and needlessly failing over to another node. Verification passed
+  with `317 passed, 26 skipped` and repository-wide Ruff.

@@ -166,7 +166,10 @@ class NodeRunner:
         archive = await asyncio.to_thread(self._archive, Path(workdir))
         digest = hashlib.sha256(archive).hexdigest()
         try:
-            async with self._client(timeout=max(timeout + 30, 120)) as client:
+            request_timeout = self._remote_request_timeout(
+                commands, timeout, required_capabilities
+            )
+            async with self._client(timeout=request_timeout) as client:
                 await self._upload(client, node, job_id, archive, digest)
                 executed = await client.post(
                     f"{node.url.rstrip('/')}/api/jobs/{job_id}/execute",
@@ -200,6 +203,19 @@ class NodeRunner:
             tests=[TestExecution.model_validate(item) for item in payload["tests"]],
             metadata={**payload.get("metadata", {}), "downloaded_artifacts": artifacts},
         )
+
+    @staticmethod
+    def _remote_request_timeout(
+        commands: list[list[str]], timeout: int, required_capabilities: set[str]
+    ) -> int:
+        command_budget = max(len(commands), 1) * timeout
+        browser_budget = 0
+        if "playwright" in required_capabilities and any(
+            command and Path(command[0]).name.lower() in {"npx", "npx.cmd"}
+            for command in commands
+        ):
+            browser_budget = min(max(timeout, 60), 600)
+        return max(command_budget + browser_budget + 30, 120)
 
     async def _download_artifact(self, node, job_id: str, path: str) -> bytes:
         from urllib.parse import quote
