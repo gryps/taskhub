@@ -236,6 +236,7 @@ class PublicationResult(BaseModel):
     published_commit: str
     branch: str
     rebased: bool = False
+    verification_reused: bool = False
     tests: list[TestExecution] = Field(default_factory=list)
     execution_node: str = ""
 

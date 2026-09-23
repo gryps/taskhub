@@ -101,17 +101,25 @@ class GitPublisher:
                     "merge_conflict", "authority advanced and the run branch could not be rebased"
                 ) from exc
 
-        scheduled = await self.test_scheduler.run(
-            f"{run_id}-publish",
-            run_id,
-            project.test_commands,
-            project.test_timeout_seconds,
-            str(worktree),
+        verification_reused = self._can_reuse_verification(
+            implementation, project.test_commands, head, rebased
         )
-        tests = scheduled.tests
-        failed = [test for test in tests if test.exit_code]
-        if failed:
-            raise PublicationError("publication_tests_failed", failed[0].output_tail)
+        if verification_reused:
+            tests = implementation.tests
+            execution_node = implementation.execution_node
+        else:
+            scheduled = await self.test_scheduler.run(
+                f"{run_id}-publish",
+                run_id,
+                project.test_commands,
+                project.test_timeout_seconds,
+                str(worktree),
+            )
+            tests = scheduled.tests
+            failed = [test for test in tests if test.exit_code]
+            if failed:
+                raise PublicationError("publication_tests_failed", failed[0].output_tail)
+            execution_node = scheduled.node_id
         published = (await self._git(worktree, "rev-parse", "HEAD")).strip()
         if project.authority_remote:
             lease = f"refs/heads/{project.base_ref}:{remote_commit}"
@@ -145,8 +153,30 @@ class GitPublisher:
             published_commit=published,
             branch=branch,
             rebased=rebased,
+            verification_reused=verification_reused,
             tests=tests,
-            execution_node=scheduled.node_id,
+            execution_node=execution_node,
+        )
+
+    @staticmethod
+    def _can_reuse_verification(
+        implementation: ExecutionResult,
+        test_commands: list[list[str]],
+        current_head: str,
+        rebased: bool,
+    ) -> bool:
+        """Reuse quality evidence only for the exact unchanged reviewed commit.
+
+        A rebase, commit replacement, command change, failed command, or missing
+        evidence forces publication to execute the configured gate again.
+        """
+        if rebased or current_head != implementation.commit or not test_commands:
+            return False
+        if len(implementation.tests) != len(test_commands):
+            return False
+        return all(
+            test.exit_code == 0 and test.command == command
+            for test, command in zip(implementation.tests, test_commands, strict=True)
         )
 
     @staticmethod

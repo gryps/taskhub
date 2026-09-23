@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from taskhub_v2.domain.models import ExecutionResult, Workspace
+from taskhub_v2.domain.models import (
+    ExecutionResult,
+    TestExecution as ExecutionTestResult,
+    Workspace,
+)
 from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.workers.publisher import GitPublisher, PublicationError
 
@@ -57,9 +61,7 @@ def setup_project(tmp_path: Path):
     )
     implementation = ExecutionResult(
         summary="changed",
-        workspace=Workspace(
-            project_id="demo", path=str(worktree), branch=branch, base_commit=base
-        ),
+        workspace=Workspace(project_id="demo", path=str(worktree), branch=branch, base_commit=base),
         commit=commit,
         changed_files=["value.txt"],
     )
@@ -75,6 +77,54 @@ def test_publisher_fast_forwards_authority(tmp_path: Path):
     assert result.published_commit == implementation.commit
     assert git(repository, "rev-parse", "main") == implementation.commit
     assert result.rebased is False
+    assert result.verification_reused is False
+
+
+def test_publisher_reuses_exact_passing_implementation_verification(tmp_path: Path):
+    repository, root, config, implementation = setup_project(tmp_path)
+    implementation.tests = [
+        ExecutionTestResult(command=["git", "diff", "--quiet"], exit_code=0, output_tail="passed")
+    ]
+    implementation.execution_node = "test-01"
+
+    class UnexpectedScheduler:
+        async def run(self, *args, **kwargs):
+            raise AssertionError("unchanged verified commit must not rerun publication tests")
+
+    publisher = GitPublisher(
+        ProjectRegistry(str(config)), str(root), test_scheduler=UnexpectedScheduler()
+    )
+    result = asyncio.run(publisher.publish("run-1", "demo", implementation))
+
+    assert result.published_commit == implementation.commit
+    assert result.verification_reused is True
+    assert result.tests == implementation.tests
+    assert result.execution_node == "test-01"
+    assert git(repository, "rev-parse", "main") == implementation.commit
+
+
+@pytest.mark.parametrize(
+    "tests",
+    [
+        [],
+        [ExecutionTestResult(command=["git", "status", "--short"], exit_code=0, output_tail="")],
+        [
+            ExecutionTestResult(
+                command=["git", "diff", "--quiet"], exit_code=1, output_tail="failed"
+            )
+        ],
+    ],
+)
+def test_publisher_reruns_when_evidence_is_missing_changed_or_failed(tmp_path: Path, tests):
+    _, root, config, implementation = setup_project(tmp_path)
+    implementation.tests = tests
+    publisher = GitPublisher(ProjectRegistry(str(config)), str(root))
+
+    result = asyncio.run(publisher.publish("run-1", "demo", implementation))
+
+    assert result.verification_reused is False
+    assert [test.command for test in result.tests] == [["git", "diff", "--quiet"]]
+    assert all(test.exit_code == 0 for test in result.tests)
 
 
 def test_publisher_rejects_change_after_supervision(tmp_path: Path):
@@ -90,6 +140,9 @@ def test_publisher_rejects_change_after_supervision(tmp_path: Path):
 
 def test_publisher_rebases_when_another_line_published_first(tmp_path: Path):
     repository, root, config, implementation = setup_project(tmp_path)
+    implementation.tests = [
+        ExecutionTestResult(command=["git", "diff", "--quiet"], exit_code=0, output_tail="passed")
+    ]
     (repository / "other.txt").write_text("other\n", encoding="utf-8")
     git(repository, "add", "other.txt")
     git(repository, "commit", "-m", "other line")
@@ -99,6 +152,7 @@ def test_publisher_rebases_when_another_line_published_first(tmp_path: Path):
     result = asyncio.run(publisher.publish("run-1", "demo", implementation))
 
     assert result.rebased is True
+    assert result.verification_reused is False
     assert result.previous_commit == previous
     assert result.published_commit != implementation.commit
     assert git(repository, "rev-parse", "main") == result.published_commit
