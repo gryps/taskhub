@@ -11,7 +11,6 @@ FROM python:3.12-slim-bookworm AS runtime
 ARG CODEX_VERSION=0.153.4
 ARG DEBIAN_MIRROR=http://deb.debian.org/debian
 ARG DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
-ARG PYPI_INDEX_URL=https://pypi.org/simple
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -44,6 +43,7 @@ RUN mkdir -p /opt/codex-home \
     && codex --version \
     && chmod -R a+rX /opt/codex-home \
     && rm -f /tmp/install-codex.sh
+ARG PYPI_INDEX_URL=https://pypi.org/simple
 COPY pyproject.toml README.md ./
 RUN --mount=type=cache,id=taskhub-pip,target=/root/.cache/pip,sharing=locked \
     PIP_INDEX_URL="${PYPI_INDEX_URL}" PIP_NO_CACHE_DIR=off python -m pip install "hatchling>=1.27" \
