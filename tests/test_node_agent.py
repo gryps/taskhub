@@ -166,6 +166,8 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
     assert diagnostics.status_code == 200
     assert diagnostics.json()["agent_logs"][0]["event"] == "agent_started"
     assert response.json()["node_id"] == "node-test"
+    assert response.json()["metadata"]["required_capabilities"] == []
+    assert response.json()["metadata"]["isolated_test_database"] is False
     assert {"cpu_percent", "memory_used_percent", "disk_used_percent"} <= set(
         health.json()["load"]
     )

@@ -258,6 +258,10 @@ def create_node_app() -> FastAPI:
                     "metadata": {
                         "target_url": payload.target_url,
                         "git_commit": payload.git_commit,
+                        "required_capabilities": sorted(payload.required_capabilities),
+                        "isolated_test_database": (
+                            "test_database" in payload.required_capabilities
+                        ),
                         "versions": await asyncio.to_thread(browser_versions),
                         "started_at": started_at.isoformat(),
                         "finished_at": datetime.now(UTC).isoformat(),

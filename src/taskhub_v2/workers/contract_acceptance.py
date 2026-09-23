@@ -3,6 +3,21 @@ from taskhub_v2.domain.models import AcceptanceEvidence
 from taskhub_v2.services.contract_gate_models import ProjectContractGateError
 
 
+def database_acceptance_evidence(scheduled, failed) -> AcceptanceEvidence:
+    return AcceptanceEvidence(
+        id="project-acceptance-database",
+        kind="database",
+        status="failed" if failed else "passed",
+        source=scheduled.node_id,
+        summary=(
+            "TaskHub provisioned a job-isolated test database on a node with the "
+            "required test_database capability; "
+            f"{len(scheduled.tests) - len(failed)}/{len(scheduled.tests)} "
+            "acceptance commands completed successfully"
+        ),
+    )
+
+
 async def verify_project_contract(
     service,
     artifacts: ArtifactStore,

@@ -13,7 +13,7 @@ from taskhub_v2.browser.contract import PREPRODUCTION_EXAMPLE, load_acceptance_s
 from taskhub_v2.browser.reports import validate_junit
 from taskhub_v2.domain.models import AcceptanceEvidence, AcceptanceResult
 from taskhub_v2.projects import ProjectRegistry
-from taskhub_v2.workers.contract_acceptance import verify_project_contract
+from taskhub_v2.workers import contract_acceptance as evidence
 
 
 class AcceptanceExecutionError(RuntimeError):
@@ -70,11 +70,10 @@ class ProjectAcceptanceGateway:
     async def verify(self, run_id, project_id, implementation) -> AcceptanceResult:
         project = self.projects.get(project_id)
         records = []
-        contract_evidence = await verify_project_contract(
+        contract_evidence = await evidence.verify_project_contract(
             self.project_contracts,
             self.artifacts,
-            run_id,
-            project_id,
+            run_id, project_id,
             implementation,
         )
         if contract_evidence:
@@ -133,6 +132,8 @@ class ProjectAcceptanceGateway:
                     artifacts=[artifact],
                 )
             )
+            if "test_database" in project.acceptance_capabilities:
+                records.append(evidence.database_acceptance_evidence(scheduled, failed))
             if failed:
                 raise AcceptanceExecutionError(failed[0].output_tail)
         contract_path = (

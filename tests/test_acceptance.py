@@ -38,7 +38,7 @@ class RecordingScheduler:
         )
 
 
-def gateway(tmp_path, exit_code=0):
+def gateway(tmp_path, exit_code=0, *, test_database=False):
     repository = tmp_path / "repo"
     repository.mkdir()
     projects_file = tmp_path / "projects.json"
@@ -50,6 +50,9 @@ def gateway(tmp_path, exit_code=0):
                         "id": "shop",
                         "repository": str(repository),
                         "acceptance_commands": [["python3", "accept.py"]],
+                        "acceptance_capabilities": (
+                            ["test_database"] if test_database else []
+                        ),
                         "test_environment": {
                             "target_url": "https://192.168.31.55",
                             "edge_host": "192.168.31.55",
@@ -113,3 +116,16 @@ def test_failed_acceptance_blocks_the_workflow(tmp_path):
 
     with pytest.raises(AcceptanceExecutionError, match="failed"):
         asyncio.run(worker.verify("run-1", "shop", implementation(repository)))
+
+
+def test_database_acceptance_records_isolated_database_evidence(tmp_path):
+    worker, scheduler, repository = gateway(tmp_path, test_database=True)
+
+    result = asyncio.run(worker.verify("run-db", "shop", implementation(repository)))
+
+    database = next(item for item in result.evidence if item.kind == "database")
+    assert database.id == "project-acceptance-database"
+    assert database.status == "passed"
+    assert database.source == "acceptance-node"
+    assert "job-isolated test database" in database.summary
+    assert scheduler.calls[0][3]["required_capabilities_override"] == {"test_database"}
