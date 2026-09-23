@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from taskhub_v2.artifacts import ArtifactStore
+from taskhub_v2.browser.reports import first_junit_failure_detail
 from taskhub_v2.domain.models import AcceptanceEvidence, WindowsTestSuiteDefinition
 
 
@@ -41,6 +42,9 @@ async def verify_windows_suite(
         raise error_type("Windows 实机测试证据与候选提交不一致")
 
     downloaded = scheduled.metadata.pop("downloaded_artifacts", [])
+    junit_failure = first_junit_failure_detail([
+        item["content"] for item in downloaded if item["path"].lower().endswith(".xml")
+    ])
     stored = [
         artifacts.write_bytes(
             run_id,
@@ -75,7 +79,7 @@ async def verify_windows_suite(
         artifacts=stored,
     )
     if failed:
-        raise error_type(failed[0].output_tail or "Windows 实机测试失败")
+        raise error_type(junit_failure or failed[0].output_tail or "Windows 实机测试失败")
     return evidence
 
 

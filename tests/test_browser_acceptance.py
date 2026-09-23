@@ -13,7 +13,7 @@ from taskhub_v2.browser.contract import (
     load_acceptance_contract,
     load_acceptance_suite,
 )
-from taskhub_v2.browser.reports import validate_junit
+from taskhub_v2.browser.reports import first_junit_failure_detail, validate_junit
 from taskhub_v2.domain.models import (
     ExecutionResult,
     RunStatus,
@@ -83,6 +83,17 @@ def test_junit_does_not_repair_unrelated_malformed_xml():
 
     with pytest.raises(ValueError, match="invalid JUnit report"):
         validate_junit([report], ["chromium"])
+
+
+def test_junit_failure_detail_precedes_console_report_footer():
+    report = (
+        b'<testsuite><testcase><failure message="touch target too small">'
+        b'Expected 40, received 30</failure></testcase></testsuite>'
+    )
+
+    assert first_junit_failure_detail([report]) == (
+        "touch target too small\nExpected 40, received 30"
+    )
 
 
 def test_junit_requires_both_executed_browsers():

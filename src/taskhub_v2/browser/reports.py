@@ -14,6 +14,26 @@ def setup_failure_detail(tests: list, setup_count: int) -> str | None:
     return failed.output_tail or "setup command failed"
 
 
+def first_junit_failure_detail(reports: list[bytes]) -> str | None:
+    for report in reports:
+        if b"<!DOCTYPE" in report.upper() or b"<!ENTITY" in report.upper():
+            continue
+        try:
+            root = _parse_junit(report)
+        except ValueError:
+            continue
+        for element in root.iter():
+            if element.tag not in {"failure", "error"}:
+                continue
+            detail = "\n".join(
+                item.strip() for item in (element.get("message", ""), element.text or "")
+                if item.strip()
+            )
+            if detail:
+                return detail[-2000:]
+    return None
+
+
 def _parse_junit(report: bytes) -> ET.Element:
     try:
         return ET.fromstring(report)
