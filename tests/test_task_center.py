@@ -252,6 +252,9 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="check-project-repository"' in html
         assert 'id="save-project-repository"' in html
         assert 'id="project-quality-tests"' in html
+        assert 'id="project-quality-windows-commands"' in html
+        assert 'id="project-quality-windows-nodes"' in html
+        assert 'id="project-quality-windows-artifacts"' in html
         assert 'id="save-project-quality"' in html
         assert 'id="workflow-project"' in html
         app_script = client.get("/static/app.js").text

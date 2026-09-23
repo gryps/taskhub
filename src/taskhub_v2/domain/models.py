@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
@@ -135,6 +137,41 @@ class ProjectSchedulingPolicy(BaseModel):
     run_cost_budget_units: int = Field(default=100, ge=1, le=100_000)
 
 
+class WindowsTestSuiteDefinition(BaseModel):
+    """Project-owned Windows acceptance commands and evidence collection rules."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    commands: list[list[str]] = Field(min_length=1, max_length=30)
+    node_ids: set[str] = Field(default_factory=set, max_length=20)
+    required_capabilities: set[str] = Field(
+        default_factory=lambda: {"windows_gui"}, max_length=20
+    )
+    artifact_paths: list[str] = Field(default_factory=list, max_length=30)
+
+    @field_validator("node_ids")
+    @classmethod
+    def valid_node_ids(cls, value: set[str]) -> set[str]:
+        pattern = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
+        if any(not pattern.fullmatch(item) for item in value):
+            raise ValueError("Windows test node ID is invalid")
+        return value
+
+    @field_validator("artifact_paths")
+    @classmethod
+    def safe_artifact_paths(cls, value: list[str]) -> list[str]:
+        for item in value:
+            path = Path(item.replace("\\", "/"))
+            if not item or path.is_absolute() or ".." in path.parts:
+                raise ValueError("Windows test artifact path must be workspace-relative")
+        return value
+
+    @model_validator(mode="after")
+    def require_windows_gui(self) -> WindowsTestSuiteDefinition:
+        self.required_capabilities.add("windows_gui")
+        return self
+
+
 class ProjectDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -146,6 +183,7 @@ class ProjectDefinition(BaseModel):
     test_commands: list[list[str]] = Field(default_factory=list)
     acceptance_commands: list[list[str]] = Field(default_factory=list)
     acceptance_capabilities: set[str] = Field(default_factory=set)
+    windows_test_suite: WindowsTestSuiteDefinition | None = None
     test_environment: TestEnvironmentDefinition | None = None
     test_timeout_seconds: int = Field(default=600, ge=1, le=3600)
     max_revision_attempts: int = Field(default=2, ge=0, le=10)

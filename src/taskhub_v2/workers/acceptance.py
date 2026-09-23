@@ -14,6 +14,7 @@ from taskhub_v2.browser.reports import validate_junit
 from taskhub_v2.domain.models import AcceptanceEvidence, AcceptanceResult
 from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.workers import contract_acceptance as evidence
+from taskhub_v2.workers import supplemental_acceptance
 
 
 class AcceptanceExecutionError(RuntimeError):
@@ -69,15 +70,10 @@ class ProjectAcceptanceGateway:
 
     async def verify(self, run_id, project_id, implementation) -> AcceptanceResult:
         project = self.projects.get(project_id)
-        records = []
-        contract_evidence = await evidence.verify_project_contract(
-            self.project_contracts,
-            self.artifacts,
-            run_id, project_id,
-            implementation,
+        records = await supplemental_acceptance.verify(
+            self.project_contracts, self.artifacts, self.scheduler, run_id,
+            project, implementation, AcceptanceExecutionError,
         )
-        if contract_evidence:
-            records.append(contract_evidence)
         if implementation.tests:
             records.append(
                 AcceptanceEvidence(

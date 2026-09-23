@@ -981,8 +981,13 @@ function renderProjectRepository(project) {
   byId("project-quality-acceptance").value = formatCommands(project?.acceptance_commands);
   byId("project-quality-timeout").value = project?.test_timeout_seconds || 600;
   byId("project-quality-test-database").checked = Boolean(project?.test_database);
+  const windowsSuite = project?.windows_test_suite;
+  byId("project-quality-windows-commands").value = formatCommands(windowsSuite?.commands);
+  byId("project-quality-windows-nodes").value = (windowsSuite?.node_ids || []).sort().join("\n");
+  byId("project-quality-windows-artifacts").value = (windowsSuite?.artifact_paths || []).join("\n");
+  byId("project-quality-windows-browser").checked = Boolean(windowsSuite?.required_capabilities?.includes("playwright"));
   const allowed = Boolean(project && canPermission("projects:manage"));
-  for (const id of ["project-repository-url", "project-repository-remote", "project-repository-branch", "check-project-repository", "save-project-repository", "project-quality-tests", "project-quality-acceptance", "project-quality-timeout", "project-quality-test-database", "save-project-quality"]) {
+  for (const id of ["project-repository-url", "project-repository-remote", "project-repository-branch", "check-project-repository", "save-project-repository", "project-quality-tests", "project-quality-acceptance", "project-quality-timeout", "project-quality-test-database", "project-quality-windows-commands", "project-quality-windows-nodes", "project-quality-windows-artifacts", "project-quality-windows-browser", "save-project-quality"]) {
     byId(id).disabled = !allowed;
   }
   byId("project-repository-message").textContent = "";
@@ -1002,6 +1007,10 @@ async function saveProjectQuality() {
         acceptance_commands: byId("project-quality-acceptance").value,
         test_timeout_seconds: Number(byId("project-quality-timeout").value),
         test_database: byId("project-quality-test-database").checked,
+        windows_test_commands: byId("project-quality-windows-commands").value,
+        windows_test_node_ids: byId("project-quality-windows-nodes").value,
+        windows_test_artifact_paths: byId("project-quality-windows-artifacts").value,
+        windows_test_browser: byId("project-quality-windows-browser").checked,
       }),
     });
     await loadProjects(project.id);

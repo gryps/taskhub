@@ -171,8 +171,30 @@ class ProjectPreflightService:
                 )
             except (OSError, ValueError) as exc:
                 browser_contract_error = str(exc)
+        windows_suite_error = ""
+        if project.windows_test_suite:
+            suite = project.windows_test_suite
+            eligible_windows = [
+                item
+                for item in online
+                if "acceptance" in item.get("workloads", [])
+                and (not suite.node_ids or item.get("node_id") in suite.node_ids)
+            ]
+            compatible_windows = [
+                item
+                for item in eligible_windows
+                if all(
+                    item.get("capabilities", {}).get(capability)
+                    for capability in suite.required_capabilities
+                )
+            ]
+            if not compatible_windows:
+                target = "、".join(sorted(suite.node_ids)) or "任一 Windows 节点"
+                windows_suite_error = f"Windows 实机测试集没有可用目标节点（{target}）"
         missing_capabilities = sorted(missing_capabilities)
-        acceptance_failed = bool(missing_capabilities or browser_contract_error)
+        acceptance_failed = bool(
+            missing_capabilities or browser_contract_error or windows_suite_error
+        )
         checks.append(
             self._check(
                 "acceptance",
@@ -182,10 +204,17 @@ class ProjectPreflightService:
                     "浏览器验收契约无效：" + browser_contract_error
                     if browser_contract_error
                     else
+                    windows_suite_error
+                    if windows_suite_error
+                    else
                     "缺少验收能力：" + "、".join(missing_capabilities)
                     if missing_capabilities
-                    else "项目声明的验收能力与浏览器契约均可用"
-                    if project.acceptance_capabilities or browser_contract_path.is_file()
+                    else "项目声明的验收能力、Windows 测试集与浏览器契约均可用"
+                    if (
+                        project.acceptance_capabilities
+                        or project.windows_test_suite
+                        or browser_contract_path.is_file()
+                    )
                     else "项目未声明额外验收能力"
                 ),
                 remediation=(

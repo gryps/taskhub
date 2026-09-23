@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from taskhub_v2.api.app import create_app
 from taskhub_v2.config import Settings
-from taskhub_v2.domain.models import ProjectDefinition
+from taskhub_v2.domain.models import ProjectDefinition, WindowsTestSuiteDefinition
 from taskhub_v2.projects import ProjectProvisioner, ProjectProvisionError, ProjectRegistry
 
 
@@ -322,6 +322,10 @@ def test_project_quality_settings_can_be_updated_after_attach(tmp_path: Path):
                 "acceptance_commands": "npm run test:e2e",
                 "test_timeout_seconds": 1800,
                 "test_database": True,
+                "windows_test_commands": "powershell -File scripts/windows-test.ps1",
+                "windows_test_node_ids": "windows-01\nwindows-02",
+                "windows_test_artifact_paths": "test-results/windows\nreports/junit.xml",
+                "windows_test_browser": True,
             },
         )
 
@@ -333,9 +337,25 @@ def test_project_quality_settings_can_be_updated_after_attach(tmp_path: Path):
     assert response.json()["acceptance_commands"] == [["npm", "run", "test:e2e"]]
     assert response.json()["test_timeout_seconds"] == 1800
     assert response.json()["test_database"] is True
+    assert response.json()["windows_test_suite"] == {
+        "commands": [["powershell", "-File", "scripts/windows-test.ps1"]],
+        "node_ids": ["windows-01", "windows-02"],
+        "required_capabilities": [
+            "browser_authenticated",
+            "browser_profile",
+            "chromium",
+            "edge",
+            "playwright",
+            "screenshot",
+            "trace",
+            "windows_gui",
+        ],
+        "artifact_paths": ["test-results/windows", "reports/junit.xml"],
+    }
     stored = app.state.projects.get("shop")
     assert stored.acceptance_capabilities == {"test_database"}
     assert stored.test_timeout_seconds == 1800
+    assert stored.windows_test_suite is not None
 
 
 def test_project_quality_settings_reject_an_invalid_command(tmp_path: Path):
@@ -470,6 +490,40 @@ browsers: [chromium, edge]
     assert report["ready"] is False
     assert acceptance["status"] == "failed"
     assert "windows_gui" in acceptance["detail"]
+
+
+def test_project_preflight_rejects_unavailable_windows_test_target(tmp_path: Path):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    add_remote(repo, tmp_path / "shop.git")
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+        )
+    )
+    app.state.projects.add(
+        ProjectDefinition(
+            id="shop",
+            repository=str(repo),
+            authority_remote="origin",
+            test_commands=[["python3", "-m", "pytest"]],
+            windows_test_suite=WindowsTestSuiteDefinition(
+                commands=[["powershell", "-File", "windows-test.ps1"]],
+                node_ids={"windows-pilot-01"},
+            ),
+        )
+    )
+
+    with TestClient(app) as client:
+        client.post("/api/auth/login", json={"token": "admin-secret"})
+        report = client.get("/api/projects/shop/preflight").json()
+
+    acceptance = next(item for item in report["checks"] if item["id"] == "acceptance")
+    assert report["ready"] is False
+    assert acceptance["status"] == "failed"
+    assert "windows-pilot-01" in acceptance["detail"]
 
 
 def test_project_repository_rejects_a_password_in_the_remote_url(tmp_path: Path):

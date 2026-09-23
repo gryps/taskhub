@@ -10,6 +10,7 @@ from taskhub_v2.domain.models import (
     ProjectDefinition,
     ProjectSchedulingPolicy,
     TestEnvironmentDefinition,
+    WindowsTestSuiteDefinition,
 )
 from taskhub_v2.projects import ProjectConflictError, ProjectNotFoundError, ProjectProvisionError
 
@@ -58,6 +59,10 @@ class ProjectQualityRequest(BaseModel):
     acceptance_commands: str = Field(default="", max_length=4000)
     test_database: bool = False
     test_timeout_seconds: int | None = Field(default=None, ge=1, le=3600)
+    windows_test_commands: str | None = Field(default=None, max_length=4000)
+    windows_test_node_ids: str | None = Field(default=None, max_length=1500)
+    windows_test_artifact_paths: str | None = Field(default=None, max_length=4000)
+    windows_test_browser: bool | None = None
 
 
 class ProjectSchedulingPolicyRequest(ProjectSchedulingPolicy):
@@ -75,6 +80,36 @@ def parse_test_commands(value: str) -> list[list[str]]:
     return commands
 
 
+def parse_lines(value: str) -> list[str]:
+    return [item.strip() for item in value.replace(",", "\n").splitlines() if item.strip()]
+
+
+WINDOWS_BROWSER_CAPABILITIES = {
+    "browser_authenticated",
+    "browser_profile",
+    "chromium",
+    "edge",
+    "playwright",
+    "screenshot",
+    "trace",
+}
+
+
+def windows_test_suite(payload: ProjectQualityRequest) -> WindowsTestSuiteDefinition | None:
+    commands = parse_test_commands(payload.windows_test_commands or "")
+    if not commands:
+        return None
+    capabilities = {"windows_gui"}
+    if payload.windows_test_browser:
+        capabilities.update(WINDOWS_BROWSER_CAPABILITIES)
+    return WindowsTestSuiteDefinition(
+        commands=commands,
+        node_ids=set(parse_lines(payload.windows_test_node_ids or "")),
+        required_capabilities=capabilities,
+        artifact_paths=parse_lines(payload.windows_test_artifact_paths or ""),
+    )
+
+
 def project_view(item: ProjectDefinition, registry=None) -> dict:
     repository_settings = registry.repository_settings(item) if registry else None
     return {
@@ -86,6 +121,18 @@ def project_view(item: ProjectDefinition, registry=None) -> dict:
         "acceptance_commands": item.acceptance_commands,
         "test_timeout_seconds": item.test_timeout_seconds,
         "test_database": "test_database" in item.acceptance_capabilities,
+        "windows_test_suite": (
+            {
+                **item.windows_test_suite.model_dump(
+                    mode="json", exclude={"node_ids", "required_capabilities"}
+                ),
+                "node_ids": sorted(item.windows_test_suite.node_ids),
+                "required_capabilities": sorted(
+                    item.windows_test_suite.required_capabilities
+                ),
+            }
+            if item.windows_test_suite else None
+        ),
         "test_environment": (
             item.test_environment.model_dump(mode="json") if item.test_environment else None
         ),
@@ -218,6 +265,11 @@ async def update_project_quality(
 ) -> dict:
     try:
         project = request.app.state.projects.get(project_id)
+        suite = (
+            windows_test_suite(payload)
+            if payload.windows_test_commands is not None
+            else project.windows_test_suite
+        )
         updated = request.app.state.projects.update(
             project.model_copy(
                 update={
@@ -231,6 +283,7 @@ async def update_project_quality(
                         if payload.test_timeout_seconds is not None
                         else project.test_timeout_seconds
                     ),
+                    "windows_test_suite": suite,
                 }
             )
         )
@@ -243,6 +296,7 @@ async def update_project_quality(
             acceptance_command_count=len(updated.acceptance_commands),
             test_timeout_seconds=updated.test_timeout_seconds,
             test_database=payload.test_database,
+            windows_test_suite=bool(updated.windows_test_suite),
         )
         return project_view(updated, request.app.state.projects)
     except ProjectNotFoundError as exc:
