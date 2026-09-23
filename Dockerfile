@@ -11,6 +11,7 @@ FROM python:3.12-slim-bookworm AS runtime
 ARG CODEX_VERSION=0.153.4
 ARG DEBIAN_MIRROR=http://deb.debian.org/debian
 ARG DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
+ARG PYPI_INDEX_URL=https://pypi.org/simple
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -45,10 +46,10 @@ RUN mkdir -p /opt/codex-home \
     && rm -f /tmp/install-codex.sh
 COPY pyproject.toml README.md ./
 RUN --mount=type=cache,id=taskhub-pip,target=/root/.cache/pip,sharing=locked \
-    PIP_NO_CACHE_DIR=off python -m pip install "hatchling>=1.27" \
+    PIP_INDEX_URL="${PYPI_INDEX_URL}" PIP_NO_CACHE_DIR=off python -m pip install "hatchling>=1.27" \
     && mkdir -p src/taskhub_v2 \
     && touch src/taskhub_v2/__init__.py \
-    && PIP_NO_CACHE_DIR=off python -m pip install --no-build-isolation . \
+    && PIP_INDEX_URL="${PYPI_INDEX_URL}" PIP_NO_CACHE_DIR=off python -m pip install --no-build-isolation . \
     && rm -rf src
 COPY src ./src
 COPY --from=web /web/dist ./src/taskhub_v2/api/canvas

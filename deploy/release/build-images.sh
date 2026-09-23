@@ -22,6 +22,9 @@ fi
 if [ -n "${NPM_REGISTRY:-}" ]; then
   mirror_args="$mirror_args --build-arg NPM_REGISTRY=${NPM_REGISTRY}"
 fi
+if [ -n "${PYPI_INDEX_URL:-}" ]; then
+  mirror_args="$mirror_args --build-arg PYPI_INDEX_URL=${PYPI_INDEX_URL}"
+fi
 if [ -n "${DEBIAN_MIRROR:-}" ]; then
   mirror_args="$mirror_args --build-arg DEBIAN_MIRROR=${DEBIAN_MIRROR}"
 fi

@@ -13,6 +13,7 @@ if ($env:TASKHUB_BUILD_PROXY) {
     $MirrorArgs += @("--build-arg", "HTTPS_PROXY=$($env:TASKHUB_BUILD_PROXY)")
 }
 if ($env:NPM_REGISTRY) { $MirrorArgs += @("--build-arg", "NPM_REGISTRY=$($env:NPM_REGISTRY)") }
+if ($env:PYPI_INDEX_URL) { $MirrorArgs += @("--build-arg", "PYPI_INDEX_URL=$($env:PYPI_INDEX_URL)") }
 if ($env:DEBIAN_MIRROR) { $MirrorArgs += @("--build-arg", "DEBIAN_MIRROR=$($env:DEBIAN_MIRROR)") }
 if ($env:DEBIAN_SECURITY_MIRROR) { $MirrorArgs += @("--build-arg", "DEBIAN_SECURITY_MIRROR=$($env:DEBIAN_SECURITY_MIRROR)") }
 $Commit = if ($env:TASKHUB_COMMIT) {

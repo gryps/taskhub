@@ -5,6 +5,7 @@ FROM python:3.12-slim-bookworm
 ARG CODEX_VERSION=0.153.4
 ARG DEBIAN_MIRROR=http://deb.debian.org/debian
 ARG DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
+ARG PYPI_INDEX_URL=https://pypi.org/simple
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -45,10 +46,10 @@ RUN mkdir -p /opt/codex-home \
 WORKDIR /opt/taskhub
 COPY pyproject.toml README.md ./
 RUN --mount=type=cache,id=taskhub-pip,target=/root/.cache/pip,sharing=locked \
-    python -m pip install "hatchling>=1.27" \
+    PIP_INDEX_URL="${PYPI_INDEX_URL}" python -m pip install "hatchling>=1.27" \
     && mkdir -p src/taskhub_v2 \
     && touch src/taskhub_v2/__init__.py \
-    && python -m pip install --no-build-isolation '.[dev,browser]' \
+    && PIP_INDEX_URL="${PYPI_INDEX_URL}" python -m pip install --no-build-isolation '.[dev,browser]' \
     && rm -rf src
 COPY src ./src
 RUN python -m pip install --no-deps --no-build-isolation --force-reinstall . \
