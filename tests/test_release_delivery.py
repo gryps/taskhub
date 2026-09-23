@@ -164,7 +164,11 @@ def test_release_images_pin_codex_and_node_has_common_role_tools():
     assert "ca-certificates curl git openssh-client" in node
     assert "ARG DEBIAN_MIRROR=" in node
     assert "ARG DEBIAN_SECURITY_MIRROR=" in node
-    assert "python -m pip install --no-cache-dir '.[dev,browser]'" in node
+    assert "--mount=type=cache,id=taskhub-pip" in seed
+    assert "PIP_NO_CACHE_DIR=off python -m pip install ." in seed
+    assert "--mount=type=cache,id=taskhub-pip" in node
+    assert "python -m pip install '.[dev,browser]'" in node
+    assert "python -m pip install --no-cache-dir" not in node
     assert "TASKHUB_NODE_CACHE_ROOT=/var/lib/taskhub-node/cache" in node
     assert "PIP_NO_CACHE_DIR=1" not in node
 

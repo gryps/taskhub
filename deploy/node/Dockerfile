@@ -47,8 +47,9 @@ RUN mkdir -p /opt/codex-home \
 WORKDIR /opt/taskhub
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN python -m pip install --no-cache-dir '.[dev,browser]' \
-    && mkdir -p /var/lib/taskhub-node/jobs /var/lib/taskhub-node/cache/pip /var/lib/taskhub-node/cache/npm \
+RUN --mount=type=cache,id=taskhub-pip,target=/root/.cache/pip,sharing=locked \
+    python -m pip install '.[dev,browser]' \
+    && mkdir -p /var/lib/taskhub-node/jobs /var/lib/taskhub-node/cache/pip /var/lib/taskhub-node/cache/npm /var/lib/taskhub-node/cache/uv \
     && chown -R taskhub:taskhub /var/lib/taskhub-node /opt/taskhub
 
 LABEL org.opencontainers.image.title="TaskHub Unified Worker Node" \

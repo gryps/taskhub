@@ -48,7 +48,8 @@ RUN mkdir -p /opt/codex-home \
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY --from=web /web/dist ./src/taskhub_v2/api/canvas
-RUN python -m pip install .
+RUN --mount=type=cache,id=taskhub-pip,target=/root/.cache/pip,sharing=locked \
+    PIP_NO_CACHE_DIR=off python -m pip install .
 
 LABEL org.opencontainers.image.title="TaskHub V2 Seed Controller" \
       org.opencontainers.image.version="${TASKHUB_VERSION}" \
