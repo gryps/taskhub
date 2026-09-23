@@ -222,7 +222,8 @@ class GitCodingWorker:
         if forbidden or generated:
             return None, ""
         scheduled = await self.test_scheduler.run(
-            f"{run_id}-r{revision}-retest",
+            # Stable identity lets node digests reuse an unchanged recovery attempt.
+            f"{run_id}-r{revision}",
             run_id,
             project.test_commands,
             project.test_timeout_seconds,

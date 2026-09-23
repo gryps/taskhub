@@ -89,6 +89,16 @@ class FixAfterRetestCoder(FileWritingCoder):
         )
 
 
+class RecordingScheduler:
+    def __init__(self, delegate):
+        self.delegate = delegate
+        self.job_ids = []
+
+    async def run(self, job_id, *args, **kwargs):
+        self.job_ids.append(job_id)
+        return await self.delegate.run(job_id, *args, **kwargs)
+
+
 def test_git_worker_changes_tests_artifacts_and_commits(tmp_path: Path):
     repository = tmp_path / "authority"
     repository.mkdir()
@@ -181,6 +191,8 @@ def test_git_worker_retests_uncommitted_changes_before_revision_coding(tmp_path:
         coder,
         ArtifactStore(str(tmp_path / "artifacts")),
     )
+    scheduler = RecordingScheduler(worker.test_scheduler)
+    worker.test_scheduler = scheduler
     plan = Plan(summary="Plan", steps=["Add file"], acceptance=["Test passes"])
 
     try:
@@ -206,6 +218,7 @@ def test_git_worker_retests_uncommitted_changes_before_revision_coding(tmp_path:
     assert recovered.changed_files == ["feature.txt"]
     assert recovered.coding_node == "workspace-recovery"
     assert recovered.tests[0].exit_code == 0
+    assert scheduler.job_ids == ["run-retest-r0", "run-retest-r1"]
     message = git(Path(recovered.workspace.path), "log", "-1", "--format=%B")
     assert "TaskHub-Recovery: quality-retest" in message
 
