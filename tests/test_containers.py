@@ -128,6 +128,7 @@ def test_execution_container_enables_coding_sandbox_and_account_mount(tmp_path):
         "TASKHUB_MODEL_CARDS_FILE=/var/lib/taskhub-node/codex/accounts/node-models.json"
         in payload["Env"]
     )
+    assert "TASKHUB_NODE_CACHE_ROOT=/var/lib/taskhub-node/cache" in payload["Env"]
     assert payload["HostConfig"]["SecurityOpt"] == ["seccomp=unconfined"]
     assert payload["HostConfig"]["Mounts"] == [
         {

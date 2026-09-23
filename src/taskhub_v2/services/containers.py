@@ -184,6 +184,7 @@ class ContainerManager(NodeInventoryMixin):
                 f"TASKHUB_NODE_SLOTS={request.slots}",
                 "TASKHUB_NODE_TOKEN=__TASKHUB_NODE_CREDENTIAL__",
                 "TASKHUB_NODE_WORK_ROOT=/var/lib/taskhub-node/jobs",
+                "TASKHUB_NODE_CACHE_ROOT=/var/lib/taskhub-node/cache",
                 *runtime_environment,
             ],
             "Cmd": ["sh", "-c", node_command],

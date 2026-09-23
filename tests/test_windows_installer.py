@@ -12,3 +12,4 @@ def test_windows_installer_prefers_a_writable_fixed_d_drive():
     assert '$Jobs = "D:\\TaskHub\\jobs"' in script
     assert '$Jobs = Join-Path $Root "jobs"' in script
     assert 'TASKHUB_NODE_WORK_ROOT = "$Jobs"' in script
+    assert 'TASKHUB_NODE_CACHE_ROOT = "$CacheRoot"' in script

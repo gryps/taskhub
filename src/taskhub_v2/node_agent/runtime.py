@@ -27,6 +27,35 @@ class UnsafeArchiveError(ValueError):
 WINDOWS_COMMANDS = {"python3": "python.exe", "npm": "npm.cmd", "npx": "npx.cmd"}
 
 
+def dependency_cache_environment(
+    workdir: Path, environment: dict[str, str],
+    execution_environment: dict[str, str] | None = None,
+) -> None:
+    """Give isolated jobs persistent download caches owned by their node.
+
+    Workspaces and virtual environments remain job-local.  Only package-manager
+    downloads are shared, so clean-install checks keep their isolation while
+    avoiding repeated network transfers across jobs and nested test projects.
+    """
+    overrides = execution_environment or {}
+    enabled = environment.get("TASKHUB_NODE_DEPENDENCY_CACHE", "true").strip().lower()
+    if enabled in {"0", "false", "no", "off"}:
+        return
+    configured = environment.get("TASKHUB_NODE_CACHE_ROOT", "").strip()
+    cache_root = Path(configured).expanduser() if configured else workdir.parent.parent / "cache"
+    cache_root.mkdir(parents=True, exist_ok=True)
+    pip_cache = cache_root / "pip"
+    npm_cache = cache_root / "npm"
+    pip_cache.mkdir(exist_ok=True)
+    npm_cache.mkdir(exist_ok=True)
+    environment.setdefault("PIP_CACHE_DIR", str(pip_cache))
+    environment.setdefault("npm_config_cache", str(npm_cache))
+    # The worker image historically disabled pip's cache globally.  Remove that
+    # inherited default, while still honoring an explicit per-job opt-out.
+    if "PIP_NO_CACHE_DIR" not in overrides:
+        environment.pop("PIP_NO_CACHE_DIR", None)
+
+
 def subprocess_group_options() -> dict[str, object]:
     """Start commands in an isolated group so timeouts can stop descendants."""
     if os.name == "nt":
@@ -113,6 +142,7 @@ async def run_commands(
     results = []
     environment = dict(os.environ)
     environment.update(execution_environment or {})
+    dependency_cache_environment(workdir, environment, execution_environment)
     # Keep skip names and reasons reviewable when projects invoke pytest with -q.
     environment.setdefault("PYTEST_ADDOPTS", "-ra")
     environment["PATH"] = os.pathsep.join(

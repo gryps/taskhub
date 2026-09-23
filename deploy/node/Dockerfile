@@ -10,11 +10,13 @@ ARG DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
     PIP_DEFAULT_TIMEOUT=120 \
     PIP_RETRIES=8 \
     TASKHUB_NODE_ROLE=test \
     TASKHUB_NODE_WORK_ROOT=/var/lib/taskhub-node/jobs \
+    TASKHUB_NODE_CACHE_ROOT=/var/lib/taskhub-node/cache \
+    PIP_CACHE_DIR=/var/lib/taskhub-node/cache/pip \
+    npm_config_cache=/var/lib/taskhub-node/cache/npm \
     TASKHUB_CODEX_CLI_BIN=/usr/local/bin/codex \
     TASKHUB_CODEX_PLUS_HOME=/var/lib/taskhub-node/codex/plus \
     TASKHUB_CODEX_PRO_HOME=/var/lib/taskhub-node/codex/pro \
@@ -45,8 +47,8 @@ RUN mkdir -p /opt/codex-home \
 WORKDIR /opt/taskhub
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN python -m pip install '.[dev,browser]' \
-    && mkdir -p /var/lib/taskhub-node/jobs \
+RUN python -m pip install --no-cache-dir '.[dev,browser]' \
+    && mkdir -p /var/lib/taskhub-node/jobs /var/lib/taskhub-node/cache/pip /var/lib/taskhub-node/cache/npm \
     && chown -R taskhub:taskhub /var/lib/taskhub-node /opt/taskhub
 
 LABEL org.opencontainers.image.title="TaskHub Unified Worker Node" \

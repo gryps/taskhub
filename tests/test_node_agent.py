@@ -92,7 +92,10 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
                         "import os; "
                         "assert os.environ['TASKHUB_CHROMIUM_CHANNEL'] == 'chrome'; "
                         "assert os.environ['TASKHUB_EDGE_CHANNEL'] == 'msedge'; "
-                        "assert os.environ['PYTEST_ADDOPTS'] == '-ra'",
+                        "assert os.environ['PYTEST_ADDOPTS'] == '-ra'; "
+                        "assert os.environ['PIP_CACHE_DIR'].endswith('cache/pip'); "
+                        "assert os.environ['npm_config_cache'].endswith('cache/npm'); "
+                        "assert 'PIP_NO_CACHE_DIR' not in os.environ",
                     ]
                 ],
                 "timeout_seconds": 30,
@@ -109,6 +112,21 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
     )
     assert health.json()["load"]["window_seconds"] == 300
     assert response.json()["tests"][0]["exit_code"] == 0
+    assert (tmp_path / "cache" / "pip").is_dir()
+    assert (tmp_path / "cache" / "npm").is_dir()
+
+
+def test_node_dependency_cache_honors_explicit_job_opt_out(tmp_path, monkeypatch):
+    monkeypatch.setenv("PIP_NO_CACHE_DIR", "1")
+    workdir = tmp_path / "jobs" / "job-1"
+    workdir.mkdir(parents=True)
+    result = asyncio.run(run_commands(
+        workdir,
+        [[sys.executable, "-c", "import os; assert os.environ['PIP_NO_CACHE_DIR'] == '1'"]],
+        10,
+        execution_environment={"PIP_NO_CACHE_DIR": "1"},
+    ))
+    assert result[0]["exit_code"] == 0
 
 
 def test_node_reuses_persisted_execution_result(tmp_path, monkeypatch):

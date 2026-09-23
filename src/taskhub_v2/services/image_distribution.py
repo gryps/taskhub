@@ -157,7 +157,8 @@ trap 'rm -f "$env_file"' EXIT
 chmod 600 "$env_file"
 printf '%s\n' 'TASKHUB_NODE_ID={request.node_id}' 'TASKHUB_NODE_ROLE={request.role}' \
   'TASKHUB_NODE_SLOTS={request.slots}' \
-  'TASKHUB_NODE_WORK_ROOT=/var/lib/taskhub-node/jobs' {token_line} > "$env_file"
+  'TASKHUB_NODE_WORK_ROOT=/var/lib/taskhub-node/jobs' \
+  'TASKHUB_NODE_CACHE_ROOT=/var/lib/taskhub-node/cache' {token_line} > "$env_file"
 container=$(docker_run {command})
 docker_run start "$container" >/dev/null
 state=$(docker_run inspect "$container" --format '{{{{.State.Status}}}}')

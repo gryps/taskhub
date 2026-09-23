@@ -24,6 +24,7 @@ if ([string]::IsNullOrWhiteSpace($Jobs)) {
   }
 }
 $Secrets = Join-Path $Root "secrets"
+$CacheRoot = Join-Path (Split-Path -Parent $Jobs) "cache"
 $TokenFile = Join-Path $Secrets "node-token.dpapi"
 $StartScript = Join-Path $Root "start-node-agent.ps1"
 $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
@@ -35,7 +36,7 @@ if (-not (Test-Path $PackagePath)) {
   throw "Candidate package not found: $PackagePath"
 }
 
-New-Item -ItemType Directory -Force -Path $Jobs, $Secrets | Out-Null
+New-Item -ItemType Directory -Force -Path $Jobs, $Secrets, $CacheRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $BrowserProfileDir | Out-Null
 & icacls.exe $Jobs /inheritance:r /grant:r "${Identity}:(OI)(CI)M" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Failed to grant the node account workspace access" }
@@ -77,6 +78,7 @@ Add-Type -AssemblyName System.Security
 `$env:TASKHUB_NODE_TOKEN = [System.Text.Encoding]::UTF8.GetString(`$TokenBytes)
 `$env:TASKHUB_NODE_ID = "$NodeId"
 `$env:TASKHUB_NODE_WORK_ROOT = "$Jobs"
+`$env:TASKHUB_NODE_CACHE_ROOT = "$CacheRoot"
 `$env:TASKHUB_WINDOWS_GUI = "true"
 `$env:TASKHUB_BROWSER_PROFILE_DIR = "$BrowserProfileDir"
 `$env:TASKHUB_BROWSER_AUTH_TARGET = "$BrowserAuthTarget"
