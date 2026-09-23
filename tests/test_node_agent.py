@@ -424,6 +424,23 @@ def test_local_runner_uses_its_own_python_environment(tmp_path):
     assert result[0].exit_code == 0
 
 
+def test_node_command_output_keeps_failure_tail_and_redacts_database_credentials(tmp_path):
+    code = (
+        "print('x' * 40000); "
+        "print(\"name = 'user=taskhub password=libpq-pass dbname=test host=postgres'\"); "
+        "print('postgresql://taskhub:url-pass@postgres/test'); "
+        "print('FAILURE_AT_END')"
+    )
+
+    result = asyncio.run(run_commands(tmp_path, [[sys.executable, "-c", code]], 30))
+    output = result[0]["output_tail"]
+
+    assert output.endswith("FAILURE_AT_END\n")
+    assert "libpq-pass" not in output
+    assert "url-pass" not in output
+    assert "password=[REDACTED]" in output
+
+
 def test_node_timeout_stops_spawned_descendants(tmp_path):
     marker = tmp_path / "orphan-finished.txt"
     child_code = (

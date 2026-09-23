@@ -33,6 +33,12 @@ def test_operational_log_redacts_secrets_and_diagnostic_addresses(tmp_path):
     assert "database-pass" not in redact_text(
         "postgresql://taskhub:database-pass@postgres/taskhub"
     )
+    assert "libpq-pass" not in redact_text(
+        "user=taskhub password=libpq-pass dbname=taskhub_test host=postgres"
+    )
+    assert redact_text("prefix-secret\n" + "x" * 50 + "\nFAILURE", max_chars=16).endswith(
+        "FAILURE"
+    )
 
 
 def test_backup_identity_rejects_changed_key():

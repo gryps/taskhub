@@ -1,6 +1,7 @@
 from langgraph.graph import END, START, StateGraph
 
 from taskhub_v2.domain.models import ExecutionResult, RunStatus, Stage
+from taskhub_v2.services.operational_log import redact_text
 from taskhub_v2.workers.base import AcceptanceGateway
 from taskhub_v2.workflows.state import StepState, event
 
@@ -12,7 +13,9 @@ def build_acceptance_graph(gateway: AcceptanceGateway):
             result = await gateway.verify(state["run_id"], state["project_id"], implementation)
         except Exception as exc:
             reason = getattr(exc, "reason", exc.__class__.__name__)
-            detail = getattr(exc, "detail", str(exc))[:4000]
+            detail = redact_text(
+                getattr(exc, "detail", str(exc)), max_chars=4000
+            )
             implementation_fix = reason in {
                 "acceptance_contract_invalid",
                 "acceptance_contract_missing",

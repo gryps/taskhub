@@ -11,6 +11,8 @@ import tempfile
 from contextlib import suppress
 from pathlib import Path
 
+from taskhub_v2.services.operational_log import redact_text
+
 FORBIDDEN_NAMES = {".env", ".env.local", "auth.json", "credentials.json"}
 PROXY_VARIABLES = (
     "HTTP_PROXY",
@@ -206,7 +208,7 @@ async def run_commands(
         try:
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
             exit_code = process.returncode
-            output = stdout.decode(errors="replace")[-32_000:]
+            output = redact_text(stdout.decode(errors="replace"), max_chars=32_000)
         except TimeoutError:
             await kill_process_tree(process)
             exit_code = 124

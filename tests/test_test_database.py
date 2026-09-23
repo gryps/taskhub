@@ -51,6 +51,29 @@ def test_database_is_created_injected_and_removed(monkeypatch):
 
     with manager.database("run-1-acceptance") as environment:
         assert set(environment) == {"TASKHUB_TEST_POSTGRES_DSN", "BE008_TEST_PG_URL"}
-        assert all("dbname=taskhub_" in value for value in environment.values())
+        assert all(
+            value.startswith("postgresql+psycopg://admin@localhost/taskhub_")
+            for value in environment.values()
+        )
 
     assert len(statements) == 3
+
+
+def test_database_url_escapes_credentials_and_preserves_connection_options(monkeypatch):
+    manager = DatabaseManager(
+        "host=postgres port=5432 dbname=postgres user='user@example.com' "
+        "password='p@ss word' sslmode=require",
+        "TASKHUB_TEST_POSTGRES_DSN",
+    )
+    monkeypatch.setattr(
+        "taskhub_v2.node_agent.test_database.psycopg.connect",
+        lambda *args, **kwargs: FakeConnection([]),
+    )
+
+    with manager.database("run-2") as environment:
+        value = environment["TASKHUB_TEST_POSTGRES_DSN"]
+
+    assert value.startswith(
+        "postgresql+psycopg://user%40example.com:p%40ss%20word@postgres:5432/taskhub_"
+    )
+    assert value.endswith("?sslmode=require")

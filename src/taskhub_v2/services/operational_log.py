@@ -21,8 +21,10 @@ _SECRET_PATTERNS = (
 _IP_PATTERN = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 
 
-def redact_text(value: str, *, addresses: bool = False) -> str:
-    result = value[:20_000]
+def redact_text(
+    value: str, *, addresses: bool = False, max_chars: int = 20_000
+) -> str:
+    result = value
     for pattern in _SECRET_PATTERNS:
         if pattern.groups >= 3:
             result = pattern.sub(r"\1\2[REDACTED]", result)
@@ -30,7 +32,7 @@ def redact_text(value: str, *, addresses: bool = False) -> str:
             result = pattern.sub("[REDACTED]", result)
     if addresses:
         result = _IP_PATTERN.sub("[REDACTED-IP]", result)
-    return result
+    return result[-max_chars:] if max_chars > 0 else result
 
 
 def sanitize(value: Any, *, addresses: bool = False) -> Any:
