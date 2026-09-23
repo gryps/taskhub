@@ -1,10 +1,13 @@
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi.testclient import TestClient
 
 from taskhub_v2.api.app import create_app
 from taskhub_v2.config import Settings
+from taskhub_v2.security.atomic_json import locked_file
+from taskhub_v2.security.auth import AuthService
 
 
 def secure_settings(tmp_path, **updates):
@@ -158,3 +161,26 @@ def test_idle_timeout_and_secure_cookie(tmp_path):
             item["last_seen"] = 1
         state_path.write_text(json.dumps(state), encoding="utf-8")
         assert client.get("/api/projects").status_code == 401
+
+
+def test_session_updates_are_serialized_across_auth_service_instances(tmp_path):
+    state_path = tmp_path / "sessions.json"
+    services = [
+        AuthService(
+            "admin-secret",
+            "session-secret",
+            session_state_file=str(state_path),
+        )
+        for _ in range(2)
+    ]
+    services[0].create_session("first", "administrator")
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with locked_file(state_path):
+            pending = pool.submit(services[1].create_session, "second", "developer")
+            time.sleep(0.05)
+            assert not pending.done()
+        pending.result(timeout=2)
+
+    sessions = json.loads(state_path.read_text(encoding="utf-8"))["sessions"]
+    assert {item["actor"] for item in sessions.values()} == {"first", "second"}

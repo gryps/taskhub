@@ -9,6 +9,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
+from taskhub_v2.security.atomic_json import locked_file, write_json
 from taskhub_v2.security.passwords import password_record, verify_password
 from taskhub_v2.security.rbac import ROLE_PERMISSIONS
 
@@ -201,15 +202,20 @@ class AuthService:
     def rotate_signing_key(self) -> dict[str, Any]:
         if not self.signing_keys_file:
             raise AuthConfigurationError("session signing key file is not configured")
-        current = self._keys()[0]
-        new_key = secrets.token_urlsafe(48)
-        self._write_json(
-            self.signing_keys_file, {"keys": [new_key, current], "rotated_at": int(time.time())}
-        )
-        sessions = self._sessions()
-        for item in sessions.values():
-            item["revoked"] = True
-        self._write_sessions(sessions)
+        with locked_file(self.signing_keys_file):
+            current = self._keys()[0]
+            new_key = secrets.token_urlsafe(48)
+            self._write_json(
+                self.signing_keys_file,
+                {"keys": [new_key, current], "rotated_at": int(time.time())},
+            )
+        sessions = {}
+        if self.session_state_file:
+            with locked_file(self.session_state_file):
+                sessions = self._sessions()
+                for item in sessions.values():
+                    item["revoked"] = True
+                self._write_sessions(sessions)
         return {"rotated": True, "sessions_revoked": len(sessions)}
 
     def list_users(self) -> list[dict[str, Any]]:
@@ -230,19 +236,22 @@ class AuthService:
             raise UserManagementError("invalid or reserved username")
         if role not in ROLE_PERMISSIONS:
             raise UserManagementError("invalid role")
-        records = self._user_records()
-        existing = next((item for item in records if item["username"] == username), None)
-        if not existing and not password:
-            raise UserManagementError("new user requires a password")
-        password_value = password_record(password) if password else existing["password"]
-        record = {
-            "username": username,
-            "role": role,
-            "enabled": enabled,
-            "password": password_value,
-        }
-        records = [item for item in records if item["username"] != username] + [record]
-        self._write_users(records)
+        if not self.users_file:
+            raise UserManagementError("user store is not configured")
+        with self._lock, locked_file(self.users_file):
+            records = self._user_records()
+            existing = next((item for item in records if item["username"] == username), None)
+            if not existing and not password:
+                raise UserManagementError("new user requires a password")
+            password_value = password_record(password) if password else existing["password"]
+            record = {
+                "username": username,
+                "role": role,
+                "enabled": enabled,
+                "password": password_value,
+            }
+            records = [item for item in records if item["username"] != username] + [record]
+            self._write_users(records)
         if not enabled:
             self._revoke_actor_sessions(username)
         return {key: value for key, value in record.items() if key != "password"}
@@ -251,10 +260,13 @@ class AuthService:
         username = username.strip().lower()
         if username == "admin":
             raise UserManagementError("built-in administrator cannot be deleted")
-        records = self._user_records()
-        if not any(item["username"] == username for item in records):
-            raise UserManagementError("user not found")
-        self._write_users([item for item in records if item["username"] != username])
+        if not self.users_file:
+            raise UserManagementError("user store is not configured")
+        with self._lock, locked_file(self.users_file):
+            records = self._user_records()
+            if not any(item["username"] == username for item in records):
+                raise UserManagementError("user not found")
+            self._write_users([item for item in records if item["username"] != username])
         self._revoke_actor_sessions(username)
 
     @staticmethod
@@ -301,7 +313,7 @@ class AuthService:
     def _update_session(self, session_id: str, seen: int, revoked: bool, actor: str = "") -> None:
         if not self.session_state_file:
             return
-        with self._lock:
+        with self._lock, locked_file(self.session_state_file):
             sessions = self._sessions()
             previous = sessions.get(session_id, {})
             sessions[session_id] = {
@@ -320,7 +332,7 @@ class AuthService:
     def _revoke_actor_sessions(self, actor: str) -> None:
         if not self.session_state_file:
             return
-        with self._lock:
+        with self._lock, locked_file(self.session_state_file):
             sessions = self._sessions()
             for item in sessions.values():
                 if item.get("actor") == actor:
@@ -365,13 +377,7 @@ class AuthService:
 
     @staticmethod
     def _write_json(path: Path, value: dict) -> None:
-        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        temporary = path.with_suffix(path.suffix + ".tmp")
-        temporary.write_text(
-            json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8"
-        )
-        os.chmod(temporary, 0o600)
-        temporary.replace(path)
+        write_json(path, value)
 
     @staticmethod
     def _encode(value: bytes) -> str:
