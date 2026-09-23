@@ -95,6 +95,29 @@ class PreviewManager:
                     part.format(port=port, schema=schema, commit=commit)
                     for part in contract.command
                 ]
+                for setup_index, setup_command in enumerate(contract.setup_commands, start=1):
+                    prepared_command = [
+                        part.format(port=port, schema=schema, commit=commit)
+                        for part in setup_command
+                    ]
+                    completed = await asyncio.to_thread(
+                        subprocess.run,
+                        prepared_command,
+                        cwd=Path(worktree),
+                        env=environment,
+                        capture_output=True,
+                        text=True,
+                        timeout=contract.timeout_seconds,
+                    )
+                    if completed.returncode:
+                        output = (completed.stdout + completed.stderr)[-2000:].strip()
+                        detail = (
+                            f"preview setup command {setup_index} failed "
+                            f"(exit {completed.returncode})"
+                        )
+                        if output:
+                            detail += f"\n{output}"
+                        raise RuntimeError(detail)
                 log_path = Path(state_dir) / "preview.log"
                 with log_path.open("wb") as log:
                     process = await asyncio.create_subprocess_exec(

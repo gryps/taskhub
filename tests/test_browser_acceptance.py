@@ -173,6 +173,8 @@ def test_acceptance_contract_requires_dedicated_lane_and_browser_capabilities(tm
     (directory / "acceptance.yaml").write_text(
         """
 preview:
+  setup_commands:
+    - [npm, --prefix, apps/web, run, build]
   command: [python3, -m, app, --port, "{port}"]
 browsers: [chromium, edge]
 setup_commands:
@@ -185,6 +187,22 @@ command: [npx, playwright, test]
     assert contract.workload == "browser_acceptance"
     assert {"chromium", "edge", "windows_gui", "trace"} <= contract.required_capabilities
     assert contract.setup_commands == [["npm", "--prefix", "apps/web", "ci"]]
+    assert contract.preview.setup_commands == [["npm", "--prefix", "apps/web", "run", "build"]]
+
+
+def test_preview_contract_rejects_empty_setup_command(tmp_path):
+    directory = tmp_path / ".taskhub"
+    directory.mkdir()
+    (directory / "acceptance.yaml").write_text(
+        "preview:\n"
+        "  setup_commands: [[]]\n"
+        "  command: [python3, app.py, --port, '{port}']\n"
+        "command: [npx, playwright, test]\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(AcceptanceContractValidationError, match="preview setup command"):
+        load_acceptance_contract(tmp_path)
 
 
 def test_invalid_acceptance_contract_returns_exact_repair_schema(tmp_path):
@@ -199,7 +217,8 @@ def test_invalid_acceptance_contract_returns_exact_repair_schema(tmp_path):
         load_acceptance_contract(tmp_path)
 
     assert error.value.reason == "acceptance_contract_invalid"
-    assert "preview:\n  command: [python3" in error.value.detail
+    assert "preview:\n  setup_commands:" in error.value.detail
+    assert "command: [python3, -m, uvicorn" in error.value.detail
     assert "command: [npx, playwright, test]" in error.value.detail
     assert "description: Create, refresh and filter tasks" in error.value.detail
 
@@ -761,6 +780,84 @@ def test_preview_uses_candidate_source_instead_of_controller_pythonpath(
         ))
 
     assert captured["PYTHONPATH"] == str(tmp_path / "src")
+
+
+def test_preview_runs_seed_setup_before_starting_process(monkeypatch, tmp_path):
+    import subprocess
+
+    from taskhub_v2.browser.contract import PreviewContract
+    from taskhub_v2.browser.preview import PreviewManager
+
+    manager = PreviewManager("postgresql://unused", host="127.0.0.1", ports=[8498])
+    monkeypatch.setattr(manager, "_create_schema", lambda schema: None)
+    monkeypatch.setattr(manager, "_drop_schema", lambda schema: None)
+    setup_calls = []
+
+    def run(command, **kwargs):
+        if command[:3] == ["git", "-C", str(tmp_path)]:
+            return subprocess.CompletedProcess(
+                command, 0, "a" * 40 if command[-1] == "HEAD" else "", ""
+            )
+        setup_calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, "built", "")
+
+    async def spawn(*command, **kwargs):
+        assert setup_calls
+        raise RuntimeError("captured")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+
+    with pytest.raises(RuntimeError, match="captured"):
+        asyncio.run(manager.start(
+            "run", str(tmp_path), "a" * 40,
+            PreviewContract(
+                setup_commands=[["build-preview", "--port", "{port}"]],
+                command=[sys.executable, "-c", "port='{port}'"],
+            ),
+        ))
+
+    assert setup_calls[0][0] == ["build-preview", "--port", "8498"]
+    assert setup_calls[0][1]["cwd"] == tmp_path
+    assert setup_calls[0][1]["env"]["TASKHUB_GIT_COMMIT"] == "a" * 40
+
+
+def test_preview_setup_failure_cleans_schema_without_starting_process(monkeypatch, tmp_path):
+    import subprocess
+
+    from taskhub_v2.browser.contract import PreviewContract
+    from taskhub_v2.browser.preview import PreviewManager
+
+    calls = []
+    manager = PreviewManager("postgresql://unused", host="127.0.0.1", ports=[8498])
+    monkeypatch.setattr(manager, "_create_schema", lambda schema: calls.append(("create", schema)))
+    monkeypatch.setattr(manager, "_drop_schema", lambda schema: calls.append(("drop", schema)))
+
+    def run(command, **kwargs):
+        if command[:3] == ["git", "-C", str(tmp_path)]:
+            return subprocess.CompletedProcess(
+                command, 0, "a" * 40 if command[-1] == "HEAD" else "", ""
+            )
+        return subprocess.CompletedProcess(command, 7, "", "build failed")
+
+    async def unexpected_spawn(*command, **kwargs):
+        raise AssertionError("preview process must not start after setup failure")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", unexpected_spawn)
+
+    with pytest.raises(RuntimeError, match="setup command 1 failed.*exit 7"):
+        asyncio.run(manager.start(
+            "run", str(tmp_path), "a" * 40,
+            PreviewContract(
+                setup_commands=[["build-preview"]],
+                command=[sys.executable, "-c", "port='{port}'"],
+            ),
+        ))
+
+    assert calls[0][0] == "create"
+    assert calls[1] == ("drop", calls[0][1])
+    assert not manager._instances
 
 
 def test_preview_manager_uses_configured_reachable_host(tmp_path):

@@ -7,6 +7,9 @@ CONTRACT_EXAMPLE = """workload: browser_acceptance
 target: preview
 required_capabilities: [windows_gui, playwright, screenshot, trace]
 preview:
+  setup_commands:
+    - [npm, --prefix, apps/web, ci, --ignore-scripts, --prefer-offline, --no-audit, --no-fund]
+    - [npm, --prefix, apps/web, run, build]
   command: [python3, -m, uvicorn, app:create_app, --factory, --host, 0.0.0.0, --port, "{port}"]
   health_path: /api/health
   stop_command: []
@@ -69,6 +72,7 @@ class AcceptanceSuiteValidationError(ValueError):
 
 class PreviewContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    setup_commands: list[list[str]] = Field(default_factory=list, max_length=10)
     command: list[str] = Field(min_length=1)
     health_path: str = "/api/health"
     stop_command: list[str] = Field(default_factory=list)
@@ -76,6 +80,8 @@ class PreviewContract(BaseModel):
 
     @model_validator(mode="after")
     def require_allocated_port(self):
+        if any(not command or len(command) > 100 for command in self.setup_commands):
+            raise ValueError("each preview setup command must contain 1 to 100 arguments")
         if not any("{port}" in part for part in self.command):
             raise ValueError("preview.command must contain the {port} placeholder")
         return self
