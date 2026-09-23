@@ -1,5 +1,27 @@
 """Fail closed on absent, empty, skipped or incomplete browser test reports."""
+import re
 import xml.etree.ElementTree as ET
+
+
+_ANSI_ESCAPE = re.compile(rb"\x1b(?:\[[0-?]*[ -/]*[@-~]|[@-_])")
+_ILLEGAL_XML10_CONTROL = re.compile(rb"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def _parse_junit(report: bytes) -> ET.Element:
+    try:
+        return ET.fromstring(report)
+    except ET.ParseError as original:
+        # Some JUnit producers copy colorized terminal output into failure nodes.
+        # Raw ANSI/C0 bytes are not legal XML 1.0, but do not invalidate the
+        # underlying test evidence. Strip only those bytes and retry; all other
+        # malformed reports still fail closed.
+        sanitized = _ILLEGAL_XML10_CONTROL.sub(b"", _ANSI_ESCAPE.sub(b"", report))
+        if sanitized == report:
+            raise ValueError("invalid JUnit report") from original
+        try:
+            return ET.fromstring(sanitized)
+        except ET.ParseError as sanitized_error:
+            raise ValueError("invalid JUnit report") from sanitized_error
 
 
 def validate_junit(
@@ -14,10 +36,7 @@ def validate_junit(
     for report in reports:
         if b"<!DOCTYPE" in report.upper() or b"<!ENTITY" in report.upper():
             raise ValueError("unsafe JUnit report")
-        try:
-            root = ET.fromstring(report)
-        except ET.ParseError as exc:
-            raise ValueError("invalid JUnit report") from exc
+        root = _parse_junit(report)
         cases = list(root.iter("testcase"))
         if not cases:
             raise ValueError("browser acceptance requires executed test cases")

@@ -64,6 +64,27 @@ def test_junit_surfaces_browser_failure_detail():
         validate_junit([report], ["chromium"])
 
 
+def test_junit_strips_ansi_control_sequences_before_reporting_failure():
+    report = (
+        b'<testsuite tests="1" failures="1" skipped="0" errors="0">'
+        b'<testcase><properties><property name="browser" value="chromium"/>'
+        b'</properties><failure>\x1b[31mresponsive heading missing\x1b[0m</failure>'
+        b'</testcase></testsuite>'
+    )
+
+    with pytest.raises(
+        ValueError, match="browser acceptance failed: responsive heading missing"
+    ):
+        validate_junit([report], ["chromium"])
+
+
+def test_junit_does_not_repair_unrelated_malformed_xml():
+    report = b'<testsuite>\x1b[31m<testcase></testsuite>'
+
+    with pytest.raises(ValueError, match="invalid JUnit report"):
+        validate_junit([report], ["chromium"])
+
+
 def test_junit_requires_both_executed_browsers():
     reports = [f'<testsuite><testcase><properties><property name="browser" '
                f'value="{browser}"/></properties></testcase></testsuite>'.encode()
