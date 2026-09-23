@@ -117,6 +117,17 @@ def test_unified_node_uses_official_node_22_runtime():
     assert "node --version" in dockerfile
 
 
+def test_seed_includes_node_runtime_and_persistent_npm_cache_for_preview_setup():
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "FROM node:22-bookworm-slim AS node-runtime" in dockerfile
+    assert "FROM node-runtime AS web" in dockerfile
+    assert "COPY --from=node-runtime /usr/local/ /usr/local/" in dockerfile
+    assert "npm_config_cache=/var/lib/taskhub/cache/npm" in dockerfile
+    assert "mkdir -p /var/lib/taskhub/cache/npm" in dockerfile
+    assert "node --version && npm --version" in dockerfile
+
+
 def test_initializers_prefer_active_legacy_volumes_over_empty_standard_names():
     shell = (RELEASE / "init.sh").read_text(encoding="utf-8-sig")
     powershell = (RELEASE / "init.ps1").read_text(encoding="utf-8-sig")
@@ -156,6 +167,9 @@ def test_release_images_pin_codex_and_node_has_common_role_tools():
     assert "TASKHUB_CODEX_CLI_BIN=/usr/local/bin/codex" in seed
     assert "ARG NPM_REGISTRY=" in seed
     assert "npm config set registry" in seed
+    assert "FROM node:22-bookworm-slim AS node-runtime" in seed
+    assert "COPY --from=node-runtime /usr/local/ /usr/local/" in seed
+    assert "npm_config_cache=/var/lib/taskhub/cache/npm" in seed
     assert "ARG DEBIAN_MIRROR=" in seed
     assert "ARG DEBIAN_SECURITY_MIRROR=" in seed
     assert "HEALTHCHECK" in seed and "  CMD if [ -n" in seed

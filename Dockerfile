@@ -1,4 +1,6 @@
-FROM node:22-bookworm-slim AS web
+FROM node:22-bookworm-slim AS node-runtime
+
+FROM node-runtime AS web
 ARG NPM_REGISTRY=https://registry.npmjs.org
 WORKDIR /web
 COPY taskhub-web/package.json taskhub-web/package-lock.json ./
@@ -43,6 +45,14 @@ RUN mkdir -p /opt/codex-home \
     && codex --version \
     && chmod -R a+rX /opt/codex-home \
     && rm -f /tmp/install-codex.sh
+
+# Browser preview preparation runs on Seed against the exact candidate
+# workspace. Keep the same supported Node/npm runtime as worker nodes and
+# persist npm's download cache in the TaskHub data volume.
+COPY --from=node-runtime /usr/local/ /usr/local/
+ENV npm_config_cache=/var/lib/taskhub/cache/npm
+RUN node --version && npm --version
+
 ARG PYPI_INDEX_URL=https://pypi.org/simple
 COPY pyproject.toml README.md ./
 RUN --mount=type=cache,id=taskhub-pip,target=/root/.cache/pip,sharing=locked \
@@ -63,7 +73,7 @@ LABEL org.opencontainers.image.title="TaskHub V2 Seed Controller" \
 
 COPY deploy/docker/entrypoint.sh /usr/local/bin/taskhub-entrypoint
 RUN chmod 0755 /usr/local/bin/taskhub-entrypoint \
-    && mkdir -p /var/lib/taskhub \
+    && mkdir -p /var/lib/taskhub/cache/npm \
     && chown -R taskhub:taskhub /var/lib/taskhub /opt/taskhub
 
 USER taskhub
