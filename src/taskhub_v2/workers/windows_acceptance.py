@@ -17,6 +17,7 @@ async def verify_windows_suite(
         return None
     if not implementation.workspace or not implementation.commit:
         raise error_type("Windows 实机测试需要已提交的 Git 工作区")
+    browser_suite = "playwright" in suite.required_capabilities
 
     scheduled = await scheduler.run(
         f"{run_id}-windows",
@@ -24,7 +25,7 @@ async def verify_windows_suite(
         suite.commands,
         project.test_timeout_seconds,
         implementation.workspace.path,
-        workload="acceptance",
+        workload="browser_acceptance" if browser_suite else "acceptance",
         required_capabilities_override=suite.required_capabilities,
         eligible_node_ids=suite.node_ids or None,
         git_commit=implementation.commit,
@@ -63,7 +64,7 @@ async def verify_windows_suite(
     failed = [test for test in scheduled.tests if test.exit_code]
     evidence = AcceptanceEvidence(
         id="project-windows-test-suite",
-        kind="browser" if "playwright" in suite.required_capabilities else "test",
+        kind="browser" if browser_suite else "test",
         status="failed" if failed else "passed",
         source=scheduled.node_id,
         summary=(

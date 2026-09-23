@@ -174,10 +174,15 @@ class ProjectPreflightService:
         windows_suite_error = ""
         if project.windows_test_suite:
             suite = project.windows_test_suite
+            windows_workload = (
+                "browser_acceptance"
+                if "playwright" in suite.required_capabilities
+                else "acceptance"
+            )
             eligible_windows = [
                 item
                 for item in online
-                if "acceptance" in item.get("workloads", [])
+                if windows_workload in item.get("workloads", [])
                 and (not suite.node_ids or item.get("node_id") in suite.node_ids)
             ]
             compatible_windows = [

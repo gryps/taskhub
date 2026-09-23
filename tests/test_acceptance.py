@@ -52,7 +52,9 @@ class RecordingScheduler:
         )
 
 
-def gateway(tmp_path, exit_code=0, *, test_database=False, windows_suite=False):
+def gateway(
+    tmp_path, exit_code=0, *, test_database=False, windows_suite=False, windows_browser=False
+):
     repository = tmp_path / "repo"
     repository.mkdir()
     projects_file = tmp_path / "projects.json"
@@ -76,7 +78,11 @@ def gateway(tmp_path, exit_code=0, *, test_database=False, windows_suite=False):
                             {
                                 "commands": [["powershell", "-File", "windows-test.ps1"]],
                                 "node_ids": ["windows-01"],
-                                "required_capabilities": ["windows_gui"],
+                                "required_capabilities": (
+                                    ["windows_gui", "playwright"]
+                                    if windows_browser
+                                    else ["windows_gui"]
+                                ),
                                 "artifact_paths": ["test-results/junit.xml"],
                             }
                             if windows_suite
@@ -185,3 +191,17 @@ def test_windows_test_suite_targets_configured_node_and_records_evidence(tmp_pat
             },
         },
     )
+
+
+def test_browser_windows_suite_uses_browser_acceptance_nodes(tmp_path):
+    worker, scheduler, repository = gateway(
+        tmp_path, windows_suite=True, windows_browser=True
+    )
+
+    result = asyncio.run(
+        worker.verify("run-browser", "shop", implementation(repository, commit="abc123"))
+    )
+
+    windows = next(item for item in result.evidence if item.id == "project-windows-test-suite")
+    assert windows.kind == "browser"
+    assert scheduler.calls[0][1] == "browser_acceptance"
