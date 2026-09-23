@@ -141,6 +141,54 @@ async def kill_process_tree(process: asyncio.subprocess.Process) -> None:
         await process.wait()
 
 
+async def cleanup_workspace_processes(
+    workdir: Path, *, windows: bool | None = None
+) -> None:
+    """Stop Windows descendants that outlive a completed test command.
+
+    Browser runners can exit while a detached Vite/npm grandchild keeps using
+    the job directory.  That prevents the next revision from replacing its
+    workspace.  Match only command lines rooted in the managed job workspace;
+    unrelated user and system processes are deliberately left alone.
+    """
+    is_windows = os.name == "nt" if windows is None else windows
+    if not is_windows:
+        return
+    script = (
+        "$workspace=[IO.Path]::GetFullPath($env:TASKHUB_JOB_WORKSPACE_TO_CLEAN)"
+        ".TrimEnd('\\') + '\\'; "
+        "Get-CimInstance Win32_Process | Where-Object { "
+        "$_.ProcessId -ne $PID -and $_.CommandLine -and "
+        "$_.CommandLine.IndexOf($workspace, "
+        "[StringComparison]::OrdinalIgnoreCase) -ge 0 } | "
+        "ForEach-Object { Invoke-CimMethod -InputObject $_ -MethodName Terminate "
+        "-ErrorAction SilentlyContinue | Out-Null }"
+    )
+    environment = dict(os.environ)
+    environment["TASKHUB_JOB_WORKSPACE_TO_CLEAN"] = str(workdir.resolve())
+    try:
+        await asyncio.to_thread(
+            subprocess.run,
+            [
+                "powershell.exe",
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                script,
+            ],
+            env=environment,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        # Cleanup is defensive.  Its failure must not hide the actual test
+        # result; the next upload will attempt the same scoped cleanup again.
+        return
+
+
 def normalize_command(command: list[str], *, windows: bool | None = None) -> list[str]:
     """Map portable commands to executables provided by the node runtime."""
     if not command:
@@ -209,35 +257,38 @@ async def run_commands(
     )
     for key in PROXY_VARIABLES:
         environment.pop(key, None)
-    for command in commands:
-        if not command or not command[0].strip():
-            raise ValueError("empty command")
-        command = normalize_command(command)
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *command,
-                cwd=workdir,
-                env=environment,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                **subprocess_group_options(),
-            )
-        except FileNotFoundError:
+    try:
+        for command in commands:
+            if not command or not command[0].strip():
+                raise ValueError("empty command")
+            command = normalize_command(command)
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    *command,
+                    cwd=workdir,
+                    env=environment,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    **subprocess_group_options(),
+                )
+            except FileNotFoundError:
+                results.append(
+                    {"command": command, "exit_code": 127, "output_tail": "command not found"}
+                )
+                break
+            try:
+                stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
+                exit_code = process.returncode
+                output = redact_text(stdout.decode(errors="replace"), max_chars=32_000)
+            except TimeoutError:
+                await kill_process_tree(process)
+                exit_code = 124
+                output = "command timed out"
             results.append(
-                {"command": command, "exit_code": 127, "output_tail": "command not found"}
+                {"command": command, "exit_code": exit_code, "output_tail": output}
             )
-            break
-        try:
-            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
-            exit_code = process.returncode
-            output = redact_text(stdout.decode(errors="replace"), max_chars=32_000)
-        except TimeoutError:
-            await kill_process_tree(process)
-            exit_code = 124
-            output = "command timed out"
-        results.append(
-            {"command": command, "exit_code": exit_code, "output_tail": output}
-        )
-        if exit_code:
-            break
+            if exit_code:
+                break
+    finally:
+        await cleanup_workspace_processes(workdir)
     return results

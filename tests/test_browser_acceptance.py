@@ -21,7 +21,11 @@ from taskhub_v2.domain.models import (
     TestExecution,
     Workspace,
 )
-from taskhub_v2.node_agent.runtime import normalize_command, run_commands
+from taskhub_v2.node_agent.runtime import (
+    cleanup_workspace_processes,
+    normalize_command,
+    run_commands,
+)
 from taskhub_v2.workflows.acceptance_recovery import prepare_acceptance_revision
 from taskhub_v2.workflows.browser_acceptance import (
     request_browser_acceptance,
@@ -119,6 +123,48 @@ def test_windows_portable_commands_are_mapped_to_native_executables():
 def test_linux_python_command_uses_node_runtime_interpreter():
     mapped_python = normalize_command(["python3", "-m", "pytest"], windows=False)
     assert mapped_python == [sys.executable, "-m", "pytest"]
+
+
+def test_windows_workspace_cleanup_is_scoped_to_managed_job_path(
+    tmp_path, monkeypatch
+):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+
+    monkeypatch.setattr("taskhub_v2.node_agent.runtime.subprocess.run", fake_run)
+
+    asyncio.run(cleanup_workspace_processes(tmp_path / "job-1", windows=True))
+
+    command, kwargs = calls[0]
+    assert command[:4] == [
+        "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive"
+    ]
+    assert "Get-CimInstance Win32_Process" in command[-1]
+    assert "TASKHUB_JOB_WORKSPACE_TO_CLEAN" in command[-1]
+    assert kwargs["env"]["TASKHUB_JOB_WORKSPACE_TO_CLEAN"] == str(
+        (tmp_path / "job-1").resolve()
+    )
+    assert kwargs["timeout"] == 30
+
+
+def test_workspace_cleanup_is_noop_off_windows(tmp_path, monkeypatch):
+    def unexpected(*args, **kwargs):
+        raise AssertionError("subprocess cleanup must not run off Windows")
+
+    monkeypatch.setattr("taskhub_v2.node_agent.runtime.subprocess.run", unexpected)
+    asyncio.run(cleanup_workspace_processes(tmp_path, windows=False))
+
+
+def test_windows_workspace_cleanup_failure_does_not_hide_test_result(
+    tmp_path, monkeypatch
+):
+    def unavailable(*args, **kwargs):
+        raise FileNotFoundError("powershell unavailable")
+
+    monkeypatch.setattr("taskhub_v2.node_agent.runtime.subprocess.run", unavailable)
+    asyncio.run(cleanup_workspace_processes(tmp_path, windows=True))
 
 
 def test_acceptance_contract_requires_dedicated_lane_and_browser_capabilities(tmp_path):

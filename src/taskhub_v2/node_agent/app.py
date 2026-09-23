@@ -25,6 +25,7 @@ from taskhub_v2.node_agent.coding_cache import CodingResultCache, workspace_fing
 from taskhub_v2.node_agent.runtime import (
     UnsafeArchiveError,
     build_execution_environment,
+    cleanup_workspace_processes,
     execution_request_key,
     extract_workspace,
     repair_managed_virtualenv,
@@ -166,6 +167,7 @@ def create_node_app() -> FastAPI:
                 if digest.hexdigest() != sha256:
                     raise HTTPException(status_code=422, detail="workspace digest mismatch")
                 try:
+                    await cleanup_workspace_processes(target)
                     extract_workspace(Path(archive_name), target, runtime.root)
                 except UnsafeArchiveError as exc:
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
