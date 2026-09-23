@@ -8,7 +8,15 @@ async def request_browser_acceptance(state: CodingState) -> dict:
     evidence = (state.get("acceptance") or {}).get("evidence", [])
     has_browser_evidence = any(item.get("kind") == "browser" for item in evidence)
     if has_browser_evidence:
-        detail = "Windows 浏览器证据仍未获监督认可，请检查证据后重试"
+        supervision = state.get("supervision") or {}
+        findings = [supervision.get("summary", "")]
+        findings.extend(supervision.get("reasons", []))
+        findings = [item.strip() for item in findings if item and item.strip()]
+        detail = "Windows 浏览器证据仍未获监督认可。"
+        if findings:
+            detail += "退回实施时必须逐项补齐以下验收要求：\n- " + "\n- ".join(findings)
+        else:
+            detail += "请检查证据覆盖范围后重试。"
     else:
         implementation = state.get("implementation") or {}
         workspace = implementation.get("workspace") or {}
@@ -53,7 +61,7 @@ async def request_browser_acceptance(state: CodingState) -> dict:
             ),
             "model": "none",
             "recommended_action": (
-                "重新执行自动浏览器验收"
+                "按监督明细退回实施补齐专项浏览器测试，或在修复后重新执行自动验收"
                 if has_browser_evidence
                 else "退回实施检查验收契约"
             ),

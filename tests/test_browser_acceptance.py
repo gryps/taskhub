@@ -184,6 +184,23 @@ def test_browser_contract_dispatches_automatically_when_present(tmp_path):
     assert route_browser_acceptance({**state, **result}) == "execute"
 
 
+def test_rejected_browser_evidence_preserves_supervision_findings_for_revision():
+    state = {
+        "acceptance": {"evidence": [{"kind": "browser"}]},
+        "supervision": {
+            "summary": "真实管理页证据不足",
+            "reasons": ["覆盖 390/768/1440 视口", "运行无障碍检查"],
+        },
+    }
+
+    result = asyncio.run(request_browser_acceptance(state))
+
+    assert result["status"] == RunStatus.BLOCKED
+    assert "真实管理页证据不足" in result["blocking_reason"]["detail"]
+    assert "覆盖 390/768/1440 视口" in result["blocking_reason"]["detail"]
+    assert "运行无障碍检查" in result["blocking_reason"]["detail"]
+
+
 def test_browser_acceptance_uses_unique_job_id_for_retries(monkeypatch, tmp_path):
     import subprocess
 
