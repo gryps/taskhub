@@ -6,6 +6,7 @@ import sys
 import tarfile
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 from fastapi.testclient import TestClient
@@ -27,6 +28,16 @@ def archive(files: dict[str, bytes]) -> bytes:
             info.size = len(content)
             bundle.addfile(info, io.BytesIO(content))
     return output.getvalue()
+
+
+def test_execution_cache_key_changes_with_node_runtime(monkeypatch):
+    import taskhub_v2.node_agent.runtime as runtime_module
+
+    payload = SimpleNamespace(model_dump=lambda **_: {"commands": [["test"]]})
+    original = runtime_module.execution_request_key(payload)
+    monkeypatch.setattr(runtime_module, "NODE_RUNTIME_FINGERPRINT", "new-runtime")
+
+    assert runtime_module.execution_request_key(payload) != original
 
 
 def test_rolling_load_sampler_returns_five_minute_peaks():

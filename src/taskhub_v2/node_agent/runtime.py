@@ -31,9 +31,31 @@ class UnsafeArchiveError(ValueError):
 WINDOWS_COMMANDS = {"python3": "python.exe", "npm": "npm.cmd", "npx": "npx.cmd"}
 
 
+def _runtime_fingerprint() -> str:
+    digest = hashlib.sha256()
+    package = Path(__file__).parent
+    for name in (
+        "app.py",
+        "browser_dependencies.py",
+        "coding.py",
+        "runtime.py",
+        "state.py",
+        "test_database.py",
+    ):
+        digest.update(name.encode())
+        digest.update((package / name).read_bytes())
+    return digest.hexdigest()
+
+
+NODE_RUNTIME_FINGERPRINT = _runtime_fingerprint()
+
+
 def execution_request_key(payload) -> str:
     encoded = json.dumps(
-        payload.model_dump(mode="json"),
+        {
+            "node_runtime": NODE_RUNTIME_FINGERPRINT,
+            "request": payload.model_dump(mode="json"),
+        },
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
