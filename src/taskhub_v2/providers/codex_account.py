@@ -19,7 +19,7 @@ from taskhub_v2.providers.egress import (
     direct_environment,
     provider_proxy,
 )
-from taskhub_v2.providers.prompts import EVIDENCE_OWNERSHIP_POLICY
+from taskhub_v2.providers.prompts import CODING_VERIFICATION_POLICY, EVIDENCE_OWNERSHIP_POLICY
 
 _ACCOUNT_LOCKS: dict[str, asyncio.Lock] = {}
 
@@ -131,6 +131,7 @@ class CodexAccountProvider:
             "make every required source and test change yourself in this worktree so "
             "the work is attributable to this run. "
             "Do not commit. Do not modify credentials or environment files. "
+            f"{CODING_VERIFICATION_POLICY} "
             "Return a concise summary and tests you ran.\n"
             f"Requirement:\n{requirement}\nApproved plan:\n{plan.model_dump_json()}"
         )
@@ -265,11 +266,13 @@ class CodexAccountProvider:
             for marker in ('"code":"invalid_api_key"', '"code": "invalid_api_key"')
         ):
             return "needs_reauth"
-        if re.search(
-            r"\b(?:http(?: status)?|unexpected status)[: =]+429\b",
-            lowered,
-        ) or "too many requests" in lowered or re.search(
-            r'"code"\s*:\s*"rate_limit_exceeded"', lowered
+        if (
+            re.search(
+                r"\b(?:http(?: status)?|unexpected status)[: =]+429\b",
+                lowered,
+            )
+            or "too many requests" in lowered
+            or re.search(r'"code"\s*:\s*"rate_limit_exceeded"', lowered)
         ):
             return "rate_limited"
         return "account_runner_failed"

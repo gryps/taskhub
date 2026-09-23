@@ -8,3 +8,11 @@ EVIDENCE_OWNERSHIP_POLICY = (
     "requirement explicitly says that the TaskHub platform itself must not execute that "
     "verification. Platform verification remains valid delivery evidence."
 )
+
+CODING_VERIFICATION_POLICY = (
+    "Do not install or upgrade dependencies and do not run project bootstrap or the "
+    "configured full quality or acceptance commands. TaskHub runs those commands in "
+    "independent verification workers after coding. You may run focused checks that use "
+    "dependencies already present in the worktree, and you must still add or update the "
+    "tests required by the change."
+)

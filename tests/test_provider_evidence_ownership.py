@@ -3,6 +3,7 @@ import json
 
 import httpx
 
+from taskhub_v2.domain.models import Plan
 from taskhub_v2.providers.chat_compatible import ChatCompatibleProvider
 from taskhub_v2.providers.codex_account import CodexAccountProvider
 
@@ -31,6 +32,36 @@ def test_codex_review_and_risk_prompts_preserve_evidence_ownership(monkeypatch):
     assert len(prompts) == 2
     assert all("platform-configured verification" in prompt for prompt in prompts)
     assert all("not running bootstrap" in prompt for prompt in prompts)
+
+
+def test_codex_coding_prompt_delegates_full_verification_to_taskhub(monkeypatch):
+    prompts = []
+
+    async def fake_run(self, prompt, schema=None, **kwargs):
+        prompts.append(prompt)
+        return '{"summary":"done","tests":[]}', 1
+
+    monkeypatch.setattr(CodexAccountProvider, "_run", fake_run)
+    provider = CodexAccountProvider(
+        provider_id="codex",
+        codex_bin="codex",
+        codex_home="/tmp/codex",
+        proxy_url="http://proxy.example:7890",
+        workdir="/tmp",
+    )
+
+    async def scenario():
+        await provider.modify_workspace(
+            "requirement",
+            Plan(summary="plan", steps=["change"], acceptance=["verified"]),
+            "/tmp/worktree",
+        )
+
+    asyncio.run(scenario())
+    assert len(prompts) == 1
+    assert "Do not install or upgrade dependencies" in prompts[0]
+    assert "do not run project bootstrap" in prompts[0]
+    assert "independent verification workers" in prompts[0]
 
 
 def test_chat_supervisor_prompt_preserves_evidence_ownership():
