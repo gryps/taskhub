@@ -130,6 +130,18 @@ def test_node_dependency_cache_honors_explicit_job_opt_out(tmp_path, monkeypatch
     assert result[0]["exit_code"] == 0
 
 
+def test_node_dependency_cache_replaces_legacy_image_opt_out(tmp_path, monkeypatch):
+    monkeypatch.setenv("PIP_NO_CACHE_DIR", "1")
+    workdir = tmp_path / "jobs" / "job-1"
+    workdir.mkdir(parents=True)
+    result = asyncio.run(run_commands(
+        workdir,
+        [[sys.executable, "-c", "import os; assert 'PIP_NO_CACHE_DIR' not in os.environ"]],
+        10,
+    ))
+    assert result[0]["exit_code"] == 0
+
+
 def test_node_reuses_persisted_execution_result(tmp_path, monkeypatch):
     import taskhub_v2.node_agent.app as agent_module
 
