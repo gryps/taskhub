@@ -16,10 +16,31 @@ def implementation_recovery_feedback(reason: dict) -> str:
     )[-16_000:]
 
 
+def merge_implementation_feedback(existing: str, reason: dict) -> str:
+    """Keep substantive revision requirements when an infrastructure retry blocks.
+
+    A node disconnect can happen while a supervisor-requested revision is already in
+    progress.  The disconnect is additional execution context; it must not replace the
+    review defects the coding worker was asked to fix.
+    """
+    recovery = implementation_recovery_feedback(reason)
+    existing = existing.strip()
+    if not existing:
+        return recovery
+    return (
+        "Existing revision requirements remain authoritative:\n"
+        f"{existing[-11_000:]}\n\n"
+        "Additional recovery context (do not replace the requirements above):\n"
+        f"{recovery[-4_500:]}"
+    )[-16_000:]
+
+
 async def prepare_test_failure_revision(state: CodingState) -> dict:
     reason = state.get("blocking_reason") or {}
     revision = int(state.get("revision_count", 0)) + 1
-    feedback = implementation_recovery_feedback(reason)
+    feedback = merge_implementation_feedback(
+        state.get("revision_feedback", ""), reason
+    )
     return {
         "revision_count": revision,
         "revision_feedback": feedback,
@@ -54,7 +75,9 @@ async def recover_implementation(state: CodingState) -> dict:
         "pending_action": None,
         "blocking_reason": None if retry else reason,
         "revision_feedback": (
-            implementation_recovery_feedback(reason)
+            merge_implementation_feedback(
+                state.get("revision_feedback", ""), reason
+            )
             if retry
             else state.get("revision_feedback", "")
         ),

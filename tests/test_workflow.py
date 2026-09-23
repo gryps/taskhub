@@ -158,6 +158,20 @@ class RevisionRecordingWorker(RecordingWorker):
         return ExecutionResult(summary=f"revision={revision}")
 
 
+class RevisionInfrastructureFailureWorker(RevisionRecordingWorker):
+    async def execute(
+        self, run_id, project_id, requirement, plan, revision=0, feedback=""
+    ):
+        self.calls += 1
+        self.revisions.append((revision, feedback))
+        if self.calls == 2:
+            error = RuntimeError("node prd-01 disconnected")
+            error.reason = "execution_node_unavailable"
+            error.detail = "node prd-01 disconnected"
+            raise error
+        return ExecutionResult(summary=f"revision={revision}")
+
+
 class RecoveringAcceptance:
     def __init__(self):
         self.calls = 0
@@ -526,6 +540,36 @@ def test_supervisor_rejection_automatically_returns_to_worker():
         assert "boundary test" in worker.revisions[1][1]
         assert provider.review_calls == 2
         assert provider.supervisor_calls == 2
+
+    asyncio.run(scenario())
+
+
+def test_infrastructure_retry_preserves_supervisor_revision_feedback():
+    async def scenario():
+        provider = RejectOnceProvider()
+        worker = RevisionInfrastructureFailureWorker()
+        service = RunService(
+            build_main_graph(provider, worker, InMemorySaver())
+        )
+        blocked = await service.start(
+            StartRunRequest(project_id="shop", requirement="Repair a boundary")
+        )
+
+        assert blocked.stage == Stage.IMPLEMENTATION_BLOCKED
+        assert blocked.revision_count == 1
+        assert "Missing boundary test" in blocked.revision_feedback
+
+        completed = await service.resume(
+            blocked.run_id, ResumeRequest(decision="retry")
+        )
+
+        assert completed.stage == Stage.COMPLETED
+        assert worker.calls == 3
+        assert worker.revisions[-1][0] == 1
+        assert "Missing boundary test" in worker.revisions[-1][1]
+        assert "Add the boundary test" in worker.revisions[-1][1]
+        assert "execution_node_unavailable" in worker.revisions[-1][1]
+        assert "node prd-01 disconnected" in worker.revisions[-1][1]
 
     asyncio.run(scenario())
 
