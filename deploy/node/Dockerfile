@@ -44,9 +44,14 @@ RUN mkdir -p /opt/codex-home \
 
 WORKDIR /opt/taskhub
 COPY pyproject.toml README.md ./
-COPY src ./src
 RUN --mount=type=cache,id=taskhub-pip,target=/root/.cache/pip,sharing=locked \
-    python -m pip install '.[dev,browser]' \
+    python -m pip install "hatchling>=1.27" \
+    && mkdir -p src/taskhub_v2 \
+    && touch src/taskhub_v2/__init__.py \
+    && python -m pip install --no-build-isolation '.[dev,browser]' \
+    && rm -rf src
+COPY src ./src
+RUN python -m pip install --no-deps --no-build-isolation --force-reinstall . \
     && mkdir -p /var/lib/taskhub-node/jobs /var/lib/taskhub-node/cache/pip /var/lib/taskhub-node/cache/npm /var/lib/taskhub-node/cache/uv \
     && chown -R taskhub:taskhub /var/lib/taskhub-node /opt/taskhub
 

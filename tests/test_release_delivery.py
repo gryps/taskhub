@@ -165,13 +165,23 @@ def test_release_images_pin_codex_and_node_has_common_role_tools():
     assert "ARG DEBIAN_MIRROR=" in node
     assert "ARG DEBIAN_SECURITY_MIRROR=" in node
     assert "--mount=type=cache,id=taskhub-pip" in seed
-    assert "PIP_NO_CACHE_DIR=off python -m pip install ." in seed
+    assert "python -m pip install --no-build-isolation ." in seed
+    assert "python -m pip install --no-deps --no-build-isolation --force-reinstall ." in seed
     assert "--mount=type=cache,id=taskhub-pip" in node
-    assert "python -m pip install '.[dev,browser]'" in node
+    assert "python -m pip install --no-build-isolation '.[dev,browser]'" in node
+    assert "python -m pip install --no-deps --no-build-isolation --force-reinstall ." in node
     assert "python -m pip install --no-cache-dir" not in node
     assert "TASKHUB_NODE_CACHE_ROOT=/var/lib/taskhub-node/cache" in node
     assert "PIP_NO_CACHE_DIR=1" not in node
     for dockerfile in (seed, node):
+        # Third-party dependencies are installed from a minimal package tree
+        # before application sources are copied. Source-only edits therefore
+        # rebuild only the final no-dependency package layer.
+        dependency_install = dockerfile.index("python -m pip install --no-build-isolation")
+        assert dependency_install < dockerfile.index("COPY src ./src")
+        assert dockerfile.index("COPY src ./src") < dockerfile.index(
+            "python -m pip install --no-deps --no-build-isolation --force-reinstall ."
+        )
         # Per-release metadata must not invalidate the expensive OS, Codex,
         # and Python dependency layers on every source-only rebuild.
         assert dockerfile.index("ARG TASKHUB_COMMIT=") > dockerfile.index(
