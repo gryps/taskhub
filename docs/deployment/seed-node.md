@@ -52,6 +52,21 @@ wizard's `docker save` archive import. Registry credentials are encrypted at res
 Stopping a container keeps its registration and data. Removing it deletes the
 container and registration but deliberately retains its named data volume.
 
+## Dependency download cache
+
+Every node keeps pip and npm download caches under its persistent data root
+(`TASKHUB_NODE_CACHE_ROOT`; `/var/lib/taskhub-node/cache` in managed containers).
+Task workspaces, virtual environments and `node_modules` remain isolated per job:
+only immutable package-manager downloads are reused. This also lets integration
+tests create a genuinely new virtual environment without downloading the same
+packages again. The first job on each node warms that node's cache; later jobs
+continue to use it after container recreation or TaskHub upgrades.
+
+Native Windows nodes use the same rule and place the cache beside their `jobs`
+directory. Set `TASKHUB_NODE_DEPENDENCY_CACHE=false` to disable reuse for a node,
+or pass an explicit `PIP_NO_CACHE_DIR` in a job environment for a one-off pip
+cache bypass.
+
 ## Windows Docker Desktop
 
 From the repository root in PowerShell:
