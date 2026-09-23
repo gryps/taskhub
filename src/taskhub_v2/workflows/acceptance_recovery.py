@@ -14,13 +14,21 @@ async def recover_acceptance(state: CodingState) -> dict:
         }
     )
     decision = response.get("decision") if isinstance(response, dict) else response
+    comment = response.get("comment", "").strip() if isinstance(response, dict) else ""
     retry = decision == "retry"
     revise = decision == "revise"
+    blocking_reason = state.get("blocking_reason")
+    if revise and comment:
+        blocking_reason = dict(blocking_reason or {})
+        detail = str(blocking_reason.get("detail", "")).strip()
+        blocking_reason["detail"] = "\n".join(
+            part for part in (detail, f"负责人补充：{comment}") if part
+        )
     return {
         "decision": decision,
         "pending_action": None,
         # A coding revision needs the original acceptance diagnostic as feedback.
-        "blocking_reason": None if retry else state.get("blocking_reason"),
+        "blocking_reason": None if retry else blocking_reason,
         "current_stage": (
             Stage.ACCEPTANCE.value
             if retry
@@ -39,7 +47,7 @@ async def recover_acceptance(state: CodingState) -> dict:
                 else "Run cancelled"
             ),
             "owner",
-            response.get("comment", "") if isinstance(response, dict) else "",
+            comment,
         ),
     }
 

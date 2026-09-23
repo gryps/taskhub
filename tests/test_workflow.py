@@ -755,6 +755,7 @@ def test_acceptance_failure_can_return_to_worker_from_legacy_checkpoint_at_limit
         assert worker.calls == 2
         assert worker.revisions[-1][0] == 3
         assert "RuntimeError: browser unavailable" in worker.revisions[-1][1]
+        assert "负责人补充：Approve one extra revision" in worker.revisions[-1][1]
         assert acceptance.calls == 2
         assert any(
             item.title == "Acceptance returned to implementation"
