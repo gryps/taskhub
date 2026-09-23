@@ -24,6 +24,8 @@ from taskhub_v2.node_agent.coding import coding_available, modify_workspace, pro
 from taskhub_v2.node_agent.coding_cache import CodingResultCache, workspace_fingerprint
 from taskhub_v2.node_agent.runtime import (
     UnsafeArchiveError,
+    build_execution_environment,
+    execution_request_key,
     extract_workspace,
     repair_managed_virtualenv,
     run_commands,
@@ -81,6 +83,7 @@ def create_node_app() -> FastAPI:
         max_upload_bytes=int(os.getenv("TASKHUB_NODE_MAX_UPLOAD_BYTES", "104857600")),
         workloads=NODE_ROLE_WORKLOADS,
         job_pattern=JOB_PATTERN,
+        slots=int(os.getenv("TASKHUB_NODE_SLOTS", "1")),
     )
     test_databases = TestDatabaseManager.from_environment()
 
@@ -127,8 +130,8 @@ def create_node_app() -> FastAPI:
             "role": runtime.role,
             "agent_logs": list(reversed(runtime.events)),
             "resources": runtime.load_sampler.peak(),
-            "active_jobs": sum(1 for lock in runtime.locks.values() if lock.locked()),
-            "slots": int(os.getenv("TASKHUB_NODE_SLOTS", "1")),
+            "active_jobs": runtime.active_workloads,
+            "slots": runtime.slots,
         }
 
     @app.put("/api/jobs/{job_id}/workspace")
@@ -205,73 +208,73 @@ def create_node_app() -> FastAPI:
             raise HTTPException(status_code=409, detail="workspace version changed")
         lock = runtime.locks.setdefault(job_id, asyncio.Lock())
         async with lock:
-            request_key = _execution_request_key(payload)
+            request_key = execution_request_key(payload)
             result_file = runtime.result_file(target)
             if result_file.is_file():
                 saved = json.loads(result_file.read_text(encoding="utf-8"))
                 if saved.get("request_key") == request_key:
                     return saved["result"]
-            if repair_managed_virtualenv(target):
-                result_file.unlink(missing_ok=True)
-            started_at = datetime.now(UTC)
-            tests = await prepare_browser_dependencies(
-                target, payload.commands, payload.required_capabilities, payload.timeout_seconds
-            )
-            if not any(test["exit_code"] for test in tests):
-                environment = {
-                    "TASKHUB_PREVIEW_URL": payload.target_url,
-                    "TASKHUB_TARGET_URL": payload.target_url,
-                    "TASKHUB_GIT_COMMIT": payload.git_commit,
-                    "TASKHUB_CHROMIUM_CHANNEL": "chrome",
-                    "TASKHUB_EDGE_CHANNEL": "msedge",
-                    "TASKHUB_BROWSER_PROFILE_DIR": os.getenv("TASKHUB_BROWSER_PROFILE_DIR", ""),
-                    "TASKHUB_BROWSER_AUTH_TARGET": os.getenv("TASKHUB_BROWSER_AUTH_TARGET", ""),
-                    **payload.execution_environment,
-                }
-                if "test_database" in payload.required_capabilities:
-                    with test_databases.database(job_id) as database_environment:
+            async with runtime.workload_slot():
+                if repair_managed_virtualenv(target):
+                    result_file.unlink(missing_ok=True)
+                started_at = datetime.now(UTC)
+                tests = await prepare_browser_dependencies(
+                    target, payload.commands, payload.required_capabilities,
+                    payload.timeout_seconds,
+                )
+                if not any(test["exit_code"] for test in tests):
+                    environment = build_execution_environment(
+                        payload.target_url, payload.git_commit,
+                        payload.execution_environment,
+                    )
+                    if "test_database" in payload.required_capabilities:
+                        with test_databases.database(job_id) as database_environment:
+                            tests.extend(
+                                await run_commands(
+                                    target,
+                                    payload.commands,
+                                    payload.timeout_seconds,
+                                    execution_environment={
+                                        **environment, **database_environment
+                                    },
+                                )
+                            )
+                    else:
                         tests.extend(
                             await run_commands(
                                 target,
                                 payload.commands,
                                 payload.timeout_seconds,
-                                execution_environment={**environment, **database_environment},
+                                execution_environment=environment,
                             )
                         )
-                else:
-                    tests.extend(
-                        await run_commands(
-                            target,
-                            payload.commands,
-                            payload.timeout_seconds,
-                            execution_environment=environment,
-                        )
-                    )
-            artifacts = _artifact_manifest(target, payload.artifact_paths, runtime.max_upload_bytes)
-            result = {
-                "node_id": runtime.node_id,
-                "job_id": job_id,
-                "tests": tests,
-                "metadata": {
-                    "target_url": payload.target_url,
-                    "git_commit": payload.git_commit,
-                    "versions": await asyncio.to_thread(browser_versions),
-                    "started_at": started_at.isoformat(),
-                    "finished_at": datetime.now(UTC).isoformat(),
-                },
-                "artifacts": artifacts,
-            }
-            temporary = result_file.with_suffix(".tmp")
-            temporary.write_text(
-                json.dumps({"request_key": request_key, "result": result}),
-                encoding="utf-8",
-            )
-            temporary.replace(result_file)
-            runtime.record(
-                "commands_finished", job_id=job_id,
-                result="failed" if any(item["exit_code"] for item in tests) else "passed",
-            )
-            return result
+                artifacts = _artifact_manifest(
+                    target, payload.artifact_paths, runtime.max_upload_bytes
+                )
+                result = {
+                    "node_id": runtime.node_id,
+                    "job_id": job_id,
+                    "tests": tests,
+                    "metadata": {
+                        "target_url": payload.target_url,
+                        "git_commit": payload.git_commit,
+                        "versions": await asyncio.to_thread(browser_versions),
+                        "started_at": started_at.isoformat(),
+                        "finished_at": datetime.now(UTC).isoformat(),
+                    },
+                    "artifacts": artifacts,
+                }
+                temporary = result_file.with_suffix(".tmp")
+                temporary.write_text(
+                    json.dumps({"request_key": request_key, "result": result}),
+                    encoding="utf-8",
+                )
+                temporary.replace(result_file)
+                runtime.record(
+                    "commands_finished", job_id=job_id,
+                    result="failed" if any(item["exit_code"] for item in tests) else "passed",
+                )
+                return result
 
     @app.get("/api/jobs/{job_id}/artifacts/{artifact_path:path}")
     async def download_artifact(
@@ -313,30 +316,20 @@ def create_node_app() -> FastAPI:
             if cached_bundle is not None:
                 runtime.record("coding_reused", job_id=job_id)
                 return Response(content=cached_bundle, media_type="application/gzip")
-            try:
-                bundle = await modify_workspace(
-                    target, payload.requirement, payload.plan, payload.feedback
-                )
-            except Exception as exc:
-                runtime.record("coding_finished", job_id=job_id, result="failed")
-                reason = getattr(exc, "reason", exc.__class__.__name__)
-                raise HTTPException(status_code=502, detail=str(reason)[:200]) from exc
-            cache.write(target, bundle, input_fingerprint)
-            runtime.record("coding_finished", job_id=job_id)
+            async with runtime.workload_slot():
+                try:
+                    bundle = await modify_workspace(
+                        target, payload.requirement, payload.plan, payload.feedback
+                    )
+                except Exception as exc:
+                    runtime.record("coding_finished", job_id=job_id, result="failed")
+                    reason = getattr(exc, "reason", exc.__class__.__name__)
+                    raise HTTPException(status_code=502, detail=str(reason)[:200]) from exc
+                cache.write(target, bundle, input_fingerprint)
+                runtime.record("coding_finished", job_id=job_id)
         return Response(content=bundle, media_type="application/gzip")
 
     return app
-
-
-def _execution_request_key(payload: ExecuteRequest) -> str:
-    encoded = json.dumps(
-        payload.model_dump(mode="json"),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    return hashlib.sha256(encoded).hexdigest()
-
 
 def detect_capabilities() -> dict[str, bool]:
     import importlib.util

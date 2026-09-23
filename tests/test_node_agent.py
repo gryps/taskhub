@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import io
+import re
 import sys
 import tarfile
 import time
@@ -14,6 +15,7 @@ from taskhub_v2.domain.models import NodeDefinition, Plan
 from taskhub_v2.execution.runner import NodeRunner
 from taskhub_v2.node_agent import create_node_app
 from taskhub_v2.node_agent.runtime import run_commands
+from taskhub_v2.node_agent.state import NodeRuntime
 from taskhub_v2.node_agent.system_load import RollingLoadSampler
 
 
@@ -63,6 +65,46 @@ def test_rolling_load_sampler_returns_five_minute_peaks():
     expired = sampler.peak(sampled_at=450)
     assert expired["cpu_percent"] == 80.0
     assert expired["sample_count"] == 1
+
+
+def test_node_runtime_enforces_slots_after_controller_reservations_are_lost(tmp_path):
+    async def scenario():
+        runtime = NodeRuntime(
+            node_id="node-test",
+            role="test",
+            token="secret",
+            root=str(tmp_path),
+            max_upload_bytes=1024,
+            workloads={"test": ["test"]},
+            job_pattern=re.compile(r"^[a-z0-9-]+$"),
+            slots=1,
+        )
+        first_entered = asyncio.Event()
+        release_first = asyncio.Event()
+        second_entered = asyncio.Event()
+
+        async def first():
+            async with runtime.workload_slot():
+                first_entered.set()
+                await release_first.wait()
+
+        async def second():
+            await first_entered.wait()
+            async with runtime.workload_slot():
+                second_entered.set()
+
+        first_task = asyncio.create_task(first())
+        second_task = asyncio.create_task(second())
+        await first_entered.wait()
+        await asyncio.sleep(0)
+        assert runtime.active_workloads == 1
+        assert not second_entered.is_set()
+        release_first.set()
+        await asyncio.gather(first_task, second_task)
+        assert second_entered.is_set()
+        assert runtime.active_workloads == 0
+
+    asyncio.run(scenario())
 
 
 def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):

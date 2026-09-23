@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 import os
 import shutil
 import signal
@@ -25,6 +27,31 @@ class UnsafeArchiveError(ValueError):
 
 
 WINDOWS_COMMANDS = {"python3": "python.exe", "npm": "npm.cmd", "npx": "npx.cmd"}
+
+
+def execution_request_key(payload) -> str:
+    encoded = json.dumps(
+        payload.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def build_execution_environment(
+    target_url: str, git_commit: str, overrides: dict[str, str]
+) -> dict[str, str]:
+    return {
+        "TASKHUB_PREVIEW_URL": target_url,
+        "TASKHUB_TARGET_URL": target_url,
+        "TASKHUB_GIT_COMMIT": git_commit,
+        "TASKHUB_CHROMIUM_CHANNEL": "chrome",
+        "TASKHUB_EDGE_CHANNEL": "msedge",
+        "TASKHUB_BROWSER_PROFILE_DIR": os.getenv("TASKHUB_BROWSER_PROFILE_DIR", ""),
+        "TASKHUB_BROWSER_AUTH_TARGET": os.getenv("TASKHUB_BROWSER_AUTH_TARGET", ""),
+        **overrides,
+    }
 
 
 def dependency_cache_environment(
