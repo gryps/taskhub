@@ -7,6 +7,13 @@ _ANSI_ESCAPE = re.compile(rb"\x1b(?:\[[0-?]*[ -/]*[@-~]|[@-_])")
 _ILLEGAL_XML10_CONTROL = re.compile(rb"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
+def setup_failure_detail(tests: list, setup_count: int) -> str | None:
+    failed = next((test for test in tests[:setup_count] if test.exit_code), None)
+    if failed is None:
+        return None
+    return failed.output_tail or "setup command failed"
+
+
 def _parse_junit(report: bytes) -> ET.Element:
     try:
         return ET.fromstring(report)

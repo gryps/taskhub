@@ -118,6 +118,8 @@ def test_acceptance_contract_requires_dedicated_lane_and_browser_capabilities(tm
 preview:
   command: [python3, -m, app, --port, "{port}"]
 browsers: [chromium, edge]
+setup_commands:
+  - [npm, --prefix, apps/web, ci]
 command: [npx, playwright, test]
 """,
         encoding="utf-8",
@@ -125,6 +127,7 @@ command: [npx, playwright, test]
     contract = load_acceptance_contract(tmp_path)
     assert contract.workload == "browser_acceptance"
     assert {"chromium", "edge", "windows_gui", "trace"} <= contract.required_capabilities
+    assert contract.setup_commands == [["npm", "--prefix", "apps/web", "ci"]]
 
 
 def test_invalid_acceptance_contract_returns_exact_repair_schema(tmp_path):
@@ -265,6 +268,8 @@ workload: browser_acceptance
 preview:
   command: [python3, tests/e2e/preview.py, --port, "{port}"]
 browsers: [chromium]
+setup_commands:
+  - [npm, --prefix, apps/web, ci]
 command: [npx, playwright, test]
 suite: tests/e2e/acceptance.yaml
 required_artifacts: [junit.xml]
@@ -295,6 +300,7 @@ required_artifacts: [junit.xml]
         def __init__(self):
             self.job_ids = []
             self.calls = []
+            self.commands = []
 
         async def preflight_browser(self, commands, capabilities):
             pass
@@ -302,6 +308,7 @@ required_artifacts: [junit.xml]
         async def run(self, job_id, *args, **kwargs):
             self.job_ids.append(job_id)
             self.calls.append(kwargs)
+            self.commands.append(args[1])
             return ScheduledTests(
                 node_id="windows-gui-34",
                 tests=[
@@ -348,6 +355,10 @@ required_artifacts: [junit.xml]
     assert len(set(scheduler.job_ids)) == 2
     assert all(job_id.startswith("run-1-browser-") for job_id in scheduler.job_ids)
     assert all(call["git_commit"] == "a" * 40 for call in scheduler.calls)
+    assert all(commands == [
+        ["npm", "--prefix", "apps/web", "ci"],
+        ["npx", "playwright", "test"],
+    ] for commands in scheduler.commands)
     assert all("TASKHUB_GIT_COMMIT" not in call["execution_environment"]
                for call in scheduler.calls)
 

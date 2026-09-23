@@ -12,6 +12,8 @@ preview:
   stop_command: []
   timeout_seconds: 120
 browsers: [chromium, edge]
+setup_commands:
+  - [npm, --prefix, apps/web, ci, --ignore-scripts, --no-audit, --no-fund]
 command: [npx, playwright, test]
 suite: tests/e2e/acceptance.yaml
 timeout_seconds: 900
@@ -100,6 +102,7 @@ class AcceptanceContract(BaseModel):
     preview: PreviewContract | None = None
     preproduction: PreproductionContract | None = None
     browsers: list[str] = Field(default_factory=lambda: ["chromium", "edge"], min_length=1)
+    setup_commands: list[list[str]] = Field(default_factory=list, max_length=10)
     command: list[str] = Field(min_length=1)
     suite: str = "tests/e2e/acceptance.yaml"
     timeout_seconds: int = Field(default=900, ge=1, le=3600)
@@ -129,6 +132,8 @@ class AcceptanceContract(BaseModel):
                 "preproduction target requires preproduction configuration:\n"
                 f"{PREPRODUCTION_EXAMPLE}"
             )
+        if any(not command or len(command) > 100 for command in self.setup_commands):
+            raise ValueError("each setup command must contain 1 to 100 arguments")
         self.required_capabilities.update(self.browsers)
         return self
 

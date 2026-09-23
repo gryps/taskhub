@@ -10,7 +10,7 @@ import yaml
 from taskhub_v2.artifacts import ArtifactStore
 from taskhub_v2.browser import PreviewManager, load_acceptance_contract
 from taskhub_v2.browser.contract import PREPRODUCTION_EXAMPLE, load_acceptance_suite
-from taskhub_v2.browser.reports import validate_junit
+from taskhub_v2.browser.reports import setup_failure_detail, validate_junit
 from taskhub_v2.domain.models import AcceptanceEvidence, AcceptanceResult
 from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.workers import contract_acceptance as evidence
@@ -157,8 +157,9 @@ class ProjectAcceptanceGateway:
                 raise PreproductionContractRequiredError(
                     "验收契约要求预生产目标，但项目尚未配置预生产主机"
                 )
+            browser_commands = [*contract.setup_commands, contract.command]
             await self.scheduler.preflight_browser(
-                [contract.command], contract.required_capabilities
+                browser_commands, contract.required_capabilities
             )
             preview_id = f"{run_id}-{uuid4().hex[:8]}"
             preview = None
@@ -201,7 +202,7 @@ class ProjectAcceptanceGateway:
                 scheduled = await self.scheduler.run(
                     browser_job_id,
                     f"{run_id}-browser",
-                    [contract.command],
+                    browser_commands,
                     contract.timeout_seconds,
                     implementation.workspace.path,
                     workload=contract.workload,
@@ -215,6 +216,9 @@ class ProjectAcceptanceGateway:
                     raise AcceptanceExecutionError("browser evidence commit mismatch")
                 if scheduled.metadata.get("target_url") != target_url:
                     raise AcceptanceExecutionError("browser evidence target URL mismatch")
+                setup_failure = setup_failure_detail(scheduled.tests, len(contract.setup_commands))
+                if setup_failure:
+                    raise AcceptanceExecutionError("browser setup failed: " + setup_failure)
                 browser_artifacts = []
                 junit_reports = []
                 for item in scheduled.metadata.pop("downloaded_artifacts", []):
