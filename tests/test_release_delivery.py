@@ -171,6 +171,12 @@ def test_release_images_pin_codex_and_node_has_common_role_tools():
     assert "python -m pip install --no-cache-dir" not in node
     assert "TASKHUB_NODE_CACHE_ROOT=/var/lib/taskhub-node/cache" in node
     assert "PIP_NO_CACHE_DIR=1" not in node
+    for dockerfile in (seed, node):
+        # Per-release metadata must not invalidate the expensive OS, Codex,
+        # and Python dependency layers on every source-only rebuild.
+        assert dockerfile.index("ARG TASKHUB_COMMIT=") > dockerfile.index(
+            "python -m pip install"
+        )
 
     for name in ("build-images.sh", "build-images.ps1"):
         build_script = (RELEASE / name).read_text(encoding="utf-8-sig")

@@ -2,8 +2,6 @@ FROM node:22-bookworm-slim AS node-runtime
 
 FROM python:3.12-slim-bookworm
 
-ARG TASKHUB_VERSION=0.1.0-alpha
-ARG TASKHUB_COMMIT=unknown
 ARG CODEX_VERSION=0.153.4
 ARG DEBIAN_MIRROR=http://deb.debian.org/debian
 ARG DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
@@ -52,6 +50,8 @@ RUN --mount=type=cache,id=taskhub-pip,target=/root/.cache/pip,sharing=locked \
     && mkdir -p /var/lib/taskhub-node/jobs /var/lib/taskhub-node/cache/pip /var/lib/taskhub-node/cache/npm /var/lib/taskhub-node/cache/uv \
     && chown -R taskhub:taskhub /var/lib/taskhub-node /opt/taskhub
 
+ARG TASKHUB_VERSION=0.1.0-alpha
+ARG TASKHUB_COMMIT=unknown
 LABEL org.opencontainers.image.title="TaskHub Unified Worker Node" \
       org.opencontainers.image.version="${TASKHUB_VERSION}" \
       org.opencontainers.image.revision="${TASKHUB_COMMIT}"

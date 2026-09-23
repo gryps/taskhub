@@ -8,8 +8,6 @@ RUN npm run build
 
 FROM python:3.12-slim-bookworm AS runtime
 
-ARG TASKHUB_VERSION=0.1.0-alpha
-ARG TASKHUB_COMMIT=unknown
 ARG CODEX_VERSION=0.153.4
 ARG DEBIAN_MIRROR=http://deb.debian.org/debian
 ARG DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
@@ -51,6 +49,8 @@ COPY --from=web /web/dist ./src/taskhub_v2/api/canvas
 RUN --mount=type=cache,id=taskhub-pip,target=/root/.cache/pip,sharing=locked \
     PIP_NO_CACHE_DIR=off python -m pip install .
 
+ARG TASKHUB_VERSION=0.1.0-alpha
+ARG TASKHUB_COMMIT=unknown
 LABEL org.opencontainers.image.title="TaskHub V2 Seed Controller" \
       org.opencontainers.image.version="${TASKHUB_VERSION}" \
       org.opencontainers.image.revision="${TASKHUB_COMMIT}"
