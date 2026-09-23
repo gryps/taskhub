@@ -28,7 +28,8 @@ WINDOWS_COMMANDS = {"python3": "python.exe", "npm": "npm.cmd", "npx": "npx.cmd"}
 
 
 def dependency_cache_environment(
-    workdir: Path, environment: dict[str, str],
+    workdir: Path,
+    environment: dict[str, str],
     execution_environment: dict[str, str] | None = None,
 ) -> None:
     """Give isolated jobs persistent download caches owned by their node.
@@ -46,10 +47,17 @@ def dependency_cache_environment(
     cache_root.mkdir(parents=True, exist_ok=True)
     pip_cache = cache_root / "pip"
     npm_cache = cache_root / "npm"
+    uv_cache = cache_root / "uv"
     pip_cache.mkdir(exist_ok=True)
     npm_cache.mkdir(exist_ok=True)
+    uv_cache.mkdir(exist_ok=True)
     environment.setdefault("PIP_CACHE_DIR", str(pip_cache))
+    environment.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
     environment.setdefault("npm_config_cache", str(npm_cache))
+    environment.setdefault("npm_config_prefer_offline", "true")
+    environment.setdefault("npm_config_audit", "false")
+    environment.setdefault("npm_config_fund", "false")
+    environment.setdefault("UV_CACHE_DIR", str(uv_cache))
     # The worker image historically disabled pip's cache globally.  Remove that
     # inherited default, while still honoring an explicit per-job opt-out.
     if "PIP_NO_CACHE_DIR" not in overrides:

@@ -4,7 +4,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from taskhub_v2.node_agent.runtime import PROXY_VARIABLES, normalize_command
+from taskhub_v2.node_agent.runtime import (
+    PROXY_VARIABLES,
+    dependency_cache_environment,
+    normalize_command,
+)
 
 
 async def prepare_browser_dependencies(
@@ -23,6 +27,7 @@ async def prepare_browser_dependencies(
 
     def install() -> dict:
         environment = dict(os.environ)
+        dependency_cache_environment(target, environment)
         environment["PATH"] = os.pathsep.join(
             (str(Path(sys.executable).parent), environment.get("PATH", ""))
         )

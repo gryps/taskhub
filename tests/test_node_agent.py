@@ -4,6 +4,7 @@ import io
 import sys
 import tarfile
 import time
+from pathlib import Path
 
 import httpx
 from fastapi.testclient import TestClient
@@ -96,6 +97,10 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
                         "assert Path(os.environ['PIP_CACHE_DIR']).parts[-2:] == ('cache', 'pip'); "
                         "assert Path(os.environ['npm_config_cache']).parts[-2:] "
                         "== ('cache', 'npm'); "
+                        "assert os.environ['npm_config_prefer_offline'] == 'true'; "
+                        "assert os.environ['PIP_DISABLE_PIP_VERSION_CHECK'] == '1'; "
+                        "assert Path(os.environ['UV_CACHE_DIR']).parts[-2:] "
+                        "== ('cache', 'uv'); "
                         "assert 'PIP_NO_CACHE_DIR' not in os.environ",
                     ]
                 ],
@@ -115,6 +120,7 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
     assert response.json()["tests"][0]["exit_code"] == 0
     assert (tmp_path / "cache" / "pip").is_dir()
     assert (tmp_path / "cache" / "npm").is_dir()
+    assert (tmp_path / "cache" / "uv").is_dir()
 
 
 def test_node_dependency_cache_honors_explicit_job_opt_out(tmp_path, monkeypatch):
@@ -326,7 +332,7 @@ def test_browser_node_installs_npm_dependencies_before_npx(tmp_path, monkeypatch
     def fake_install(command, **kwargs):
         if "cwd" not in kwargs:
             return real_run(command, **kwargs)
-        installed.append((command, kwargs["cwd"]))
+        installed.append((command, kwargs["cwd"], kwargs["env"]))
         (kwargs["cwd"] / "node_modules").mkdir()
         return dependency_module.subprocess.CompletedProcess(command, 0, "installed\n", "")
 
@@ -357,6 +363,8 @@ def test_browser_node_installs_npm_dependencies_before_npx(tmp_path, monkeypatch
 
     assert response.status_code == 200
     assert installed[0][0][:2] == ["npm", "install"]
+    assert installed[0][2]["npm_config_prefer_offline"] == "true"
+    assert Path(installed[0][2]["npm_config_cache"]).parts[-2:] == ("cache", "npm")
     tests = response.json()["tests"]
     assert tests[0]["command"][:2] == ["npm", "install"]
     assert tests[1]["command"] == ["npx", "playwright", "test"]
