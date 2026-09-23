@@ -149,6 +149,35 @@ def test_failed_acceptance_blocks_the_workflow(tmp_path):
         asyncio.run(worker.verify("run-1", "shop", implementation(repository)))
 
 
+def test_successful_project_acceptance_is_reused_for_unchanged_retry(tmp_path):
+    worker, scheduler, repository = gateway(tmp_path)
+    candidate = implementation(repository, commit="a" * 40)
+
+    first = asyncio.run(worker.verify("run-retry", "shop", candidate))
+    second = asyncio.run(worker.verify("run-retry", "shop", candidate))
+
+    assert len(scheduler.calls) == 1
+    assert first.evidence[0].summary == "1/1 acceptance commands passed"
+    assert "reused verified checkpoint" in second.evidence[0].summary
+
+
+def test_project_acceptance_checkpoint_is_invalidated_by_candidate_change(tmp_path):
+    worker, scheduler, repository = gateway(tmp_path)
+
+    asyncio.run(
+        worker.verify(
+            "run-retry", "shop", implementation(repository, commit="a" * 40)
+        )
+    )
+    asyncio.run(
+        worker.verify(
+            "run-retry", "shop", implementation(repository, commit="b" * 40)
+        )
+    )
+
+    assert len(scheduler.calls) == 2
+
+
 def test_database_acceptance_records_isolated_database_evidence(tmp_path):
     worker, scheduler, repository = gateway(tmp_path, test_database=True)
 

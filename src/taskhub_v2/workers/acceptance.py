@@ -5,7 +5,6 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-import yaml
 
 from taskhub_v2.artifacts import ArtifactStore
 from taskhub_v2.browser import PreviewManager, load_acceptance_contract
@@ -15,7 +14,12 @@ from taskhub_v2.domain.models import AcceptanceEvidence, AcceptanceResult
 from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.workers import contract_acceptance as evidence
 from taskhub_v2.workers import supplemental_acceptance
-
+from taskhub_v2.workers.acceptance_checkpoint import (
+    acceptance_checkpoint_fingerprint,
+    load_acceptance_checkpoint,
+    write_acceptance_checkpoint,
+)
+from taskhub_v2.workers.acceptance_support import artifact_kind, is_browser_contract
 
 class AcceptanceExecutionError(RuntimeError):
     reason = "acceptance_failed"
@@ -89,55 +93,73 @@ class ProjectAcceptanceGateway:
         if project.acceptance_commands:
             if not implementation.workspace:
                 raise AcceptanceExecutionError("acceptance requires a Git workspace")
-            scheduled = await self.scheduler.run(
-                f"{run_id}-acceptance",
-                f"{run_id}-acceptance",
-                project.acceptance_commands,
-                project.test_timeout_seconds,
-                implementation.workspace.path,
-                workload="acceptance",
-                required_capabilities_override=project.acceptance_capabilities,
-                execution_environment=(
-                    project.test_environment.execution_environment()
-                    if project.test_environment
-                    else {}
-                ),
+            checkpoint_fingerprint = acceptance_checkpoint_fingerprint(
+                project, implementation
             )
-            failed = [test for test in scheduled.tests if test.exit_code]
-            artifact = self.artifacts.write_text(
-                run_id,
-                "acceptance.json",
-                "acceptance_report",
-                json.dumps(
-                    [test.model_dump(mode="json") for test in scheduled.tests],
-                    ensure_ascii=False,
-                    indent=2,
-                ),
+            checkpoint = load_acceptance_checkpoint(
+                self.artifacts, run_id, checkpoint_fingerprint
             )
-            records.append(
-                AcceptanceEvidence(
-                    id="project-acceptance",
-                    kind="test",
-                    status="failed" if failed else "passed",
-                    source=scheduled.node_id,
-                    summary=(
-                        f"{len(scheduled.tests) - len(failed)}/{len(scheduled.tests)} "
-                        "acceptance commands passed"
+            if checkpoint:
+                records.extend(checkpoint)
+            else:
+                scheduled = await self.scheduler.run(
+                    f"{run_id}-acceptance",
+                    f"{run_id}-acceptance",
+                    project.acceptance_commands,
+                    project.test_timeout_seconds,
+                    implementation.workspace.path,
+                    workload="acceptance",
+                    required_capabilities_override=project.acceptance_capabilities,
+                    execution_environment=(
+                        project.test_environment.execution_environment()
+                        if project.test_environment
+                        else {}
                     ),
-                    tests=scheduled.tests,
-                    artifacts=[artifact],
                 )
-            )
-            if "test_database" in project.acceptance_capabilities:
-                records.append(evidence.database_acceptance_evidence(scheduled, failed))
-            if failed:
-                raise AcceptanceExecutionError(failed[0].output_tail)
+                failed = [test for test in scheduled.tests if test.exit_code]
+                artifact = self.artifacts.write_text(
+                    run_id,
+                    "acceptance.json",
+                    "acceptance_report",
+                    json.dumps(
+                        [test.model_dump(mode="json") for test in scheduled.tests],
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                )
+                project_evidence = [
+                    AcceptanceEvidence(
+                        id="project-acceptance",
+                        kind="test",
+                        status="failed" if failed else "passed",
+                        source=scheduled.node_id,
+                        summary=(
+                            f"{len(scheduled.tests) - len(failed)}/{len(scheduled.tests)} "
+                            "acceptance commands passed"
+                        ),
+                        tests=scheduled.tests,
+                        artifacts=[artifact],
+                    )
+                ]
+                if "test_database" in project.acceptance_capabilities:
+                    project_evidence.append(
+                        evidence.database_acceptance_evidence(scheduled, failed)
+                    )
+                records.extend(project_evidence)
+                if failed:
+                    raise AcceptanceExecutionError(failed[0].output_tail)
+                write_acceptance_checkpoint(
+                    self.artifacts,
+                    run_id,
+                    checkpoint_fingerprint,
+                    project_evidence,
+                )
         contract_path = (
             Path(implementation.workspace.path) / ".taskhub" / "acceptance.yaml"
             if implementation.workspace
             else Path()
         )
-        if contract_path.is_file() and _is_browser_acceptance_contract(contract_path):
+        if contract_path.is_file() and is_browser_contract(contract_path):
             if not implementation.workspace or not implementation.commit:
                 raise AcceptanceExecutionError("browser acceptance requires a committed workspace")
             contract = load_acceptance_contract(implementation.workspace.path)
@@ -228,7 +250,7 @@ class ProjectAcceptanceGateway:
                         self.artifacts.write_bytes(
                             run_id,
                             item["path"].replace("/", "-"),
-                            _artifact_kind(item["path"]),
+                            artifact_kind(item["path"]),
                             item["content"],
                             expected_sha256=item["sha256"],
                             metadata={**scheduled.metadata, "original_path": item["path"]},
@@ -312,28 +334,6 @@ class ProjectAcceptanceGateway:
             raise PreproductionVerificationError(failed[0].output_tail)
         health = await _wait_for_preproduction(project.test_environment, specification, commit)
         return scheduled, health
-
-
-def _is_browser_acceptance_contract(path: Path) -> bool:
-    try:
-        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
-        return True
-    return not isinstance(payload, dict) or bool(
-        {"preview", "preproduction", "workload"} & payload.keys()
-    )
-
-
-def _artifact_kind(path: str) -> str:
-    if path.endswith("trace.zip"):
-        return "browser_trace"
-    if path.endswith(".xml"):
-        return "junit_report"
-    if path.lower().endswith((".png", ".jpg", ".jpeg")):
-        return "screenshot"
-    if path.lower().endswith((".webm", ".mp4")):
-        return "browser_video"
-    return "playwright_report"
 
 
 async def _wait_for_preproduction(environment, specification, commit: str) -> dict:

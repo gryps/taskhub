@@ -359,7 +359,17 @@ required_artifacts: [junit.xml]
     )
     projects_file = tmp_path / "projects.json"
     projects_file.write_text(
-        json.dumps({"projects": [{"id": "shop", "repository": str(repository)}]}),
+        json.dumps(
+            {
+                "projects": [
+                    {
+                        "id": "shop",
+                        "repository": str(repository),
+                        "acceptance_commands": [["python3", "accept.py"]],
+                    }
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     monkeypatch.setattr(subprocess, "run", lambda command, **kwargs:
@@ -377,11 +387,24 @@ required_artifacts: [junit.xml]
             self.job_ids = []
             self.calls = []
             self.commands = []
+            self.acceptance_calls = 0
 
         async def preflight_browser(self, commands, capabilities):
             pass
 
         async def run(self, job_id, *args, **kwargs):
+            if kwargs.get("workload") == "acceptance":
+                self.acceptance_calls += 1
+                return ScheduledTests(
+                    node_id="test-01",
+                    tests=[
+                        TestExecution(
+                            command=["python3", "accept.py"],
+                            exit_code=0,
+                            output_tail="ok",
+                        )
+                    ],
+                )
             self.job_ids.append(job_id)
             self.calls.append(kwargs)
             self.commands.append(args[1])
@@ -429,6 +452,7 @@ required_artifacts: [junit.xml]
             asyncio.run(gateway.verify("run-1", "shop", implementation))
 
     assert len(set(scheduler.job_ids)) == 2
+    assert scheduler.acceptance_calls == 1
     assert all(job_id.startswith("run-1-browser-") for job_id in scheduler.job_ids)
     assert all(call["git_commit"] == "a" * 40 for call in scheduler.calls)
     assert all(commands == [
