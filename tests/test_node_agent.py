@@ -93,8 +93,9 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
                         "assert os.environ['TASKHUB_CHROMIUM_CHANNEL'] == 'chrome'; "
                         "assert os.environ['TASKHUB_EDGE_CHANNEL'] == 'msedge'; "
                         "assert os.environ['PYTEST_ADDOPTS'] == '-ra'; "
-                        "assert os.environ['PIP_CACHE_DIR'].endswith('cache/pip'); "
-                        "assert os.environ['npm_config_cache'].endswith('cache/npm'); "
+                        "assert Path(os.environ['PIP_CACHE_DIR']).parts[-2:] == ('cache', 'pip'); "
+                        "assert Path(os.environ['npm_config_cache']).parts[-2:] "
+                        "== ('cache', 'npm'); "
                         "assert 'PIP_NO_CACHE_DIR' not in os.environ",
                     ]
                 ],
