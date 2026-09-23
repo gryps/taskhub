@@ -22,6 +22,7 @@ from taskhub_v2.domain.models import (
     Workspace,
 )
 from taskhub_v2.node_agent.runtime import normalize_command, run_commands
+from taskhub_v2.workflows.acceptance_recovery import prepare_acceptance_revision
 from taskhub_v2.workflows.browser_acceptance import (
     request_browser_acceptance,
     route_browser_acceptance,
@@ -199,6 +200,29 @@ def test_rejected_browser_evidence_preserves_supervision_findings_for_revision()
     assert "真实管理页证据不足" in result["blocking_reason"]["detail"]
     assert "覆盖 390/768/1440 视口" in result["blocking_reason"]["detail"]
     assert "运行无障碍检查" in result["blocking_reason"]["detail"]
+
+
+def test_legacy_browser_block_restores_supervision_findings_when_revising():
+    result = asyncio.run(
+        prepare_acceptance_revision(
+            {
+                "blocking_reason": {
+                    "code": "browser_evidence_missing",
+                    "detail": "Windows 浏览器证据仍未获监督认可",
+                },
+                "supervision": {
+                    "summary": "真实管理页证据不足",
+                    "reasons": ["覆盖 390/768/1440 视口", "运行无障碍检查"],
+                },
+                "revision_count": 1,
+                "max_revision_attempts": 2,
+            }
+        )
+    )
+
+    assert "真实管理页证据不足" in result["revision_feedback"]
+    assert "覆盖 390/768/1440 视口" in result["revision_feedback"]
+    assert "运行无障碍检查" in result["revision_feedback"]
 
 
 def test_browser_acceptance_uses_unique_job_id_for_retries(monkeypatch, tmp_path):

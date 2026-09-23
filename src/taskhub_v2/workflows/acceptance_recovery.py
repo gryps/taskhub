@@ -49,6 +49,15 @@ async def prepare_acceptance_revision(state: CodingState) -> dict:
     feedback = "Acceptance failed"
     if reason:
         feedback = f"{reason.get('code', 'acceptance_failed')}: {reason.get('detail', '')}"
+    if reason.get("code") == "browser_evidence_missing":
+        supervision = state.get("supervision") or {}
+        findings = [supervision.get("summary", "")]
+        findings.extend(supervision.get("reasons", []))
+        findings = [item.strip() for item in findings if item and item.strip()]
+        if findings:
+            feedback += "\nSupervisor browser evidence requirements:\n- " + "\n- ".join(
+                findings
+            )
     revision = int(state.get("revision_count", 0)) + 1
     maximum = max(int(state.get("max_revision_attempts", 2)), revision)
     return {
