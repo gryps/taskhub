@@ -16,6 +16,7 @@ from taskhub_v2.domain.models import (
     Stage,
     StartRunRequest,
 )
+from taskhub_v2.services.run_actions import RunActionConflict, build_resume_command
 from taskhub_v2.services.run_start import build_start_payload
 from taskhub_v2.services.task_state import NODE_STAGES, checkpoint_values, workflow_steps
 
@@ -37,6 +38,7 @@ class RunService:
         self.task_index = task_index
         self._action_locks: dict[str, asyncio.Lock] = {}
         self._background_tasks: set[asyncio.Task] = set()
+        self._active_runs: dict[str, asyncio.Task] = {}
 
     def _action_lock(self, run_id: str) -> asyncio.Lock:
         return self._action_locks.setdefault(run_id, asyncio.Lock())
@@ -57,9 +59,7 @@ class RunService:
     ) -> RunView:
         """Start a durable run without holding the management HTTP request open."""
         run_id, initial = build_start_payload(self.projects, request, project_contract)
-        task = asyncio.create_task(self._execute(run_id, initial))
-        self._background_tasks.add(task)
-        task.add_done_callback(self._background_task_done)
+        task = self._schedule_background(run_id, initial)
         for _ in range(500):
             try:
                 return await self.get(
@@ -71,8 +71,27 @@ class RunService:
                 await asyncio.sleep(0.01)
         raise RunConflictError("run initialization did not create a durable checkpoint")
 
-    def _background_task_done(self, task: asyncio.Task) -> None:
+    def _schedule_background(self, run_id: str, payload) -> asyncio.Task:
+        self._ensure_inactive(run_id)
+        task = asyncio.create_task(self._execute_locked(run_id, payload))
+        self._active_runs[run_id] = task
+        self._background_tasks.add(task)
+        task.add_done_callback(lambda completed: self._background_task_done(run_id, completed))
+        return task
+
+    def _ensure_inactive(self, run_id: str) -> None:
+        active = self._active_runs.get(run_id)
+        if active is not None and not active.done():
+            raise RunConflictError("run already has an active workflow action")
+
+    async def _execute_locked(self, run_id: str, payload) -> None:
+        async with self._action_lock(run_id):
+            await self._execute(run_id, payload)
+
+    def _background_task_done(self, run_id: str, task: asyncio.Task) -> None:
         self._background_tasks.discard(task)
+        if self._active_runs.get(run_id) is task:
+            self._active_runs.pop(run_id, None)
         if task.cancelled():
             return
         error = task.exception()
@@ -273,33 +292,26 @@ class RunService:
         async with self._action_lock(run_id):
             return await self._resume(run_id, request)
 
+    async def launch_resume(self, run_id: str, request: ResumeRequest) -> RunView:
+        """Validate and schedule a durable recovery without holding the HTTP request."""
+        self._ensure_inactive(run_id)
+        async with self._action_lock(run_id):
+            self._ensure_inactive(run_id)
+            current = await self.get(run_id)
+            command = self._resume_command(current, request)
+            self._schedule_background(run_id, command)
+            return current
+
+    @staticmethod
+    def _resume_command(current: RunView, request: ResumeRequest) -> Command:
+        try:
+            return build_resume_command(current, request)
+        except RunActionConflict as exc:
+            raise RunConflictError(str(exc)) from exc
+
     async def _resume(self, run_id: str, request: ResumeRequest) -> RunView:
         current = await self.get(run_id)
-        if current.archived_at:
-            raise RunConflictError("task is archived; workflow actions are disabled")
-        if request.decision in {"retry", "approve", "reassess"} and current.project_missing:
-            raise RunConflictError(
-                "project is not registered; archive the task or rebind it to an existing project"
-            )
-        action = current.pending_action or {}
-        choices = list(action.get("choices", []))
-        # Checkpoints created before acceptance revisions existed only contain
-        # retry/cancel. Allow them to use the new recovery route after deployment.
-        if action.get("type") == "acceptance_recovery" and "revise" not in choices:
-            choices.append("revise")
-        if action.get("type") == "revision_limit" and "manual" not in choices:
-            choices.append("manual")
-        if (
-            action.get("type") == "revision_limit"
-            and current.supervision
-            and current.supervision.missing_evidence
-            and "recheck" not in choices
-        ):
-            choices.append("recheck")
-        if not current.next_nodes or request.decision not in choices:
-            raise RunConflictError("decision is not valid for the pending action")
-        update = {"project_id": current.project_id} if current.original_project_id else None
-        await self._execute(run_id, Command(resume=request.model_dump(mode="json"), update=update))
+        await self._execute(run_id, self._resume_command(current, request))
         return await self.get(run_id, sync=True)
 
     async def replay(self, run_id: str) -> RunView:

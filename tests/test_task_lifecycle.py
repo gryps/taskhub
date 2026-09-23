@@ -83,10 +83,21 @@ async def post(task, route, payload=None):
     return await task.client.post(task.base + route, headers=task.headers, json=payload)
 
 
+async def wait_for(task, predicate):
+    for _ in range(100):
+        current = (await task.client.get(task.base)).json()
+        if predicate(current):
+            return current
+        await asyncio.sleep(0.01)
+    raise AssertionError("run did not reach the expected state")
+
+
 async def reach(task, stage):
     if stage == "implementation_blocked":
         return
-    assert (await post(task, "/resume", {"decision": "retry"})).json()["stage"] == "merge_blocked"
+    response = await post(task, "/resume", {"decision": "retry"})
+    assert response.status_code == 200
+    await wait_for(task, lambda item: item["stage"] == "merge_blocked")
 
 
 @pytest.mark.parametrize("stage", ["implementation_blocked", "merge_blocked"])
@@ -121,14 +132,22 @@ async def test_orphan_retry_submits_no_command_and_rebind_recovers(lifecycle, st
 
     response = await post(task, "/resume", {"decision": "retry"})
     assert response.status_code == 200
+    current = await wait_for(
+        task,
+        lambda item: item["stage"] == "merge_blocked"
+        if stage == "implementation_blocked"
+        else item["status"] == "completed",
+    )
     task.stream.assert_called_once()
     if stage == "implementation_blocked":
-        assert response.json()["stage"] == "merge_blocked"
+        assert current["stage"] == "merge_blocked"
         assert task.execute.call_args.args[1] == "replacement"
         assert task.worker.calls == 2
         response = await post(task, "/resume", {"decision": "retry"})
-    assert response.json()["status"] == "completed"
-    assert response.json()["publication"]["project_id"] == "replacement"
+        assert response.status_code == 200
+        current = await wait_for(task, lambda item: item["status"] == "completed")
+    assert current["status"] == "completed"
+    assert current["publication"]["project_id"] == "replacement"
     assert task.provider.plan_calls == task.provider.review_calls == 1
     assert task.provider.supervisor_calls == 1
 

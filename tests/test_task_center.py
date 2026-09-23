@@ -14,7 +14,7 @@ from taskhub_v2.services.runs import RunConflictError, RunService
 from taskhub_v2.services.task_state import checkpoint_values, workflow_steps
 from taskhub_v2.workflows import build_main_graph
 from tests.fakes import RecordingProvider, RecordingWorker
-from tests.test_workflow import RecoveringPublisher
+from tests.test_workflow import RecoveringPublisher, RecoveringWorker
 
 
 def settings():
@@ -361,9 +361,11 @@ def test_task_center_publication_recovery_does_not_repeat_completed_work():
             client.post(base + "/resume", headers=headers, json={"decision": "approve"}).status_code
             == 409
         )
-        completed = client.post(
+        resumed = client.post(
             base + "/resume", headers=headers, json={"decision": "retry"}
-        ).json()
+        )
+        assert resumed.status_code == 200
+        completed = wait_for_run(client, run_id, lambda item: item["status"] == "completed")
         assert completed["status"] == "completed"
         assert provider.plan_calls == provider.review_calls == provider.risk_calls == 1
         assert provider.supervisor_calls == worker.calls == 1
@@ -464,6 +466,43 @@ def test_same_run_actions_are_serialized():
 
         assert results == ["same-run", "same-run"]
         assert peak == 1
+
+    asyncio.run(scenario())
+
+
+def test_launch_resume_returns_before_slow_recovery_and_rejects_duplicates():
+    async def scenario():
+        service = RunService(
+            build_main_graph(RecordingProvider(), RecoveringWorker(), InMemorySaver()),
+            task_index=MemoryTaskIndex(),
+        )
+        blocked = await service.start(
+            StartRunRequest(project_id="demo", requirement="Recover asynchronously")
+        )
+        entered, release = asyncio.Event(), asyncio.Event()
+        execute = service._execute
+
+        async def slow_execute(run_id, payload):
+            entered.set()
+            await release.wait()
+            await execute(run_id, payload)
+
+        service._execute = slow_execute
+        returned = await service.launch_resume(
+            blocked.run_id, ResumeRequest(decision="retry")
+        )
+        assert returned.status == RunStatus.BLOCKED
+        await entered.wait()
+        with pytest.raises(RunConflictError, match="active workflow action"):
+            await service.launch_resume(blocked.run_id, ResumeRequest(decision="retry"))
+        release.set()
+        for _ in range(100):
+            completed = await service.get(blocked.run_id)
+            if completed.status == RunStatus.COMPLETED:
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("background recovery did not complete")
 
     asyncio.run(scenario())
 

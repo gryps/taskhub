@@ -228,7 +228,7 @@ async def approve_run(run_id: str, payload: ApprovalRequest, service: Service) -
 @router.post("/runs/{run_id}/resume", response_model=RunView)
 async def resume_run(run_id: str, payload: ResumeRequest, service: Service) -> RunView:
     try:
-        return await service.resume(run_id, payload)
+        return await service.launch_resume(run_id, payload)
     except RunNotFoundError as exc:
         raise HTTPException(status_code=404, detail="run not found") from exc
     except RunConflictError as exc:
