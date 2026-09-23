@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 
 from taskhub_v2.domain.models import ModelResult, Plan, SupervisionDecision
+from taskhub_v2.providers.prompts import EVIDENCE_OWNERSHIP_POLICY
 
 
 class ChatCompatibleProvider:
@@ -45,14 +46,16 @@ class ChatCompatibleProvider:
 
     async def review(self, requirement: str, implementation: str) -> ModelResult[str]:
         prompt = (
-            "Review this implementation against the requirement. Be concise.\n"
+            f"Review this implementation against the requirement. Be concise. "
+            f"{EVIDENCE_OWNERSHIP_POLICY}\n"
             f"Requirement: {requirement}\nEvidence: {implementation}"
         )
         return await self._text_result(prompt)
 
     async def assess_risk(self, requirement: str, implementation: str) -> ModelResult[str]:
         prompt = (
-            "Assess delivery risks and missing evidence. Be concise.\n"
+            f"Assess delivery risks and missing evidence. Be concise. "
+            f"{EVIDENCE_OWNERSHIP_POLICY}\n"
             f"Requirement: {requirement}\nEvidence: {implementation}"
         )
         return await self._text_result(prompt)
@@ -62,6 +65,7 @@ class ChatCompatibleProvider:
     ) -> ModelResult[SupervisionDecision]:
         prompt = (
             "Return JSON only with decision (approve or reject), summary, and reasons array.\n"
+            f"{EVIDENCE_OWNERSHIP_POLICY}\n"
             f"Requirement: {requirement}\nImplementation: {implementation}\n"
             f"Review: {review}\nRisk: {risk}"
         )

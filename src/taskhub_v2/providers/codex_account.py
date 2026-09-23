@@ -19,6 +19,7 @@ from taskhub_v2.providers.egress import (
     direct_environment,
     provider_proxy,
 )
+from taskhub_v2.providers.prompts import EVIDENCE_OWNERSHIP_POLICY
 
 _ACCOUNT_LOCKS: dict[str, asyncio.Lock] = {}
 
@@ -83,12 +84,18 @@ class CodexAccountProvider:
         return self._result(Plan.model_validate_json(text), duration)
 
     async def review(self, requirement: str, implementation: str) -> ModelResult[str]:
-        prompt = f"Review implementation evidence.\nRequirement: {requirement}\n{implementation}"
+        prompt = (
+            f"Review implementation evidence. {EVIDENCE_OWNERSHIP_POLICY}\n"
+            f"Requirement: {requirement}\n{implementation}"
+        )
         text, duration = await self._run(prompt)
         return self._result(text, duration)
 
     async def assess_risk(self, requirement: str, implementation: str) -> ModelResult[str]:
-        prompt = f"Assess delivery risk.\nRequirement: {requirement}\n{implementation}"
+        prompt = (
+            f"Assess delivery risk. {EVIDENCE_OWNERSHIP_POLICY}\n"
+            f"Requirement: {requirement}\n{implementation}"
+        )
         text, duration = await self._run(prompt)
         return self._result(text, duration)
 
@@ -108,7 +115,7 @@ class CodexAccountProvider:
             "Do not invent a database-engine, multi-process, load, production deployment, or "
             "production-data gate unless the requirement or acceptance criteria explicitly require "
             "that exact environment. Such optional hardening belongs in reasons but must not block "
-            "approval.\n"
+            f"approval. {EVIDENCE_OWNERSHIP_POLICY}\n"
             f"Requirement:\n{requirement}\nImplementation:\n{implementation}\n"
             f"Review:\n{review}\nRisk:\n{risk}"
         )

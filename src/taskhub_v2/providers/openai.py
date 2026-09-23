@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from taskhub_v2.domain.models import ModelResult, Plan, SupervisionDecision
+from taskhub_v2.providers.prompts import EVIDENCE_OWNERSHIP_POLICY
 
 
 class ProviderConfigurationError(ValueError):
@@ -83,7 +84,8 @@ class OpenAIResponsesProvider:
     async def review(self, requirement: str, implementation: str) -> ModelResult[str]:
         started = time.monotonic()
         payload = await self._request(
-            f"Review this implementation against the requirement.\nRequirement: {requirement}\n"
+            f"Review this implementation against the requirement. "
+            f"{EVIDENCE_OWNERSHIP_POLICY}\nRequirement: {requirement}\n"
             f"Evidence: {implementation}"
         )
         return ModelResult(
@@ -97,7 +99,7 @@ class OpenAIResponsesProvider:
     async def assess_risk(self, requirement: str, implementation: str) -> ModelResult[str]:
         started = time.monotonic()
         payload = await self._request(
-            "Assess delivery risks briefly.\n"
+            f"Assess delivery risks briefly. {EVIDENCE_OWNERSHIP_POLICY}\n"
             f"Requirement: {requirement}\n"
             f"Evidence: {implementation}"
         )
@@ -127,7 +129,7 @@ class OpenAIResponsesProvider:
                 "OpenAPI. Do not invent a database-engine, multi-process, load, production "
                 "deployment, or production-data gate unless the requirement or acceptance criteria "
                 "explicitly require that exact environment. Such optional hardening belongs in "
-                "reasons but must not block approval.\n"
+                f"reasons but must not block approval. {EVIDENCE_OWNERSHIP_POLICY}\n"
                 f"Requirement: {requirement}\nImplementation: {implementation}\n"
                 f"Review: {review}\nRisk: {risk}"
             ),

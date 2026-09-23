@@ -102,6 +102,8 @@ def test_openai_supervision_uses_strict_backward_compatible_schema():
         prompt = requests[0]["input"]
         assert "A missing_evidence category means no passed evidence" in prompt
         assert "Do not invent a database-engine" in prompt
+        assert "platform-configured verification" in prompt
+        assert "not running bootstrap" in prompt
 
     asyncio.run(scenario())
 
