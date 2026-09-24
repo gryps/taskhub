@@ -13,9 +13,9 @@ from taskhub_v2.browser.reports import setup_failure_detail, validate_junit
 from taskhub_v2.domain.models import AcceptanceEvidence, AcceptanceResult
 from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.workers import acceptance_checkpoint as checkpoint
+from taskhub_v2.workers import acceptance_support as support
 from taskhub_v2.workers import contract_acceptance as evidence
 from taskhub_v2.workers import supplemental_acceptance
-from taskhub_v2.workers.acceptance_support import artifact_kind, is_browser_contract
 
 
 class AcceptanceExecutionError(RuntimeError):
@@ -159,7 +159,7 @@ class ProjectAcceptanceGateway:
             if implementation.workspace
             else Path()
         )
-        if contract_path.is_file() and is_browser_contract(contract_path):
+        if contract_path.is_file() and support.is_browser_contract(contract_path):
             if not implementation.workspace or not implementation.commit:
                 raise AcceptanceExecutionError("browser acceptance requires a committed workspace")
             contract = load_acceptance_contract(implementation.workspace.path)
@@ -250,7 +250,7 @@ class ProjectAcceptanceGateway:
                         self.artifacts.write_bytes(
                             run_id,
                             item["path"].replace("/", "-"),
-                            artifact_kind(item["path"]),
+                            support.artifact_kind(item["path"]),
                             item["content"],
                             expected_sha256=item["sha256"],
                             metadata={**scheduled.metadata, "original_path": item["path"]},
@@ -288,10 +288,9 @@ class ProjectAcceptanceGateway:
                         kind="browser",
                         status="failed" if failed else "passed",
                         source=scheduled.node_id,
-                        summary=(
-                            f"Chromium and Edge acceptance at {target_url} for {actual_commit}; "
-                            "zero failures and skips; verified scenarios: "
-                            + ", ".join(item.id for item in suite.scenarios)
+                        summary=support.browser_acceptance_summary(
+                            contract.browsers, target_url, actual_commit,
+                            [item.id for item in suite.scenarios],
                         ),
                         tests=scheduled.tests,
                         artifacts=browser_artifacts,

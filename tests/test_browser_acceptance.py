@@ -562,6 +562,7 @@ required_artifacts: [junit.xml]
     assert scheduler.calls[1][1]["execution_environment"]["TASKHUB_TEST_EDGE_HOST"] == (
         "edge.example.com"
     )
+    assert "system Google Chrome acceptance" in result.evidence[1].summary
 
 
 def test_browser_acceptance_surfaces_collection_failure(monkeypatch, tmp_path):

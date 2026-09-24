@@ -23,3 +23,21 @@ def artifact_kind(path: str) -> str:
     if path.lower().endswith((".webm", ".mp4")):
         return "browser_video"
     return "playwright_report"
+
+
+def browser_display_names(browsers: list[str]) -> str:
+    """Describe the system browser channels used by Windows acceptance."""
+    labels = {
+        "chromium": "system Google Chrome",
+        "edge": "system Microsoft Edge",
+    }
+    return " and ".join(labels.get(browser, browser) for browser in browsers)
+
+
+def browser_acceptance_summary(
+    browsers: list[str], target_url: str, commit: str, scenario_ids: list[str]
+) -> str:
+    return (
+        f"{browser_display_names(browsers)} acceptance at {target_url} for {commit}; "
+        "zero failures and skips; verified scenarios: " + ", ".join(scenario_ids)
+    )
