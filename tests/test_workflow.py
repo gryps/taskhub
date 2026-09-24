@@ -667,6 +667,30 @@ def test_revision_limit_requires_owner_decision():
     asyncio.run(scenario())
 
 
+def test_revision_limit_retry_delivers_owner_comment_to_coding_worker():
+    async def scenario():
+        provider = AlwaysRejectProvider()
+        worker = RevisionRecordingWorker()
+        service = RunService(build_main_graph(provider, worker, InMemorySaver()))
+        limited = await service.start(
+            StartRunRequest(project_id="shop", requirement="Bound an unsafe loop")
+        )
+
+        assert limited.pending_action["type"] == "revision_limit"
+        calls_at_limit = worker.calls
+        comment = "Guard stale image failures and declare FIN-002 browser scenarios"
+        resumed = await service.resume(
+            limited.run_id, ResumeRequest(decision="retry", comment=comment)
+        )
+
+        assert worker.calls == calls_at_limit + 1
+        assert comment in worker.revisions[-1][1]
+        assert "Owner revision requirements (mandatory)" in worker.revisions[-1][1]
+        assert resumed.pending_action["type"] == "revision_limit"
+
+    asyncio.run(scenario())
+
+
 def test_acceptance_failure_has_its_own_recovery_without_rerunning_worker():
     async def scenario():
         provider = RecordingProvider()

@@ -6,6 +6,7 @@ from taskhub_v2.providers.base import ModelProvider
 from taskhub_v2.workers.acceptance import LocalAcceptanceGateway
 from taskhub_v2.workers.base import AcceptanceGateway, PublisherGateway, WorkerGateway
 from taskhub_v2.workers.publisher import LocalPublisher
+from taskhub_v2.workflows import manual_handoff as handoff
 from taskhub_v2.workflows.acceptance import build_acceptance_graph
 from taskhub_v2.workflows.acceptance_recovery import (
     prepare_acceptance_revision,
@@ -22,7 +23,6 @@ from taskhub_v2.workflows.implementation import (
     recover_implementation,
 )
 from taskhub_v2.workflows.intake import build_intake_graph
-from taskhub_v2.workflows.manual_handoff import handle_revision_limit, route_revision_limit
 from taskhub_v2.workflows.planning import build_planning_graph
 from taskhub_v2.workflows.review import build_review_graph
 from taskhub_v2.workflows.risk import build_risk_graph
@@ -125,12 +125,12 @@ def build_main_graph(
 
     async def prepare_revision(state: CodingState) -> dict:
         supervision = state.get("supervision") or {}
-        reasons = supervision.get("reasons") or []
-        feedback = "\n".join([supervision.get("summary", "Supervisor requested changes"), *reasons])
+        feedback = handoff.revision_feedback(supervision, state.get("owner_revision_comment", ""))
         revision = int(state.get("revision_count", 0)) + 1
         return {
             "revision_count": revision,
             "revision_feedback": feedback,
+            "owner_revision_comment": "",
             "implementation": state.get("implementation"),
             "acceptance": None,
             "review": None,
@@ -300,7 +300,7 @@ def build_main_graph(
     builder.add_node("supervisor", build_supervisor_graph(provider))
     builder.add_node("supervision_recovery", recover_supervision)
     builder.add_node("revision", prepare_revision)
-    builder.add_node("revision_limit", handle_revision_limit)
+    builder.add_node("revision_limit", handoff.handle_revision_limit)
     builder.add_node("merge_approval", request_merge_approval)
     builder.add_node("publication", publish)
     builder.add_node("publication_recovery", recover_publication)
@@ -372,7 +372,7 @@ def build_main_graph(
     builder.add_edge("revision", "implementation")
     builder.add_conditional_edges(
         "revision_limit",
-        route_revision_limit,
+        handoff.route_revision_limit,
         {
             "acceptance": "acceptance",
             "manual": "revision_limit",

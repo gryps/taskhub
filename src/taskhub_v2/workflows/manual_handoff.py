@@ -4,6 +4,16 @@ from taskhub_v2.domain.models import RunStatus, Stage
 from taskhub_v2.workflows.state import CodingState, event
 
 
+def revision_feedback(supervision: dict, owner_comment: str = "") -> str:
+    reasons = supervision.get("reasons") or []
+    feedback = "\n".join(
+        [supervision.get("summary", "Supervisor requested changes"), *reasons]
+    )
+    if owner_comment.strip():
+        feedback += "\n\nOwner revision requirements (mandatory):\n" + owner_comment.strip()
+    return feedback
+
+
 async def handle_revision_limit(state: CodingState) -> dict:
     manual = (state.get("pending_action") or {}).get("type") == "manual_intervention"
     evidence_only = bool((state.get("supervision") or {}).get("missing_evidence"))
@@ -25,6 +35,7 @@ async def handle_revision_limit(state: CodingState) -> dict:
         }
     )
     decision = response.get("decision") if isinstance(response, dict) else response
+    comment = response.get("comment", "").strip() if isinstance(response, dict) else ""
     if decision == "manual":
         return {
             "decision": decision,
@@ -55,6 +66,7 @@ async def handle_revision_limit(state: CodingState) -> dict:
     combined = [*existing, *submitted]
     return {
         "decision": decision,
+        "owner_revision_comment": comment if retry else "",
         "max_revision_attempts": (
             int(state.get("max_revision_attempts", 2)) + 1
             if retry or recheck

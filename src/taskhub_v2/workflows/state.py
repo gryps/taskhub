@@ -31,6 +31,7 @@ class BaseState(TypedDict, total=False):
     revision_count: int
     max_revision_attempts: int
     revision_feedback: str
+    owner_revision_comment: str
     acceptance_contract_bootstrap_attempted: bool
     pending_action: dict[str, Any] | None
     blocking_reason: dict[str, Any] | None
