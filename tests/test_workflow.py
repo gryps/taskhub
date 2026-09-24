@@ -428,6 +428,49 @@ def test_test_timeout_waits_for_infrastructure_recovery_without_code_revision():
     asyncio.run(scenario())
 
 
+def test_implementation_recovery_passes_owner_comment_to_worker():
+    async def scenario():
+        class CommentRecoveringWorker(RecordingWorker):
+            def __init__(self):
+                super().__init__()
+                self.feedback = []
+
+            async def execute(
+                self, run_id, project_id, requirement, plan, revision=0, feedback=""
+            ):
+                self.calls += 1
+                self.feedback.append(feedback)
+                if self.calls == 1:
+                    raise RuntimeError("formatter worker interrupted")
+                return ExecutionResult(summary="formatting repaired")
+
+        worker = CommentRecoveringWorker()
+        service = RunService(
+            build_main_graph(RecordingProvider(), worker, InMemorySaver())
+        )
+        blocked = await service.start(
+            StartRunRequest(project_id="shop", requirement="Repair formatting")
+        )
+
+        completed = await service.resume(
+            blocked.run_id,
+            ResumeRequest(
+                decision="retry",
+                comment="Run Ruff with --fix before returning.",
+            ),
+        )
+
+        assert completed.stage == Stage.COMPLETED
+        assert "RuntimeError" in worker.feedback[-1]
+        assert "Run Ruff with --fix before returning." in worker.feedback[-1]
+        assert any(
+            item.detail == "Run Ruff with --fix before returning."
+            for item in completed.timeline
+        )
+
+    asyncio.run(scenario())
+
+
 def test_new_graph_instance_resumes_same_checkpoint():
     async def scenario():
         checkpointer = InMemorySaver()

@@ -35,6 +35,23 @@ def merge_implementation_feedback(existing: str, reason: dict) -> str:
     )[-16_000:]
 
 
+def merge_owner_recovery_comment(feedback: str, comment: str) -> str:
+    """Keep the owner's concrete retry instruction in implementation recovery.
+
+    Resume comments are especially important when the quality gate reports only the
+    symptom (for example, a formatter failure) and the owner has supplied the exact
+    repair command.  Supervision feedback and the failure detail remain authoritative.
+    """
+    comment = comment.strip()
+    if not comment:
+        return feedback
+    return (
+        f"{feedback[-13_500:]}\n\n"
+        "Owner implementation-recovery instructions (mandatory):\n"
+        f"{comment[:2_000]}"
+    )[-16_000:]
+
+
 async def prepare_test_failure_revision(state: CodingState) -> dict:
     reason = state.get("blocking_reason") or {}
     revision = int(state.get("revision_count", 0)) + 1
@@ -69,24 +86,25 @@ async def recover_implementation(state: CodingState) -> dict:
     )
     decision = response.get("decision") if isinstance(response, dict) else response
     retry = decision == "retry"
+    comment = response.get("comment", "") if isinstance(response, dict) else ""
+    feedback = merge_implementation_feedback(
+        state.get("revision_feedback", ""), reason
+    )
+    if retry:
+        feedback = merge_owner_recovery_comment(feedback, comment)
     return {
         "decision": decision,
         "attempt": int(state.get("attempt", 0)) + (1 if retry else 0),
         "pending_action": None,
         "blocking_reason": None if retry else reason,
-        "revision_feedback": (
-            merge_implementation_feedback(
-                state.get("revision_feedback", ""), reason
-            )
-            if retry
-            else state.get("revision_feedback", "")
-        ),
+        "revision_feedback": feedback if retry else state.get("revision_feedback", ""),
         "current_stage": Stage.IMPLEMENTATION.value if retry else Stage.REJECTED.value,
         "status": RunStatus.RUNNING.value if retry else RunStatus.REJECTED.value,
         "timeline": event(
             Stage.IMPLEMENTATION_BLOCKED,
             "Implementation retry requested" if retry else "Run cancelled",
             "owner",
+            comment,
         ),
     }
 
