@@ -1,5 +1,4 @@
 import asyncio
-import hashlib
 import shutil
 from pathlib import Path
 
@@ -8,13 +7,17 @@ from taskhub_v2.domain.models import ExecutionResult, ModelRun, Plan
 from taskhub_v2.execution import LocalTestScheduler
 from taskhub_v2.git import GitWorkspaceManager
 from taskhub_v2.projects import ProjectRegistry
+from taskhub_v2.workers.change_detection import (
+    artifact_name,
+    feedback_key,
+    is_generated,
+    no_change_feedback,
+    worktree_fingerprint,
+)
 from taskhub_v2.workers.coding_router import CodexCodingRouter
 from taskhub_v2.workers.test_diagnostics import classify_test_failure, failed_test_diagnostics
 
 FORBIDDEN_FILES = {".env", ".env.local", "auth.json", "credentials.json"}
-GENERATED_PARTS = {".venv", "__pycache__", ".pytest_cache", "node_modules", "dist", "build"}
-GENERATED_SUFFIXES = {".pyc", ".pyo", ".coverage"}
-
 
 class WorkerExecutionError(RuntimeError):
     def __init__(self, reason: str, detail: str, model_results=None, diagnostics=None):
@@ -25,11 +28,16 @@ class WorkerExecutionError(RuntimeError):
         self.diagnostics = diagnostics or []
 
 
-def raise_for_failed_tests(tests) -> None:
+def raise_for_failed_tests(tests, *, model_results=None) -> None:
     if not any(test.exit_code for test in tests):
         return
     detail, diagnostics = failed_test_diagnostics(tests)
-    raise WorkerExecutionError(classify_test_failure(tests), detail, diagnostics=diagnostics)
+    raise WorkerExecutionError(
+        classify_test_failure(tests),
+        detail,
+        model_results=model_results,
+        diagnostics=diagnostics,
+    )
 
 
 class GitCodingWorker:
@@ -78,7 +86,7 @@ class GitCodingWorker:
             raise_for_failed_tests(existing.tests)
             existing.artifacts = [
                 self.artifacts.write_text(
-                    run_id, self._artifact_name(revision), "git_diff", existing.evidence
+                    run_id, artifact_name(revision), "git_diff", existing.evidence
                 )
             ]
             return existing
@@ -100,24 +108,46 @@ class GitCodingWorker:
         coding_options = {"feedback": coding_feedback}
         if task_context:
             coding_options["task_context"] = task_context
+        before_model = await worktree_fingerprint(workspace.path, self._git, is_generated)
         model_result = await self.coder.modify(requirement, plan, workspace.path, **coding_options)
         model_results.append(model_result)
+        model_changed = (
+            await worktree_fingerprint(workspace.path, self._git, is_generated)
+            != before_model
+        )
         changed_files = await self._changed_files(workspace.path)
-        if not changed_files:
-            if revision and await self._has_implementation(workspace.path, workspace.base_commit):
+        if not changed_files or (retest_feedback and not model_changed):
+            if (
+                revision
+                and not retest_feedback
+                and await self._has_implementation(workspace.path, workspace.base_commit)
+            ):
                 return await self._evidence_only_result(
                     run_id, revision, workspace, project, model_result
                 )
-            retry_feedback = self._no_change_feedback(model_result, feedback)
+            retry_feedback = no_change_feedback(model_result, feedback)
+            if retest_feedback:
+                retry_feedback = (
+                    f"{retry_feedback}\n\nThe existing uncommitted implementation still "
+                    "fails quality "
+                    "checks. You must change the worktree to repair that failure before returning."
+                )[-16_000:]
             retry_options = {"feedback": retry_feedback}
             if task_context:
                 retry_options["task_context"] = task_context
+            before_retry = await worktree_fingerprint(
+                workspace.path, self._git, is_generated
+            )
             model_result = await self.coder.modify(
                 requirement, plan, workspace.path, **retry_options
             )
             model_results.append(model_result)
+            retry_changed = (
+                await worktree_fingerprint(workspace.path, self._git, is_generated)
+                != before_retry
+            )
             changed_files = await self._changed_files(workspace.path)
-            if not changed_files:
+            if not changed_files or (retest_feedback and not retry_changed):
                 attempts = "; ".join(
                     f"{item.provider}/{item.model}: {item.content.summary}"
                     for item in model_results
@@ -131,7 +161,7 @@ class GitCodingWorker:
         forbidden = [name for name in changed_files if Path(name).name in FORBIDDEN_FILES]
         if forbidden:
             raise WorkerExecutionError("forbidden_files", ", ".join(forbidden))
-        generated = [name for name in changed_files if self._is_generated(name)]
+        generated = [name for name in changed_files if is_generated(name)]
         if generated:
             raise WorkerExecutionError("generated_files", ", ".join(generated))
 
@@ -143,7 +173,7 @@ class GitCodingWorker:
             workspace.path,
         )
         tests = scheduled.tests
-        raise_for_failed_tests(tests)
+        raise_for_failed_tests(tests, model_results=model_results)
 
         await self._cleanup_generated_untracked(workspace.path)
         await self._git(workspace.path, "add", "-A", "--", *changed_files)
@@ -151,7 +181,7 @@ class GitCodingWorker:
         if task_context and task_context.get("task_id"):
             commit_metadata += f"\nTaskHub-Task: {task_context['task_id']}"
         if feedback:
-            commit_metadata += f"\nTaskHub-Feedback: {self._feedback_key(feedback)}"
+            commit_metadata += f"\nTaskHub-Feedback: {feedback_key(feedback)}"
         await self._git(
             workspace.path,
             "-c",
@@ -173,7 +203,7 @@ class GitCodingWorker:
         )
         changed_files = [line for line in aggregate_files.splitlines() if line]
         artifact = self.artifacts.write_text(
-            run_id, self._artifact_name(revision), "git_diff", diff
+            run_id, artifact_name(revision), "git_diff", diff
         )
         return ExecutionResult(
             summary=model_result.content.summary,
@@ -194,19 +224,6 @@ class GitCodingWorker:
             ),
         )
 
-    @staticmethod
-    def _no_change_feedback(model_result, existing_feedback: str) -> str:
-        prefix = f"{existing_feedback}\n" if existing_feedback else ""
-        return (
-            prefix + "The previous coding attempt returned successfully but produced no Git "
-            "changes. Its summary was: "
-            + model_result.content.summary
-            + ". Re-inspect the repository, identify the concrete files required by the "
-            "approved plan, implement the missing behavior now, and verify that `git status "
-            "--short` lists the edits before returning. Do not merely describe or validate "
-            "the existing implementation."
-        )
-
     async def _has_implementation(self, workdir: str, base_commit: str) -> bool:
         head = (await self._git(workdir, "rev-parse", "HEAD")).strip()
         return head != base_commit
@@ -218,7 +235,7 @@ class GitCodingWorker:
         if not changed_files:
             return None, ""
         forbidden = [name for name in changed_files if Path(name).name in FORBIDDEN_FILES]
-        generated = [name for name in changed_files if self._is_generated(name)]
+        generated = [name for name in changed_files if is_generated(name)]
         if forbidden or generated:
             return None, ""
         scheduled = await self.test_scheduler.run(
@@ -242,7 +259,7 @@ class GitCodingWorker:
             "TaskHub-Recovery: quality-retest"
         )
         if feedback:
-            commit_metadata += f"\nTaskHub-Feedback: {self._feedback_key(feedback)}"
+            commit_metadata += f"\nTaskHub-Feedback: {feedback_key(feedback)}"
         await self._git(
             workspace.path,
             "-c",
@@ -263,7 +280,7 @@ class GitCodingWorker:
             workspace.path, "diff", "--name-only", f"{workspace.base_commit}..{commit}"
         )
         artifact = self.artifacts.write_text(
-            run_id, self._artifact_name(revision), "git_diff", diff
+            run_id, artifact_name(revision), "git_diff", diff
         )
         return ExecutionResult(
             summary="Recovered existing implementation after a successful quality retest",
@@ -296,7 +313,7 @@ class GitCodingWorker:
             workspace.path, "diff", "--name-only", f"{workspace.base_commit}..{commit}"
         )
         artifact = self.artifacts.write_text(
-            run_id, self._artifact_name(revision), "git_diff", diff
+            run_id, artifact_name(revision), "git_diff", diff
         )
         return ExecutionResult(
             summary=model_result.content.summary,
@@ -337,7 +354,7 @@ class GitCodingWorker:
         feedback_recorded = True
         if feedback and expected == head:
             message = await self._git(workdir, "log", "-1", "--format=%B")
-            feedback_recorded = f"TaskHub-Feedback: {self._feedback_key(feedback)}" in message
+            feedback_recorded = f"TaskHub-Feedback: {feedback_key(feedback)}" in message
         recoverable = (
             head != base_commit and (revision == 0 or expected == head) and feedback_recorded
         )
@@ -352,31 +369,14 @@ class GitCodingWorker:
             )
         return None
 
-    @staticmethod
-    def _feedback_key(feedback: str) -> str:
-        return hashlib.sha256(feedback.encode()).hexdigest()[:16]
-
-    @staticmethod
-    def _artifact_name(revision: int) -> str:
-        return "change.patch" if revision == 0 else f"change-r{revision}.patch"
-
     async def _changed_files(self, workdir: str) -> list[str]:
         output = await self._git(workdir, "status", "--porcelain")
         return [line[3:].strip() for line in output.splitlines() if len(line) > 3]
 
-    @staticmethod
-    def _is_generated(name: str) -> bool:
-        path = Path(name)
-        return (
-            bool(GENERATED_PARTS.intersection(path.parts))
-            or path.suffix in GENERATED_SUFFIXES
-            or path.name == ".coverage"
-        )
-
     async def _cleanup_generated_untracked(self, workdir: str) -> None:
         output = await self._git(workdir, "ls-files", "--others", "--exclude-standard", "-z")
         for name in output.split("\0"):
-            if not name or not self._is_generated(name):
+            if not name or not is_generated(name):
                 continue
             target = Path(workdir, name)
             if target.is_dir():

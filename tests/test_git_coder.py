@@ -89,6 +89,25 @@ class FixAfterRetestCoder(FileWritingCoder):
         )
 
 
+class NoChangeThenFixRetestCoder(FixAfterRetestCoder):
+    async def modify(self, requirement, plan, workdir, feedback=""):
+        self.calls += 1
+        self.feedback.append(feedback)
+        if self.calls == 1:
+            Path(workdir, "feature.txt").write_text("broken\n", encoding="utf-8")
+            summary = "Created initial implementation"
+        elif self.calls == 2:
+            summary = "Validated existing implementation"
+        else:
+            Path(workdir, "feature.txt").write_text("fixed\n", encoding="utf-8")
+            summary = "Repaired failing implementation"
+        return ModelResult(
+            content=CodeChangeSummary(summary=summary, tests=[]),
+            provider="fake_coder",
+            model="test",
+        )
+
+
 class RecordingScheduler:
     def __init__(self, delegate):
         self.delegate = delegate
@@ -280,6 +299,50 @@ def test_failed_retest_feedback_reaches_revision_coder(tmp_path: Path):
     assert coder.calls == 2
     assert "Latest quality retest failed" in coder.feedback[1]
     assert "feature.txt" in coder.feedback[1]
+
+
+def test_failed_retest_does_not_accept_empty_model_change_over_dirty_worktree(tmp_path: Path):
+    repository = tmp_path / "authority"
+    repository.mkdir()
+    git(repository, "init", "-b", "main")
+    git(repository, "config", "user.email", "test@taskhub.local")
+    git(repository, "config", "user.name", "TaskHub Test")
+    (repository / "feature.txt").write_text("base\n", encoding="utf-8")
+    git(repository, "add", "feature.txt")
+    git(repository, "commit", "-m", "initial")
+    projects_file = tmp_path / "projects.json"
+    projects_file.write_text(
+        json.dumps({"projects": [{
+            "id": "demo",
+            "repository": str(repository),
+            "test_commands": [[
+                "python3", "-c",
+                "from pathlib import Path; "
+                "assert Path('feature.txt').read_text() == 'fixed\\n'",
+            ]],
+        }]}),
+        encoding="utf-8",
+    )
+    coder = NoChangeThenFixRetestCoder()
+    worker = GitCodingWorker(
+        ProjectRegistry(str(projects_file)),
+        GitWorkspaceManager(str(tmp_path / "workspaces")),
+        coder,
+        ArtifactStore(str(tmp_path / "artifacts")),
+    )
+    plan = Plan(summary="Plan", steps=["Repair"], acceptance=["Test passes"])
+
+    with pytest.raises(WorkerExecutionError):
+        asyncio.run(worker.execute("run-empty-repair", "demo", "Repair", plan))
+    result = asyncio.run(worker.execute(
+        "run-empty-repair", "demo", "Repair", plan, revision=1,
+        feedback="Run the formatter fix",
+    ))
+
+    assert result.tests[0].exit_code == 0
+    assert coder.calls == 3
+    assert "Latest quality retest failed" in coder.feedback[1]
+    assert "produced no Git changes" in coder.feedback[2]
 
 
 def test_git_worker_does_not_commit_test_generated_files(tmp_path: Path):
