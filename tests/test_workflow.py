@@ -523,6 +523,34 @@ def test_publication_failure_blocks_with_reason_and_can_retry():
     asyncio.run(scenario())
 
 
+def test_publication_failure_can_return_to_implementation_with_context():
+    async def scenario():
+        provider = RecordingProvider()
+        worker = RevisionRecordingWorker()
+        publisher = RecoveringPublisher()
+        graph = build_main_graph(provider, worker, InMemorySaver(), publisher)
+        service = RunService(graph)
+        blocked = await service.start(
+            StartRunRequest(project_id="shop", requirement="Resolve publication conflict")
+        )
+
+        assert blocked.stage == Stage.MERGE_BLOCKED
+        assert blocked.pending_action["choices"] == ["retry", "revise", "cancel"]
+        completed = await service.resume(
+            blocked.run_id,
+            ResumeRequest(decision="revise", comment="Preserve concurrent authority changes"),
+        )
+
+        assert completed.status == RunStatus.COMPLETED
+        assert completed.revision_count == 1
+        assert worker.calls == 2
+        assert "Publication recovery required" in worker.revisions[1][1]
+        assert "temporary publication failure" in worker.revisions[1][1]
+        assert "Preserve concurrent authority changes" in worker.revisions[1][1]
+
+    asyncio.run(scenario())
+
+
 def test_supervisor_rejection_automatically_returns_to_worker():
     async def scenario():
         provider = RejectOnceProvider()

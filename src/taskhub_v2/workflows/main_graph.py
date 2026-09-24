@@ -24,6 +24,10 @@ from taskhub_v2.workflows.implementation import (
 )
 from taskhub_v2.workflows.intake import build_intake_graph
 from taskhub_v2.workflows.planning import build_planning_graph
+from taskhub_v2.workflows.publication_recovery import (
+    recover_publication,
+    route_publication_recovery,
+)
 from taskhub_v2.workflows.review import build_review_graph
 from taskhub_v2.workflows.risk import build_risk_graph
 from taskhub_v2.workflows.risk_recovery import recover_risk, route_risk_recovery
@@ -162,13 +166,16 @@ def build_main_graph(
                     detail=detail,
                     responsible_node=implementation.execution_node or "publisher",
                     model=(implementation.model_run.model if implementation.model_run else "none"),
-                    recommended_action="retry publication or cancel the task",
+                    recommended_action=(
+                        "retry publication, return to implementation to resolve the conflict, "
+                        "or cancel the task"
+                    ),
                     retry_after_seconds=max(0, int(getattr(exc, "retry_after_seconds", 0))),
                 ),
                 "pending_action": {
                     "type": "publication_recovery",
                     "title": "Publication needs attention",
-                    "choices": ["retry", "cancel"],
+                    "choices": ["retry", "revise", "cancel"],
                 },
                 "timeline": event(Stage.MERGE_BLOCKED, "Publication blocked", "publisher", detail),
             }
@@ -183,30 +190,6 @@ def build_main_graph(
                 "Published to authority",
                 "publisher",
                 f"{result.authority_ref} -> {result.published_commit[:12]}",
-            ),
-        }
-
-    async def recover_publication(state: CodingState) -> dict:
-        response = interrupt(
-            {
-                "type": "publication_recovery",
-                "run_id": state["run_id"],
-                "reason": state.get("blocking_reason"),
-                "choices": ["retry", "cancel"],
-            }
-        )
-        decision = response.get("decision") if isinstance(response, dict) else response
-        retry = decision == "retry"
-        return {
-            "decision": decision,
-            "pending_action": None,
-            "blocking_reason": None if retry else state.get("blocking_reason"),
-            "current_stage": Stage.MERGING.value if retry else Stage.REJECTED.value,
-            "status": RunStatus.RUNNING.value if retry else RunStatus.REJECTED.value,
-            "timeline": event(
-                Stage.MERGE_BLOCKED,
-                "Publication retry requested" if retry else "Run cancelled",
-                "owner",
             ),
         }
 
@@ -263,9 +246,6 @@ def build_main_graph(
 
     def route_publication(state: CodingState) -> str:
         return "recovery" if state.get("status") == RunStatus.BLOCKED else "done"
-
-    def route_publication_recovery(state: CodingState) -> str:
-        return "publication" if state.get("decision") == "retry" else "reject"
 
     builder = StateGraph(CodingState)
     builder.add_node("intake", build_intake_graph())
@@ -394,7 +374,7 @@ def build_main_graph(
     builder.add_conditional_edges(
         "publication_recovery",
         route_publication_recovery,
-        {"publication": "publication", "reject": "reject"},
+        {"publication": "publication", "revision": "revision", "reject": "reject"},
     )
     builder.add_edge("reject", END)
     return builder.compile(checkpointer=checkpointer)

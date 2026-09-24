@@ -236,6 +236,7 @@ function render(run) {
     byId("action-title").textContent = "发布已阻塞";
     byId("action-detail").textContent = run.blocking_reason?.detail || "发布环境需要处理";
     byId("approve").textContent = "重新检查并发布";
+    byId("revise").textContent = "返回实施解决冲突";
     byId("reject").textContent = "取消任务";
   } else if (pendingAction?.type === "revision_limit") {
     const missing = run.supervision?.missing_evidence || [];
@@ -287,7 +288,8 @@ function render(run) {
   byId("reject").classList.toggle("hidden", !choices.some((choice) =>
     ["reject", "cancel"].includes(choice)));
   byId("revise").classList.toggle(
-    "hidden", pendingAction?.type !== "acceptance_recovery" || !choices.includes("revise")
+    "hidden", !["acceptance_recovery", "publication_recovery"].includes(pendingAction?.type)
+      || !choices.includes("revise")
   );
   byId("manual").classList.toggle(
     "hidden", pendingAction?.type !== "revision_limit"

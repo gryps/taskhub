@@ -357,7 +357,7 @@ def test_task_center_publication_recovery_does_not_repeat_completed_work():
         base = f"/api/runs/{run_id}"
         blocked = wait_for_run(client, run_id, lambda item: bool(item["blocking_reason"]))
         assert blocked["blocking_reason"]["detail"] == "temporary publication failure"
-        assert blocked["pending_action"]["choices"] == ["retry", "cancel"]
+        assert blocked["pending_action"]["choices"] == ["retry", "revise", "cancel"]
         assert blocked["workflow_steps"][7]["state"] == "blocked"
         assert client.get("/api/runs?status=blocked").json()["total"] == 1
         assert (
