@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import subprocess
 
 import pytest
 
@@ -176,6 +177,57 @@ def test_project_acceptance_checkpoint_is_invalidated_by_candidate_change(tmp_pa
     )
 
     assert len(scheduler.calls) == 2
+
+
+def test_project_acceptance_checkpoint_ignores_only_browser_contract_change(tmp_path):
+    worker, scheduler, repository = gateway(tmp_path)
+    subprocess.run(["git", "init"], cwd=repository, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "taskhub@test.invalid"],
+        cwd=repository,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "TaskHub Test"], cwd=repository, check=True
+    )
+    (repository / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    contract = repository / ".taskhub" / "acceptance.yaml"
+    contract.parent.mkdir()
+    contract.write_text("command: [playwright, test]\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+    first_commit = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=repository, text=True
+    ).strip()
+
+    asyncio.run(
+        worker.verify(
+            "run-contract", "shop", implementation(repository, commit=first_commit)
+        )
+    )
+    contract.write_text("command: [playwright, test, --workers=1]\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "browser contract only"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+    second_commit = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=repository, text=True
+    ).strip()
+
+    second = asyncio.run(
+        worker.verify("run-contract", "shop", implementation(repository, commit=second_commit))
+    )
+
+    assert len(scheduler.calls) == 1
+    assert "unchanged project acceptance scope" in second.evidence[0].summary
 
 
 def test_database_acceptance_records_isolated_database_evidence(tmp_path):

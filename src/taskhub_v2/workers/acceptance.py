@@ -12,14 +12,11 @@ from taskhub_v2.browser.contract import PREPRODUCTION_EXAMPLE, load_acceptance_s
 from taskhub_v2.browser.reports import setup_failure_detail, validate_junit
 from taskhub_v2.domain.models import AcceptanceEvidence, AcceptanceResult
 from taskhub_v2.projects import ProjectRegistry
+from taskhub_v2.workers import acceptance_checkpoint as checkpoint
 from taskhub_v2.workers import contract_acceptance as evidence
 from taskhub_v2.workers import supplemental_acceptance
-from taskhub_v2.workers.acceptance_checkpoint import (
-    acceptance_checkpoint_fingerprint,
-    load_acceptance_checkpoint,
-    write_acceptance_checkpoint,
-)
 from taskhub_v2.workers.acceptance_support import artifact_kind, is_browser_contract
+
 
 class AcceptanceExecutionError(RuntimeError):
     reason = "acceptance_failed"
@@ -93,14 +90,17 @@ class ProjectAcceptanceGateway:
         if project.acceptance_commands:
             if not implementation.workspace:
                 raise AcceptanceExecutionError("acceptance requires a Git workspace")
-            checkpoint_fingerprint = acceptance_checkpoint_fingerprint(
+            checkpoint_fingerprint = checkpoint.acceptance_checkpoint_fingerprint(
                 project, implementation
             )
-            checkpoint = load_acceptance_checkpoint(
-                self.artifacts, run_id, checkpoint_fingerprint
+            saved_checkpoint = checkpoint.load_acceptance_checkpoint(
+                self.artifacts,
+                run_id,
+                checkpoint_fingerprint,
+                {checkpoint.legacy_acceptance_checkpoint_fingerprint(project, implementation)},
             )
-            if checkpoint:
-                records.extend(checkpoint)
+            if saved_checkpoint:
+                records.extend(saved_checkpoint)
             else:
                 scheduled = await self.scheduler.run(
                     f"{run_id}-acceptance",
@@ -148,7 +148,7 @@ class ProjectAcceptanceGateway:
                 records.extend(project_evidence)
                 if failed:
                     raise AcceptanceExecutionError(failed[0].output_tail)
-                write_acceptance_checkpoint(
+                checkpoint.write_acceptance_checkpoint(
                     self.artifacts,
                     run_id,
                     checkpoint_fingerprint,
