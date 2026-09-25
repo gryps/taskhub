@@ -105,8 +105,20 @@ def test_attached_project_quality_can_be_repaired_in_place(tmp_path, width):
 
         expect(page.locator("#project-preflight-state")).to_have_text("1 项阻塞")
         page.locator("#project-repository-disclosure > summary").click()
+        expect(page.locator("#project-repository-disclosure")).to_contain_text(
+            "项目授权节点 ID（启用时必填）"
+        )
         page.locator("#project-quality-tests").fill("python3 -m pytest -q")
         page.locator("#project-quality-timeout").fill("1800")
+        page.locator("#project-quality-windows-commands").fill(
+            "powershell -File scripts/windows-acceptance.ps1"
+        )
+        page.locator("#save-project-quality").click()
+        expect(page.locator("#project-quality-message")).to_have_text(
+            "启用 Windows 实机测试时，必须填写当前项目获授权的节点 ID"
+        )
+        assert page.evaluate("document.activeElement.id") == "project-quality-windows-nodes"
+        page.locator("#project-quality-windows-commands").fill("")
         page.locator("#save-project-quality").click()
         expect(page.locator("#project-quality-message")).to_have_text(
             "质量配置已保存，项目预检已刷新"

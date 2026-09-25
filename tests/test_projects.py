@@ -382,6 +382,34 @@ def test_project_quality_settings_reject_an_invalid_command(tmp_path: Path):
     assert "测试命令格式错误" in response.json()["detail"]
 
 
+def test_project_quality_requires_explicit_authorized_windows_nodes(tmp_path: Path):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+        )
+    )
+    app.state.projects.add(ProjectDefinition(id="shop", repository=str(repo)))
+
+    with TestClient(app) as client:
+        login = client.post("/api/auth/login", json={"token": "admin-secret"})
+        response = client.put(
+            "/api/projects/shop/quality",
+            headers={"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]},
+            json={
+                "test_commands": "python3 -m pytest",
+                "windows_test_commands": "powershell -File windows-test.ps1",
+                "windows_test_node_ids": "",
+            },
+        )
+
+    assert response.status_code == 422
+    assert "必须显式填写当前项目获授权的节点 ID" in response.json()["detail"]
+
+
 def test_project_preflight_reports_a_ready_local_delivery_path(tmp_path: Path):
     projects_file = tmp_path / "projects.json"
     repo = repository(tmp_path / "shop")
@@ -524,6 +552,38 @@ def test_project_preflight_rejects_unavailable_windows_test_target(tmp_path: Pat
     assert report["ready"] is False
     assert acceptance["status"] == "failed"
     assert "windows-pilot-01" in acceptance["detail"]
+
+
+def test_project_preflight_rejects_legacy_unbound_windows_test_suite(tmp_path: Path):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    add_remote(repo, tmp_path / "shop.git")
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+        )
+    )
+    app.state.projects.add(
+        ProjectDefinition(
+            id="shop",
+            repository=str(repo),
+            authority_remote="origin",
+            test_commands=[["python3", "-m", "pytest"]],
+            windows_test_suite=WindowsTestSuiteDefinition(
+                commands=[["powershell", "-File", "windows-test.ps1"]]
+            ),
+        )
+    )
+
+    with TestClient(app) as client:
+        client.post("/api/auth/login", json={"token": "admin-secret"})
+        report = client.get("/api/projects/shop/preflight").json()
+
+    acceptance = next(item for item in report["checks"] if item["id"] == "acceptance")
+    assert report["ready"] is False
+    assert "未显式绑定当前项目获授权的目标节点" in acceptance["detail"]
 
 
 def test_project_repository_rejects_a_password_in_the_remote_url(tmp_path: Path):

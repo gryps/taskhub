@@ -217,9 +217,9 @@
                 <label class="wide">验收命令（可选）<textarea id="project-quality-acceptance" maxlength="4000" spellcheck="false" placeholder="例如：npm run test:e2e"></textarea></label>
                 <label>单条命令超时（秒）<input id="project-quality-timeout" type="number" min="1" max="3600" step="1" value="600"><span class="field-help">大型项目建议 1800 秒；超时后会终止命令及其子进程。</span></label>
                 <label class="check wide"><input id="project-quality-test-database" type="checkbox"> 验收需要隔离 PostgreSQL 测试数据库</label>
-                <div class="wide section-head"><div><h5>Windows 实机测试集</h5><p>填写命令即启用；由 TaskHub 调度到匹配的 Windows 节点并回收测试证据。</p></div></div>
+                <div class="wide section-head"><div><h5>Windows 实机测试集</h5><p>填写命令即启用；只调度到当前项目显式绑定且已授权的外部 Windows 节点。</p></div></div>
                 <label class="wide">Windows 测试命令（可选）<textarea id="project-quality-windows-commands" maxlength="4000" spellcheck="false" placeholder="例如：powershell -NoProfile -File scripts/windows-acceptance.ps1"></textarea><span class="field-help">每行一条命令。依赖应使用项目缓存，避免每次重新下载。</span></label>
-                <label>指定节点 ID（可选）<textarea id="project-quality-windows-nodes" maxlength="1500" spellcheck="false" placeholder="例如：windows-pilot-01"></textarea><span class="field-help">每行一个；留空时选择任一具备 Windows GUI 能力的在线节点。</span></label>
+                <label>项目授权节点 ID（启用时必填）<textarea id="project-quality-windows-nodes" maxlength="1500" spellcheck="false" placeholder="例如：windows-pilot-01"></textarea><span class="field-help">每行一个。TaskHub 不自动发现或借用其他项目的 Windows 机器。</span></label>
                 <label>回收产物路径（可选）<textarea id="project-quality-windows-artifacts" maxlength="4000" spellcheck="false" placeholder="例如：test-results/windows"></textarea><span class="field-help">工作区相对路径，每行一个；配置后缺失产物会阻止验收。</span></label>
                 <label class="check wide"><input id="project-quality-windows-browser" type="checkbox"> 需要登录态浏览器、Chromium、Edge、截图与追踪能力</label>
               </div>
@@ -714,7 +714,7 @@
   </main>
   <script src="/static/revision-center.js?v=1"></script>
   <script src="/static/capability-center.js?v=1"></script>
-  <script src="/static/app.js?v=30"></script>
+  <script src="/static/app.js?v=31"></script>
   <script src="/static/task-center.js?v=15"></script>
   <script src="/static/resource-center.js?v=40"></script>
   <script src="/static/onboarding.js?v=3"></script>

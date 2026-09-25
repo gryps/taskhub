@@ -99,12 +99,17 @@ def windows_test_suite(payload: ProjectQualityRequest) -> WindowsTestSuiteDefini
     commands = parse_test_commands(payload.windows_test_commands or "")
     if not commands:
         return None
+    node_ids = set(parse_lines(payload.windows_test_node_ids or ""))
+    if not node_ids:
+        raise ValueError(
+            "启用 Windows 实机测试时，必须显式填写当前项目获授权的节点 ID"
+        )
     capabilities = {"windows_gui"}
     if payload.windows_test_browser:
         capabilities.update(WINDOWS_BROWSER_CAPABILITIES)
     return WindowsTestSuiteDefinition(
         commands=commands,
-        node_ids=set(parse_lines(payload.windows_test_node_ids or "")),
+        node_ids=node_ids,
         required_capabilities=capabilities,
         artifact_paths=parse_lines(payload.windows_test_artifact_paths or ""),
     )

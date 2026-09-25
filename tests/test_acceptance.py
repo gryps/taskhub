@@ -54,7 +54,13 @@ class RecordingScheduler:
 
 
 def gateway(
-    tmp_path, exit_code=0, *, test_database=False, windows_suite=False, windows_browser=False
+    tmp_path,
+    exit_code=0,
+    *,
+    test_database=False,
+    windows_suite=False,
+    windows_browser=False,
+    unbound_windows=False,
 ):
     repository = tmp_path / "repo"
     repository.mkdir()
@@ -78,7 +84,7 @@ def gateway(
                         "windows_test_suite": (
                             {
                                 "commands": [["powershell", "-File", "windows-test.ps1"]],
-                                "node_ids": ["windows-01"],
+                                "node_ids": [] if unbound_windows else ["windows-01"],
                                 "required_capabilities": (
                                     ["windows_gui", "playwright"]
                                     if windows_browser
@@ -272,6 +278,26 @@ def test_windows_test_suite_targets_configured_node_and_records_evidence(tmp_pat
             },
         },
     )
+
+
+def test_windows_test_suite_refuses_unbound_global_node_fallback(tmp_path):
+    worker, scheduler, repository = gateway(
+        tmp_path, windows_suite=True, unbound_windows=True
+    )
+
+    with pytest.raises(
+        AcceptanceExecutionError,
+        match="未显式绑定当前项目获授权的节点",
+    ):
+        asyncio.run(
+            worker.verify(
+                "run-windows-unbound",
+                "shop",
+                implementation(repository, commit="abc123"),
+            )
+        )
+
+    assert scheduler.calls == []
 
 
 def test_browser_windows_suite_uses_browser_acceptance_nodes(tmp_path):

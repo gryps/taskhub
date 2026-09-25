@@ -1,6 +1,17 @@
 # TaskHub V2 Memory Notes
 
-Updated: 2026-09-22
+Updated: 2026-09-25
+
+## Project-Owned External Windows Acceptance
+
+- Windows 实机测试资源不是 TaskHub 内置能力，也不属于可自动借用的全局主机池。项目启用
+  Windows 测试命令时必须显式填写该项目获授权的节点 ID；缺失绑定会在保存、项目预检和
+  验收执行三层被拒绝，历史空绑定配置也不会回退到“任一 Windows 节点”。
+- 开发流程将该字段标为“项目授权节点 ID（启用时必填）”，并说明 TaskHub 不自动发现或
+  借用其他项目的机器。实现不包含任何具体 IP、SSH 身份或项目专属默认值；静态标记为
+  `app.js?v=31`。验证通过：`369 passed, 26 skipped`、React/Vite 生产构建、Ruff、
+  JavaScript 语法和差异检查；真实 Chrome 在 1440、768、390 像素验证空绑定提示、焦点
+  转移、正常保存和页面级无横向溢出。
 
 ## Phase 7 Single-Seed Backend and Quality Baseline
 

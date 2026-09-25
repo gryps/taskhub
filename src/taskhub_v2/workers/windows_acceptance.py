@@ -16,6 +16,8 @@ async def verify_windows_suite(
     suite: WindowsTestSuiteDefinition | None = project.windows_test_suite
     if suite is None:
         return None
+    if not suite.node_ids:
+        raise error_type("Windows 实机测试未显式绑定当前项目获授权的节点")
     if not implementation.workspace or not implementation.commit:
         raise error_type("Windows 实机测试需要已提交的 Git 工作区")
     browser_suite = "playwright" in suite.required_capabilities
@@ -28,7 +30,7 @@ async def verify_windows_suite(
         implementation.workspace.path,
         workload="browser_acceptance" if browser_suite else "acceptance",
         required_capabilities_override=suite.required_capabilities,
-        eligible_node_ids=suite.node_ids or None,
+        eligible_node_ids=suite.node_ids,
         git_commit=implementation.commit,
         artifact_paths=suite.artifact_paths,
         execution_environment=(

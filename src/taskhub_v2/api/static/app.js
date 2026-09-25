@@ -999,6 +999,13 @@ function renderProjectRepository(project) {
 async function saveProjectQuality() {
   if (!currentProjectId) return;
   const button = byId("save-project-quality");
+  const windowsCommands = byId("project-quality-windows-commands").value.trim();
+  const windowsNodeIds = byId("project-quality-windows-nodes").value.trim();
+  if (windowsCommands && !windowsNodeIds) {
+    byId("project-quality-message").textContent = "启用 Windows 实机测试时，必须填写当前项目获授权的节点 ID";
+    byId("project-quality-windows-nodes").focus();
+    return;
+  }
   button.disabled = true;
   byId("project-quality-message").textContent = "正在保存质量配置";
   try {

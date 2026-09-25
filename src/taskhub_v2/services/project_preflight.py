@@ -174,28 +174,35 @@ class ProjectPreflightService:
         windows_suite_error = ""
         if project.windows_test_suite:
             suite = project.windows_test_suite
-            windows_workload = (
-                "browser_acceptance"
-                if "playwright" in suite.required_capabilities
-                else "acceptance"
-            )
-            eligible_windows = [
-                item
-                for item in online
-                if windows_workload in item.get("workloads", [])
-                and (not suite.node_ids or item.get("node_id") in suite.node_ids)
-            ]
-            compatible_windows = [
-                item
-                for item in eligible_windows
-                if all(
-                    item.get("capabilities", {}).get(capability)
-                    for capability in suite.required_capabilities
+            if not suite.node_ids:
+                windows_suite_error = (
+                    "Windows 实机测试集未显式绑定当前项目获授权的目标节点"
                 )
-            ]
-            if not compatible_windows:
-                target = "、".join(sorted(suite.node_ids)) or "任一 Windows 节点"
-                windows_suite_error = f"Windows 实机测试集没有可用目标节点（{target}）"
+            else:
+                windows_workload = (
+                    "browser_acceptance"
+                    if "playwright" in suite.required_capabilities
+                    else "acceptance"
+                )
+                eligible_windows = [
+                    item
+                    for item in online
+                    if windows_workload in item.get("workloads", [])
+                    and item.get("node_id") in suite.node_ids
+                ]
+                compatible_windows = [
+                    item
+                    for item in eligible_windows
+                    if all(
+                        item.get("capabilities", {}).get(capability)
+                        for capability in suite.required_capabilities
+                    )
+                ]
+                if not compatible_windows:
+                    target = "、".join(sorted(suite.node_ids))
+                    windows_suite_error = (
+                        f"Windows 实机测试集没有可用目标节点（{target}）"
+                    )
         missing_capabilities = sorted(missing_capabilities)
         acceptance_failed = bool(
             missing_capabilities or browser_contract_error or windows_suite_error
@@ -225,7 +232,12 @@ class ProjectPreflightService:
                 remediation=(
                     "修正 .taskhub/acceptance.yaml。"
                     if browser_contract_error
-                    else "启用具备所需能力和工作负载的验收节点。"
+                    else (
+                        "在项目质量配置中显式绑定已授权的 Windows 节点。"
+                        if project.windows_test_suite
+                        and not project.windows_test_suite.node_ids
+                        else "启用项目已授权且具备所需能力和工作负载的验收节点。"
+                    )
                 ),
                 target="test-environment",
             )
