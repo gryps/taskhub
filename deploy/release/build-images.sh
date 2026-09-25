@@ -12,6 +12,10 @@ if [ -z "$commit" ]; then
 fi
 prefix=""
 mirror_args=""
+pull_args=""
+if [ "${TASKHUB_PULL_BASE_IMAGES:-false}" = "true" ]; then
+  pull_args="--pull"
+fi
 if [ -n "$registry" ]; then
   prefix="${registry%/}/"
 fi
@@ -40,7 +44,7 @@ docker buildx version >/dev/null
 for specification in "Dockerfile|$seed_image" "deploy/node/Dockerfile|$node_image"; do
   dockerfile=${specification%%|*}
   image=${specification#*|}
-  docker buildx build --load --pull --provenance=false \
+  docker buildx build --load $pull_args --provenance=false \
     --platform "$platform" \
     --build-arg "TASKHUB_VERSION=$version" \
     --build-arg "TASKHUB_COMMIT=$commit" \

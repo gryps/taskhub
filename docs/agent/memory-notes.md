@@ -12,6 +12,9 @@ Updated: 2026-09-25
   `app.js?v=31`。验证通过：`369 passed, 26 skipped`、React/Vite 生产构建、Ruff、
   JavaScript 语法和差异检查；真实 Chrome 在 1440、768、390 像素验证空绑定提示、焦点
   转移、正常保存和页面级无横向溢出。
+- 跨平台镜像构建默认复用本机 BuildKit 与基础镜像缓存，不再为每次源码发布固定执行
+  `--pull`。只有显式设置 `TASKHUB_PULL_BASE_IMAGES=true` 才刷新基础镜像，避免未变化
+  的依赖重复下载，同时保留计划性安全刷新入口。
 
 ## Phase 7 Single-Seed Backend and Quality Baseline
 

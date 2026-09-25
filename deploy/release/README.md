@@ -33,6 +33,9 @@ are not mounted into worker containers.
 
 Build local images with `build-images.sh` or `build-images.ps1`. Set
 `TASKHUB_REGISTRY` and `TASKHUB_PUSH=true` to publish the two TaskHub images.
+Builds reuse the local BuildKit/base-image cache by default. Set
+`TASKHUB_PULL_BASE_IMAGES=true` only when an intentional base-image refresh is
+required; routine source releases must not re-download unchanged dependencies.
 The Dockerfiles use the official npm and Debian repositories by default;
 constrained networks may pass `NPM_REGISTRY`, `DEBIAN_MIRROR` and
 `DEBIAN_SECURITY_MIRROR` build arguments for trusted mirrors. npm package

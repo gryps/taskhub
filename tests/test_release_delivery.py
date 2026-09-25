@@ -59,6 +59,16 @@ def test_release_image_builds_forward_optional_outbound_proxy():
         assert "HTTPS_PROXY" in script
 
 
+def test_release_image_builds_reuse_cache_unless_pull_is_explicit():
+    shell = (RELEASE / "build-images.sh").read_text(encoding="utf-8")
+    powershell = (RELEASE / "build-images.ps1").read_text(encoding="utf-8-sig")
+
+    for script in (shell, powershell):
+        assert "TASKHUB_PULL_BASE_IMAGES" in script
+        assert "--pull" in script
+        assert "buildx build --load --pull" not in script
+
+
 def test_release_compose_is_immutable_and_keeps_postgres_private():
     payload = yaml.safe_load((RELEASE / "compose.yaml").read_text(encoding="utf-8"))
     controller = payload["services"]["controller"]

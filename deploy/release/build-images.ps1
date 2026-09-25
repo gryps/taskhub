@@ -7,6 +7,8 @@ $Version = if ($env:TASKHUB_VERSION) { $env:TASKHUB_VERSION } else { "0.1.0-alph
 $CodexVersion = if ($env:CODEX_VERSION) { $env:CODEX_VERSION } else { "0.153.4" }
 $Platform = if ($env:TASKHUB_PLATFORM) { $env:TASKHUB_PLATFORM } else { "linux/amd64" }
 $Registry = if ($env:TASKHUB_REGISTRY) { $env:TASKHUB_REGISTRY.TrimEnd('/') + "/" } else { "" }
+$PullArgs = @()
+if ($env:TASKHUB_PULL_BASE_IMAGES -eq "true") { $PullArgs += "--pull" }
 $MirrorArgs = @()
 if ($env:TASKHUB_BUILD_PROXY) {
     $MirrorArgs += @("--build-arg", "HTTP_PROXY=$($env:TASKHUB_BUILD_PROXY)")
@@ -34,7 +36,7 @@ foreach ($Build in @(
     @{ File = "Dockerfile"; Image = $SeedImage },
     @{ File = "deploy/node/Dockerfile"; Image = $NodeImage }
 )) {
-    docker buildx build --load --pull --provenance=false --platform $Platform `
+    docker buildx build --load @PullArgs --provenance=false --platform $Platform `
         --build-arg "TASKHUB_VERSION=$Version" `
         --build-arg "TASKHUB_COMMIT=$Commit" `
         --build-arg "CODEX_VERSION=$CodexVersion" `
