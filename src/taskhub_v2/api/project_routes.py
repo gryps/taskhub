@@ -95,15 +95,12 @@ WINDOWS_BROWSER_CAPABILITIES = {
 }
 
 
-def windows_test_suite(payload: ProjectQualityRequest) -> WindowsTestSuiteDefinition | None:
+def windows_test_suite(payload: ProjectQualityRequest, node_ids: set[str]):
     commands = parse_test_commands(payload.windows_test_commands or "")
     if not commands:
         return None
-    node_ids = set(parse_lines(payload.windows_test_node_ids or ""))
     if not node_ids:
-        raise ValueError(
-            "启用 Windows 实机测试时，必须显式填写当前项目获授权的节点 ID"
-        )
+        raise ValueError("启用 Windows 实机测试时，必须显式填写当前项目获授权的节点 ID")
     capabilities = {"windows_gui"}
     if payload.windows_test_browser:
         capabilities.update(WINDOWS_BROWSER_CAPABILITIES)
@@ -126,6 +123,7 @@ def project_view(item: ProjectDefinition, registry=None) -> dict:
         "acceptance_commands": item.acceptance_commands,
         "test_timeout_seconds": item.test_timeout_seconds,
         "test_database": "test_database" in item.acceptance_capabilities,
+        "windows_acceptance_node_ids": sorted(item.windows_acceptance_node_ids),
         "windows_test_suite": (
             {
                 **item.windows_test_suite.model_dump(
@@ -270,8 +268,13 @@ async def update_project_quality(
 ) -> dict:
     try:
         project = request.app.state.projects.get(project_id)
+        windows_node_ids = (
+            set(parse_lines(payload.windows_test_node_ids or ""))
+            if payload.windows_test_node_ids is not None
+            else project.windows_acceptance_node_ids
+        )
         suite = (
-            windows_test_suite(payload)
+            windows_test_suite(payload, windows_node_ids)
             if payload.windows_test_commands is not None
             else project.windows_test_suite
         )
@@ -283,6 +286,7 @@ async def update_project_quality(
                     "acceptance_capabilities": (
                         {"test_database"} if payload.test_database else set()
                     ),
+                    "windows_acceptance_node_ids": windows_node_ids,
                     "test_timeout_seconds": (
                         payload.test_timeout_seconds
                         if payload.test_timeout_seconds is not None

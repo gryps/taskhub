@@ -54,6 +54,7 @@ class ProjectRegistry:
         return normalized
 
     def update(self, project: ProjectDefinition) -> ProjectDefinition:
+        project = ProjectDefinition.model_validate(project.model_dump())
         with self._lock:
             projects = self.list()
             if not any(item.id == project.id for item in projects):

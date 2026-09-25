@@ -1,6 +1,5 @@
 import asyncio
 import json
-import subprocess
 from pathlib import Path
 from uuid import uuid4
 
@@ -164,9 +163,13 @@ class ProjectAcceptanceGateway:
                 raise AcceptanceExecutionError("browser acceptance requires a committed workspace")
             contract = load_acceptance_contract(implementation.workspace.path)
             suite = load_acceptance_suite(implementation.workspace.path, contract)
-            actual_commit = _browser_acceptance_commit(
+            actual_commit = support.browser_acceptance_commit(
                 implementation.workspace.path, implementation.commit
             )
+            if actual_commit is None:
+                raise AcceptanceExecutionError(
+                    "browser acceptance commit does not match workspace HEAD"
+                )
             if project.test_environment and contract.target != "preproduction":
                 raise PreproductionContractRequiredError(
                     "项目已配置托管预生产环境，验收契约必须使用 target: preproduction，"
@@ -180,8 +183,15 @@ class ProjectAcceptanceGateway:
                     "验收契约要求预生产目标，但项目尚未配置预生产主机"
                 )
             browser_commands = [*contract.setup_commands, contract.command]
+            authorized_windows_nodes = support.authorized_windows_nodes(project)
+            if not authorized_windows_nodes:
+                raise AcceptanceExecutionError(
+                    "浏览器验收未显式绑定当前项目获授权的 Windows 节点"
+                )
             await self.scheduler.preflight_browser(
-                browser_commands, contract.required_capabilities
+                browser_commands,
+                contract.required_capabilities,
+                authorized_windows_nodes,
             )
             preview_id = f"{run_id}-{uuid4().hex[:8]}"
             preview = None
@@ -229,6 +239,7 @@ class ProjectAcceptanceGateway:
                     implementation.workspace.path,
                     workload=contract.workload,
                     required_capabilities_override=contract.required_capabilities,
+                    eligible_node_ids=authorized_windows_nodes,
                     target_url=target_url,
                     git_commit=actual_commit,
                     artifact_paths=contract.required_artifacts,
@@ -376,24 +387,3 @@ async def _wait_for_preproduction(environment, specification, commit: str) -> di
                 last_detail = f"预生产健康检查失败：{type(exc).__name__}"
             await asyncio.sleep(1)
     raise PreproductionVerificationError(last_detail)
-
-
-def _browser_acceptance_commit(worktree: str, expected_commit: str) -> str:
-    actual_commit = subprocess.run(
-        ["git", "-C", worktree, "rev-parse", "--verify", "HEAD^{commit}"],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=15,
-    ).stdout.strip()
-    if actual_commit == expected_commit:
-        return actual_commit
-    ancestor = subprocess.run(
-        ["git", "-C", worktree, "merge-base", "--is-ancestor", expected_commit, actual_commit],
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    if ancestor.returncode == 0:
-        return actual_commit
-    raise AcceptanceExecutionError("browser acceptance commit does not match workspace HEAD")

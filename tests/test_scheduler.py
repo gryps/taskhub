@@ -337,7 +337,13 @@ def test_browser_preflight_does_not_execute_or_reserve_slots(tmp_path):
     scheduler = NodeScheduler(NodeRegistry(str(path)), runner, str(tmp_path / "state.json"))
 
     async def scenario():
-        await scheduler.preflight_browser([["python3", "-m", "pytest"]], {"edge"})
+        await scheduler.preflight_browser(
+            [["python3", "-m", "pytest"]],
+            {"edge"},
+            {"windows-gui-34"},
+        )
+        with pytest.raises(NodeExecutionError, match="Windows 验收节点离线"):
+            await scheduler.preflight_browser([], {"edge"}, {"other-project-node"})
         capabilities["edge"] = False
         with pytest.raises(NodeExecutionError, match="preflight failed: edge"):
             await scheduler.preflight_browser([], {"edge"})

@@ -118,6 +118,7 @@ def test_attached_project_quality_can_be_repaired_in_place(tmp_path, width):
             "启用 Windows 实机测试时，必须填写当前项目获授权的节点 ID"
         )
         assert page.evaluate("document.activeElement.id") == "project-quality-windows-nodes"
+        page.locator("#project-quality-windows-nodes").fill("windows-pilot-01")
         page.locator("#project-quality-windows-commands").fill("")
         page.locator("#save-project-quality").click()
         expect(page.locator("#project-quality-message")).to_have_text(
@@ -125,6 +126,9 @@ def test_attached_project_quality_can_be_repaired_in_place(tmp_path, width):
         )
         expect(page.locator("#project-preflight-state")).to_have_text("可以启动")
         expect(page.locator("#project-quality-timeout")).to_have_value("1800")
+        expect(page.locator("#project-quality-windows-nodes")).to_have_value(
+            "windows-pilot-01"
+        )
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         assert not errors
         browser.close()

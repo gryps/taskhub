@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+NodeId = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_-]{1,63}$")]
 
 
 class Stage(StrEnum):
@@ -143,19 +144,11 @@ class WindowsTestSuiteDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     commands: list[list[str]] = Field(min_length=1, max_length=30)
-    node_ids: set[str] = Field(default_factory=set, max_length=20)
+    node_ids: set[NodeId] = Field(default_factory=set, max_length=20)
     required_capabilities: set[str] = Field(
         default_factory=lambda: {"windows_gui"}, max_length=20
     )
     artifact_paths: list[str] = Field(default_factory=list, max_length=30)
-
-    @field_validator("node_ids")
-    @classmethod
-    def valid_node_ids(cls, value: set[str]) -> set[str]:
-        pattern = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
-        if any(not pattern.fullmatch(item) for item in value):
-            raise ValueError("Windows test node ID is invalid")
-        return value
 
     @field_validator("artifact_paths")
     @classmethod
@@ -183,12 +176,12 @@ class ProjectDefinition(BaseModel):
     test_commands: list[list[str]] = Field(default_factory=list)
     acceptance_commands: list[list[str]] = Field(default_factory=list)
     acceptance_capabilities: set[str] = Field(default_factory=set)
+    windows_acceptance_node_ids: set[NodeId] = Field(default_factory=set, max_length=20)
     windows_test_suite: WindowsTestSuiteDefinition | None = None
     test_environment: TestEnvironmentDefinition | None = None
     test_timeout_seconds: int = Field(default=600, ge=1, le=3600)
     max_revision_attempts: int = Field(default=2, ge=0, le=10)
     scheduling_policy: ProjectSchedulingPolicy = Field(default_factory=ProjectSchedulingPolicy)
-
 
 class Workspace(BaseModel):
     project_id: str

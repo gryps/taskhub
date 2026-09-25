@@ -985,7 +985,9 @@ function renderProjectRepository(project) {
   byId("project-quality-test-database").checked = Boolean(project?.test_database);
   const windowsSuite = project?.windows_test_suite;
   byId("project-quality-windows-commands").value = formatCommands(windowsSuite?.commands);
-  byId("project-quality-windows-nodes").value = (windowsSuite?.node_ids || []).sort().join("\n");
+  byId("project-quality-windows-nodes").value = (
+    project?.windows_acceptance_node_ids || windowsSuite?.node_ids || []
+  ).sort().join("\n");
   byId("project-quality-windows-artifacts").value = (windowsSuite?.artifact_paths || []).join("\n");
   byId("project-quality-windows-browser").checked = Boolean(windowsSuite?.required_capabilities?.includes("playwright"));
   const allowed = Boolean(project && canPermission("projects:manage"));

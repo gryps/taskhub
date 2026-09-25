@@ -8,6 +8,7 @@ from typing import Any
 from taskhub_v2.browser.contract import load_acceptance_contract
 from taskhub_v2.execution.scheduler import required_capabilities
 from taskhub_v2.services.onboarding import model_ready
+from taskhub_v2.workers.acceptance_support import authorized_windows_nodes
 
 
 class ProjectPreflightService:
@@ -148,6 +149,7 @@ class ProjectPreflightService:
         }
         browser_contract_path = Path(project.repository) / ".taskhub" / "acceptance.yaml"
         browser_contract_error = ""
+        browser_binding_error = ""
         if browser_contract_path.is_file():
             try:
                 browser_contract = load_acceptance_contract(project.repository)
@@ -156,19 +158,33 @@ class ProjectPreflightService:
                     | required_capabilities([browser_contract.command])
                     | {"browser_profile", "browser_authenticated"}
                 )
-                browser_nodes = [
-                    item
-                    for item in online
-                    if "browser_acceptance" in item.get("workloads", [])
-                ]
-                missing_capabilities.update(
-                    capability
-                    for capability in browser_required
-                    if not any(
-                        item.get("capabilities", {}).get(capability)
-                        for item in browser_nodes
+                authorized_nodes = authorized_windows_nodes(project)
+                if not authorized_nodes:
+                    browser_binding_error = (
+                        "浏览器验收未显式绑定当前项目获授权的 Windows 节点"
                     )
-                )
+                else:
+                    browser_nodes = [
+                        item
+                        for item in online
+                        if "browser_acceptance" in item.get("workloads", [])
+                        and item.get("node_id") in authorized_nodes
+                    ]
+                    if not browser_nodes:
+                        browser_binding_error = (
+                            "浏览器验收没有可用的项目授权节点（"
+                            + "、".join(sorted(authorized_nodes))
+                            + "）"
+                        )
+                    else:
+                        missing_capabilities.update(
+                            capability
+                            for capability in browser_required
+                            if not any(
+                                item.get("capabilities", {}).get(capability)
+                                for item in browser_nodes
+                            )
+                        )
             except (OSError, ValueError) as exc:
                 browser_contract_error = str(exc)
         windows_suite_error = ""
@@ -205,7 +221,10 @@ class ProjectPreflightService:
                     )
         missing_capabilities = sorted(missing_capabilities)
         acceptance_failed = bool(
-            missing_capabilities or browser_contract_error or windows_suite_error
+            missing_capabilities
+            or browser_contract_error
+            or browser_binding_error
+            or windows_suite_error
         )
         checks.append(
             self._check(
@@ -215,6 +234,8 @@ class ProjectPreflightService:
                 (
                     "浏览器验收契约无效：" + browser_contract_error
                     if browser_contract_error
+                    else browser_binding_error
+                    if browser_binding_error
                     else
                     windows_suite_error
                     if windows_suite_error
@@ -232,6 +253,8 @@ class ProjectPreflightService:
                 remediation=(
                     "修正 .taskhub/acceptance.yaml。"
                     if browser_contract_error
+                    else "在项目质量配置中显式绑定已授权的 Windows 节点。"
+                    if browser_binding_error
                     else (
                         "在项目质量配置中显式绑定已授权的 Windows 节点。"
                         if project.windows_test_suite

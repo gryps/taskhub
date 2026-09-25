@@ -124,7 +124,12 @@ class NodeScheduler:
             if not [node for node in enabled if node.id not in excluded]:
                 raise NodeExecutionError("; ".join(failures))
 
-    async def preflight_browser(self, commands: list[list[str]], capabilities: set[str]) -> None:
+    async def preflight_browser(
+        self,
+        commands: list[list[str]],
+        capabilities: set[str],
+        eligible_node_ids: set[str] | None = None,
+    ) -> None:
         """Check eligibility before creating a preview or uploading a workspace.
 
         Execution checks again when acquiring its slot because health can change.
@@ -145,6 +150,7 @@ class NodeScheduler:
             node
             for node in self.registry.list()
             if node.enabled
+            and (eligible_node_ids is None or node.id in eligible_node_ids)
             and "browser_acceptance" in node.workloads
             and self.failed_until.get(node.id, 0) <= time.time()
         ]

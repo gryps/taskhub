@@ -337,6 +337,7 @@ def test_project_quality_settings_can_be_updated_after_attach(tmp_path: Path):
     assert response.json()["acceptance_commands"] == [["npm", "run", "test:e2e"]]
     assert response.json()["test_timeout_seconds"] == 1800
     assert response.json()["test_database"] is True
+    assert response.json()["windows_acceptance_node_ids"] == ["windows-01", "windows-02"]
     assert response.json()["windows_test_suite"] == {
         "commands": [["powershell", "-File", "scripts/windows-test.ps1"]],
         "node_ids": ["windows-01", "windows-02"],
@@ -356,6 +357,64 @@ def test_project_quality_settings_can_be_updated_after_attach(tmp_path: Path):
     assert stored.acceptance_capabilities == {"test_database"}
     assert stored.test_timeout_seconds == 1800
     assert stored.windows_test_suite is not None
+    assert stored.windows_acceptance_node_ids == {"windows-01", "windows-02"}
+
+
+def test_project_quality_can_bind_browser_node_without_windows_commands(tmp_path: Path):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+        )
+    )
+    app.state.projects.add(ProjectDefinition(id="shop", repository=str(repo)))
+
+    with TestClient(app) as client:
+        login = client.post("/api/auth/login", json={"token": "admin-secret"})
+        response = client.put(
+            "/api/projects/shop/quality",
+            headers={"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]},
+            json={
+                "test_commands": "python3 -m pytest",
+                "windows_test_commands": "",
+                "windows_test_node_ids": "windows-pilot-01",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["windows_test_suite"] is None
+    assert response.json()["windows_acceptance_node_ids"] == ["windows-pilot-01"]
+    assert app.state.projects.get("shop").windows_acceptance_node_ids == {
+        "windows-pilot-01"
+    }
+
+
+def test_project_quality_rejects_invalid_browser_node_without_windows_commands(
+    tmp_path: Path,
+):
+    projects_file = tmp_path / "projects.json"
+    repo = repository(tmp_path / "shop")
+    app = create_app(
+        Settings(
+            admin_token="admin-secret",
+            session_secret="session-secret",
+            projects_file=str(projects_file),
+        )
+    )
+    app.state.projects.add(ProjectDefinition(id="shop", repository=str(repo)))
+
+    with TestClient(app) as client:
+        login = client.post("/api/auth/login", json={"token": "admin-secret"})
+        response = client.put(
+            "/api/projects/shop/quality",
+            headers={"X-CSRF-Token": login.cookies["taskhub_v2_csrf"]},
+            json={"windows_test_commands": "", "windows_test_node_ids": "INVALID HOST"},
+        )
+
+    assert response.status_code == 422
 
 
 def test_project_quality_settings_reject_an_invalid_command(tmp_path: Path):
@@ -476,7 +535,7 @@ def test_project_preflight_explains_blocking_repository_and_quality_failures(
     assert all(item["remediation"] for item in failures.values())
 
 
-def test_project_preflight_reports_missing_browser_contract_capabilities(tmp_path: Path):
+def test_project_preflight_rejects_unavailable_authorized_browser_node(tmp_path: Path):
     projects_file = tmp_path / "projects.json"
     repo = repository(tmp_path / "shop")
     add_remote(repo, tmp_path / "shop.git")
@@ -507,6 +566,7 @@ browsers: [chromium, edge]
             repository=str(repo),
             authority_remote="origin",
             test_commands=[["python3", "-m", "pytest"]],
+            windows_acceptance_node_ids={"windows-pilot-01"},
         )
     )
 
@@ -517,7 +577,7 @@ browsers: [chromium, edge]
     acceptance = next(item for item in report["checks"] if item["id"] == "acceptance")
     assert report["ready"] is False
     assert acceptance["status"] == "failed"
-    assert "windows_gui" in acceptance["detail"]
+    assert "windows-pilot-01" in acceptance["detail"]
 
 
 def test_project_preflight_rejects_unavailable_windows_test_target(tmp_path: Path):

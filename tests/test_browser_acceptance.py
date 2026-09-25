@@ -366,6 +366,7 @@ required_artifacts: [junit.xml]
                         "id": "shop",
                         "repository": str(repository),
                         "acceptance_commands": [["python3", "accept.py"]],
+                        "windows_acceptance_node_ids": ["windows-gui-34"],
                     }
                 ]
             }
@@ -389,8 +390,8 @@ required_artifacts: [junit.xml]
             self.commands = []
             self.acceptance_calls = 0
 
-        async def preflight_browser(self, commands, capabilities):
-            pass
+        async def preflight_browser(self, commands, capabilities, eligible_node_ids):
+            assert eligible_node_ids == {"windows-gui-34"}
 
         async def run(self, job_id, *args, **kwargs):
             if kwargs.get("workload") == "acceptance":
@@ -494,6 +495,7 @@ required_artifacts: [junit.xml]
     projects_file = tmp_path / "projects.json"
     projects_file.write_text(json.dumps({"projects": [{
         "id": "shop", "repository": str(repository),
+        "windows_acceptance_node_ids": ["windows-gui-34"],
         "acceptance_capabilities": ["test_database"],
         "test_environment": {
             "target_url": "https://preprod.example.com",
@@ -519,8 +521,8 @@ required_artifacts: [junit.xml]
         def __init__(self):
             self.calls = []
 
-        async def preflight_browser(self, commands, capabilities):
-            pass
+        async def preflight_browser(self, commands, capabilities, eligible_node_ids):
+            assert eligible_node_ids == {"windows-gui-34"}
 
         async def run(self, job_id, sticky_key, commands, timeout, workdir, **kwargs):
             self.calls.append((commands, kwargs))
@@ -594,7 +596,11 @@ required_artifacts: [junit.xml]
     )
     projects_file = tmp_path / "projects.json"
     projects_file.write_text(
-        json.dumps({"projects": [{"id": "shop", "repository": str(repository)}]}),
+        json.dumps({"projects": [{
+            "id": "shop",
+            "repository": str(repository),
+            "windows_acceptance_node_ids": ["windows-gui-34"],
+        }]}),
         encoding="utf-8",
     )
     monkeypatch.setattr(subprocess, "run", lambda command, **kwargs:
@@ -608,8 +614,8 @@ required_artifacts: [junit.xml]
             pass
 
     class Scheduler:
-        async def preflight_browser(self, commands, capabilities):
-            pass
+        async def preflight_browser(self, commands, capabilities, eligible_node_ids):
+            assert eligible_node_ids == {"windows-gui-34"}
 
         async def run(self, *args, **kwargs):
             empty_junit = b'<testsuites tests="0"></testsuites>'
@@ -656,7 +662,7 @@ required_artifacts: [junit.xml]
 def test_browser_acceptance_allows_workspace_descendant_commit(monkeypatch, tmp_path):
     import subprocess
 
-    from taskhub_v2.workers.acceptance import _browser_acceptance_commit
+    from taskhub_v2.workers.acceptance_support import browser_acceptance_commit
 
     calls = []
 
@@ -670,17 +676,14 @@ def test_browser_acceptance_allows_workspace_descendant_commit(monkeypatch, tmp_
 
     monkeypatch.setattr(subprocess, "run", run)
 
-    assert _browser_acceptance_commit(str(tmp_path), "a" * 40) == "b" * 40
+    assert browser_acceptance_commit(str(tmp_path), "a" * 40) == "b" * 40
     assert calls[-1][-2:] == ["a" * 40, "b" * 40]
 
 
 def test_browser_acceptance_rejects_unrelated_workspace_commit(monkeypatch, tmp_path):
     import subprocess
 
-    from taskhub_v2.workers.acceptance import (
-        AcceptanceExecutionError,
-        _browser_acceptance_commit,
-    )
+    from taskhub_v2.workers.acceptance_support import browser_acceptance_commit
 
     def run(command, **kwargs):
         if command[3] == "rev-parse":
@@ -691,8 +694,7 @@ def test_browser_acceptance_rejects_unrelated_workspace_commit(monkeypatch, tmp_
 
     monkeypatch.setattr(subprocess, "run", run)
 
-    with pytest.raises(AcceptanceExecutionError, match="commit does not match"):
-        _browser_acceptance_commit(str(tmp_path), "a" * 40)
+    assert browser_acceptance_commit(str(tmp_path), "a" * 40) is None
 
 
 def test_project_e2e_suite_definition_is_loaded_and_complete():
