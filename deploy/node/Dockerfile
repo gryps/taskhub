@@ -46,10 +46,12 @@ WORKDIR /opt/taskhub
 ARG PYPI_INDEX_URL=https://pypi.org/simple
 COPY pyproject.toml README.md ./
 RUN --mount=type=cache,id=taskhub-pip,target=/root/.cache/pip,sharing=locked \
-    PIP_INDEX_URL="${PYPI_INDEX_URL}" python -m pip install "hatchling>=1.27" \
+    PIP_INDEX_URL="${PYPI_INDEX_URL}" PIP_CACHE_DIR=/root/.cache/pip PIP_NO_CACHE_DIR=off \
+      python -m pip install "hatchling>=1.27" \
     && mkdir -p src/taskhub_v2 \
     && touch src/taskhub_v2/__init__.py \
-    && PIP_INDEX_URL="${PYPI_INDEX_URL}" python -m pip install --no-build-isolation '.[dev,browser]' \
+    && PIP_INDEX_URL="${PYPI_INDEX_URL}" PIP_CACHE_DIR=/root/.cache/pip PIP_NO_CACHE_DIR=off \
+      python -m pip install --no-build-isolation '.[dev,browser]' \
     && rm -rf src
 COPY src ./src
 RUN python -m pip install --no-deps --no-build-isolation --force-reinstall . \

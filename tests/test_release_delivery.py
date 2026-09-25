@@ -212,6 +212,8 @@ def test_release_images_pin_codex_and_node_has_common_role_tools():
             "python -m pip install"
         )
 
+    assert "PIP_CACHE_DIR=/root/.cache/pip PIP_NO_CACHE_DIR=off" in node
+
     for name in ("build-images.sh", "build-images.ps1"):
         build_script = (RELEASE / name).read_text(encoding="utf-8-sig")
         assert "TASKHUB_COMMIT" in build_script

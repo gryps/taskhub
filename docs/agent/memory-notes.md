@@ -14,7 +14,17 @@ Updated: 2026-09-25
   转移、正常保存和页面级无横向溢出。
 - 跨平台镜像构建默认复用本机 BuildKit 与基础镜像缓存，不再为每次源码发布固定执行
   `--pull`。只有显式设置 `TASKHUB_PULL_BASE_IMAGES=true` 才刷新基础镜像，避免未变化
-  的依赖重复下载，同时保留计划性安全刷新入口。
+  的依赖重复下载，同时保留计划性安全刷新入口。Node 构建也将 pip 的实际缓存目录显式
+  对齐到 BuildKit 的共享 `taskhub-pip` 挂载，避免运行时 `PIP_CACHE_DIR` 把构建下载写入
+  临时镜像层。
+- 功能与发布脚本提交 `cebe486629ca756f1edacdc9dc950bfb8fef6d44` 已构建并发布到
+  GHCR 与阿里云 ACR 的固定 `0.1.0-alpha` 标签。两边 Seed 配置摘要均为
+  `sha256:0469044ca691ecdbdd384a8f76f789e74a7ed3fbe1b7da5704c863267154d9fd`，Node
+  配置摘要均为 `sha256:957c8cbc3e731d1925183dcde7410324d271484d236acd6b08843b00101ae2e7`。
+- `192.168.31.31:8200` 已从同一 Seed 提交重建，控制器健康且零重启，13 条任务索引、
+  EXE-002 的 `supervision / waiting` 人工处置状态、PostgreSQL 数据卷和五个健康工作节点
+  均保留。发布前备份 `C:\taskhub-seed\deploy\release\backups\20260925T013136Z`
+  已再次独立验证通过；临时交互推送任务、脚本、日志、源码包和匿名 Docker 配置已删除。
 
 ## Phase 7 Single-Seed Backend and Quality Baseline
 
