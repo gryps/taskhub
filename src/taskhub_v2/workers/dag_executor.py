@@ -28,6 +28,7 @@ class WorkerDagExecutor:
         capability_resolver=None,
         test_scheduler=None,
         topology_resolver=None,
+        project_contracts=None,
     ):
         self.worker = worker
         self.store = store
@@ -36,6 +37,7 @@ class WorkerDagExecutor:
         self.capability_resolver = capability_resolver
         self.test_scheduler = test_scheduler
         self.topology_resolver = topology_resolver
+        self.project_contracts = project_contracts
 
     async def capability_reason(self, task) -> str:
         if self.workspaces is None or not self.capability_resolver:
@@ -102,6 +104,7 @@ class WorkerDagExecutor:
                 "id": contract.contract_id,
                 "version": contract.version,
                 "profile": contract.profile_id,
+                "engineering_policy": contract.engineering_policy.model_dump(mode="json"),
             },
             "project_design_contract": (
                 {
@@ -217,6 +220,32 @@ class WorkerDagExecutor:
                     f"任务 {task.task_id} 集成冲突：{str(error)[:500]}"
                 ) from error
         return await asyncio.to_thread(self._git, Path(workspace.path), "rev-parse", "HEAD")
+
+    async def verify_batch(self, plan, *, base_commit: str) -> dict:
+        if not self.project_contracts or self.workspaces is None:
+            return {}
+        project = self.projects.get(plan.project_id)
+        workspace = await self.workspaces.prepare(project, plan.run_id)
+        report = await self.project_contracts.gate(
+            plan.project_id,
+            workspace=workspace.path,
+            execute_commands=False,
+            strict=True,
+        )
+        summary = {
+            "status": report.status,
+            "contract_id": report.contract_id,
+            "contract_version": report.contract_version,
+            "repository_commit": base_commit,
+            "passed": sum(item.status == "passed" for item in report.findings),
+            "warnings": sum(item.status == "warning" for item in report.findings),
+            "failed": [
+                item.model_dump(mode="json")
+                for item in report.findings
+                if item.status in {"failed", "manual"}
+            ][:20],
+        }
+        return summary
 
     async def finalize(self, plan, tasks, attempts, *, base_commit: str) -> ExecutionResult:
         results = [

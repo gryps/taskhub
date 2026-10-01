@@ -34,10 +34,13 @@ class ProjectContractConflictError(RuntimeError):
 
 
 class ProjectContractService:
-    def __init__(self, store: ProductionStore, projects: ProjectRegistry, scheduler=None):
+    def __init__(
+        self, store: ProductionStore, projects: ProjectRegistry, scheduler=None, governance=None
+    ):
         self.store = store
         self.projects = projects
         self.scheduler = scheduler
+        self.governance = governance
 
     def profiles(self) -> list[dict]:
         return [profile.view() for profile in profile_catalog().values()]
@@ -129,6 +132,8 @@ class ProjectContractService:
             created_by=actor,
             source_ids=[f"profile:{selected}", self._commit(repository)],
         )
+        if self.governance:
+            contract = await self.governance.apply_to_contract(contract)
         return await self.store.save(contract)
 
     async def update_draft(
@@ -218,6 +223,15 @@ class ProjectContractService:
             strict=strict,
             manual_evidence={**contract.manual_evidence, **(manual_evidence or {})},
         )
+        if self.governance:
+            report.findings.extend(
+                await self.governance.gate_findings(
+                    target,
+                    contract,
+                    {**contract.manual_evidence, **(manual_evidence or {})},
+                )
+            )
+            report.status = self._status(report.findings)
         commands = contract.commands.gate_commands()
         if execute_commands and commands and report.status != "failed":
             if self.scheduler is None:

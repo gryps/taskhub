@@ -2,14 +2,15 @@
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$root/checksum.sh"
 backup=${1:-}
 [ -n "$backup" ] || { printf '用法: %s <备份目录>\n' "$0" >&2; exit 1; }
 [ -d "$backup" ] || { printf '备份目录不存在: %s\n' "$backup" >&2; exit 1; }
-(cd "$backup" && sha256sum -c SHA256SUMS)
+(cd "$backup" && sha256_verify SHA256SUMS)
 
 backup_key=$(sed -n 's/^TASKHUB_CONFIG_ENCRYPTION_KEY=//p' "$backup/.env" | tail -n 1)
 expected_fingerprint=$(sed -n 's/^TASKHUB_CONFIG_KEY_FINGERPRINT=//p' "$backup/backup.env" | tail -n 1)
-actual_fingerprint=$(printf 'taskhub-backup-v1:%s' "$backup_key" | sha256sum | awk '{print $1}')
+actual_fingerprint=$(printf 'taskhub-backup-v1:%s' "$backup_key" | sha256_digest | awk '{print $1}')
 [ -n "$backup_key" ] && [ "$actual_fingerprint" = "$expected_fingerprint" ] || {
   printf '备份中的配置加密主密钥与备份身份不匹配。\n' >&2; exit 1;
 }

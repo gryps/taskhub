@@ -2,6 +2,7 @@
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$root/checksum.sh"
 version=${1:-}
 bundle=${2:-}
 [ -n "$version" ] || { printf '用法: %s <版本> [离线包目录]\n' "$0" >&2; exit 1; }
@@ -9,7 +10,7 @@ bundle=${2:-}
 
 if [ -n "$bundle" ]; then
   [ -f "$bundle/SHA256SUMS" ] || { printf '离线包缺少 SHA256SUMS。\n' >&2; exit 1; }
-  (cd "$bundle" && sha256sum -c SHA256SUMS)
+  (cd "$bundle" && sha256_verify SHA256SUMS)
   manifest_version=$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' "$bundle/manifest.json" | head -n 1)
   [ "$manifest_version" = "$version" ] || {
     printf '离线包版本 %s 与目标版本 %s 不一致。\n' "$manifest_version" "$version" >&2

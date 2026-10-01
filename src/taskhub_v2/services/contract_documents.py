@@ -18,6 +18,7 @@ def render_contract_documents(contract: ProjectContract) -> dict[str, str]:
         "artifacts": contract.artifacts.model_dump(mode="json"),
         "documentation_files": contract.documentation_files,
         "environment_example": contract.environment_example,
+        "engineering_policy": contract.engineering_policy.model_dump(mode="json"),
     }
     architecture = {
         "schema_version": contract.schema_version,
@@ -28,6 +29,7 @@ def render_contract_documents(contract: ProjectContract) -> dict[str, str]:
         "migrations": contract.migrations.model_dump(mode="json"),
         "repository_policy": contract.repository_policy.model_dump(mode="json"),
         "manual_review": [item.model_dump(mode="json") for item in contract.manual_review],
+        "engineering_policy": contract.engineering_policy.model_dump(mode="json"),
     }
     acceptance = {
         "contract_schema_version": contract.schema_version,
@@ -36,6 +38,7 @@ def render_contract_documents(contract: ProjectContract) -> dict[str, str]:
         "quality_commands": contract.commands.acceptance,
         "expected_artifacts": contract.artifacts.required_artifacts,
         "health_path": contract.artifacts.health_path,
+        "engineering_policy": contract.engineering_policy.model_dump(mode="json"),
     }
     return {
         ".taskhub/project.yaml": _dump(project),

@@ -14,11 +14,12 @@ from taskhub_v2.workers.acceptance_support import authorized_windows_nodes
 class ProjectPreflightService:
     """Evaluate every project-level prerequisite without mutating the project."""
 
-    def __init__(self, settings, projects, contracts, scheduler):
+    def __init__(self, settings, projects, contracts, scheduler, governance=None):
         self.settings = settings
         self.projects = projects
         self.contracts = contracts
         self.scheduler = scheduler
+        self.governance = governance
 
     async def run(self, project_id: str) -> dict[str, Any]:
         project = self.projects.get(project_id)
@@ -103,6 +104,28 @@ class ProjectPreflightService:
                     ),
                     remediation="生成或核对契约后使其生效。",
                     target="project-contract",
+                )
+            )
+            governance = (
+                await self.governance.binding_status(active_contract)
+                if self.governance
+                else {"valid": True, "current": True, "detail": "未启用全局规则治理"}
+            )
+            checks.append(
+                self._check(
+                    "engineering_governance",
+                    "全局工程规则",
+                    (
+                        "passed"
+                        if governance["valid"] and governance["current"]
+                        else "warning"
+                        if governance["valid"]
+                        else "failed"
+                    ),
+                    governance["detail"],
+                    remediation="建立项目合同修订并绑定当前全局规则版本。",
+                    target="project-contract",
+                    blocking=not governance["valid"],
                 )
             )
         else:

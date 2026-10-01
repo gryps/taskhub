@@ -2,6 +2,7 @@
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$root/checksum.sh"
 env_file="$root/.env"
 compose_file="$root/compose.yaml"
 
@@ -159,8 +160,7 @@ ensure_secret TASKHUB_CONFIG_ENCRYPTION_KEY "$(fernet_key)"
 
 archive=$(find "$root/images" -maxdepth 1 -type f -name 'taskhub-images-*.tar' 2>/dev/null | head -n 1 || true)
 if [ -n "$archive" ]; then
-  require sha256sum
-  (cd "$root" && sha256sum -c SHA256SUMS)
+  (cd "$root" && sha256_verify SHA256SUMS)
   offline_version=$(env_value TASKHUB_VERSION)
   put_env_value TASKHUB_SEED_IMAGE "taskhub-seed:$offline_version"
   put_env_value TASKHUB_NODE_IMAGE "taskhub-node:$offline_version"

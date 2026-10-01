@@ -284,6 +284,55 @@ def test_scheduler_runs_independent_tasks_in_parallel_then_dependency():
     asyncio.run(scenario())
 
 
+def test_scheduler_records_governance_gate_for_every_completed_batch():
+    class GovernedExecutor(RecordingExecutor):
+        def __init__(self):
+            super().__init__()
+            self.verified = []
+
+        async def verify_batch(self, plan, *, base_commit):
+            self.verified.append((plan.plan_id, base_commit))
+            return {"status": "passed", "passed": 7, "failed": []}
+
+    async def scenario():
+        store = MemoryProductionStore()
+        bundle = await compiled(store)
+        executor = GovernedExecutor()
+        outcome = await PersistentDagScheduler(store, executor).execute(bundle.plan.plan_id)
+        assert len(executor.verified) == len(outcome.batches) == 2
+        assert all(batch.governance_gate["status"] == "passed" for batch in outcome.batches)
+
+    asyncio.run(scenario())
+
+
+def test_scheduler_persists_failed_governance_gate_and_blocks_batch_tasks():
+    class RejectingExecutor(RecordingExecutor):
+        async def verify_batch(self, plan, *, base_commit):
+            return {
+                "status": "failed",
+                "failed": [{"summary": "src/api.py 超过文件上限"}],
+            }
+
+    async def scenario():
+        store = MemoryProductionStore()
+        bundle = await compiled(store)
+        scheduler = PersistentDagScheduler(
+            store, RejectingExecutor(), global_concurrency=2, project_concurrency=2
+        )
+        with pytest.raises(Exception, match="批次全局工程规则门禁未通过") as caught:
+            await scheduler.execute(bundle.plan.plan_id)
+        snapshot = caught.value.snapshot
+        assert snapshot.status == "blocked"
+        batch = await store.get("execution_batch", snapshot.detail["batch_ids"][0], "1")
+        assert batch.status == "failed"
+        assert batch.governance_gate["status"] == "failed"
+        tasks = await store.list(project_id="demo", object_type="task")
+        selected = [task for task in tasks if task.task_id in batch.task_ids]
+        assert all(task.status == ProductionTaskStatus.BLOCKED for task in selected)
+
+    asyncio.run(scenario())
+
+
 def test_resource_conflicts_are_serialized_and_failure_creates_new_attempt():
     async def scenario():
         store = MemoryProductionStore()

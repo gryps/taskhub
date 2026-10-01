@@ -17,6 +17,7 @@ from taskhub_v2.api.container_routes import router as container_router
 from taskhub_v2.api.dag_routes import router as dag_router
 from taskhub_v2.api.deployment_routes import router as deployment_router
 from taskhub_v2.api.diagnostic_routes import router as diagnostic_router
+from taskhub_v2.api.governance_routes import router as governance_router
 from taskhub_v2.api.node_routes import router as node_router
 from taskhub_v2.api.onboarding_routes import router as onboarding_router
 from taskhub_v2.api.productization_routes import router as productization_router
@@ -49,6 +50,7 @@ from taskhub_v2.services.configuration import ManagedConfigurationService
 from taskhub_v2.services.containers import ContainerManager
 from taskhub_v2.services.dag_runtime import build_dag_runtime
 from taskhub_v2.services.device_auth import CodexDeviceAuthService
+from taskhub_v2.services.engineering_governance import EngineeringGovernanceService
 from taskhub_v2.services.evidence import EvidenceCenterService
 from taskhub_v2.services.exceptions import ExceptionCenterService
 from taskhub_v2.services.git_authority import build_project_provisioner
@@ -183,6 +185,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             provider = build_provider(effective_settings, provider_health)
             app.state.capability_packs = CapabilityService(production_objects, projects)
             await app.state.capability_packs.ensure_builtins()
+            app.state.engineering_governance = EngineeringGovernanceService(production_objects)
+            await app.state.engineering_governance.ensure_builtin()
             app.state.productization = ProductizationService(
                 production_objects, provider, app.state.capability_packs
             )
@@ -193,13 +197,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 token_resolver=node_credentials.resolve,
             )
             app.state.project_contracts = ProjectContractService(
-                production_objects, projects, test_scheduler
+                production_objects,
+                projects,
+                test_scheduler,
+                app.state.engineering_governance,
             )
             app.state.project_preflight = ProjectPreflightService(
                 effective_settings,
                 projects,
                 app.state.project_contracts,
                 test_scheduler,
+                app.state.engineering_governance,
             )
             app.state.topologies = TopologyService(topologies, projects, test_scheduler)
             worker = build_worker(
@@ -216,6 +224,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     test_scheduler,
                     app.state.topologies.eligible_node_ids,
                     app.state.capability_packs.design_for_refs,
+                    app.state.project_contracts,
                 )
                 if effective_settings.production_orchestration_enabled
                 else None
@@ -309,6 +318,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(onboarding_router)
     app.include_router(deployment_router)
     app.include_router(diagnostic_router)
+    app.include_router(governance_router)
     app.include_router(system_router)
     app.include_router(topology_router)
     mount_canvas(app)

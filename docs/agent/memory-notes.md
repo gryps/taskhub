@@ -2,6 +2,32 @@
 
 Updated: 2026-09-25
 
+## Global Engineering Governance
+
+- TaskHub now owns versioned `EngineeringPolicy` records instead of relying on a Seed-visible
+  `AGENTS.md` at execution time. The built-in v1 policy compiles the global development and
+  frontend baselines into project-profile-specific rules.
+- New `ProjectContract` drafts freeze the policy ID, version, content digest, applicable rule IDs
+  and worker instructions. Execution plans, tasks and coding-node context retain the same binding;
+  a later policy activation does not mutate active work.
+- Project preflight blocks unbound or invalid policy snapshots and warns when a valid contract uses
+  an older policy. Migration is an explicit project-contract revision.
+- Every integrated DAG batch now runs contract and global-governance static gates before it can be
+  marked complete. The result is stored on `ExecutionBatch`; final acceptance still runs the full
+  contract gate and declared quality commands.
+- Time-bounded `PolicyException` records require named rules, risk, controls, recovery condition,
+  expiry and approval. Only matching active project exceptions downgrade their rule failures.
+- Management APIs expose policy inventory/draft activation, project governance status and exception
+  proposal/decision. Requirement and architecture decisions are documented in
+  `docs/requirements/global-engineering-governance.md` and `docs/DECISIONS/0001-...`.
+- On 2026-10-01 the governed source passed `378 passed, 26 skipped`, changed-file Ruff,
+  architecture limits, release-delivery tests, four React tests and the Vite production build.
+  The local formal stack was backed up to
+  `deploy/release/backups/20261001T152326Z`, then Seed and execution node were upgraded to the
+  healthy `0.1.0-governance1` candidates. PostgreSQL contains one active policy v1 and the formal
+  deployment verifier passes. The release checksum helpers now support both GNU `sha256sum` and
+  macOS `shasum -a 256`.
+
 ## Project-Owned External Windows Acceptance
 
 - Windows 实机测试资源不是 TaskHub 内置能力，也不属于可自动借用的全局主机池。项目启用

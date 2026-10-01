@@ -14,6 +14,13 @@ from taskhub_v2.domain.production import (
 )
 from taskhub_v2.persistence.production import ProductionStore
 from taskhub_v2.services.dag_cost import apply_cost_budget
+from taskhub_v2.services.dag_executor_adapter import (
+    current_base,
+    finalize,
+    integrate_batch,
+    verify_batch,
+)
+from taskhub_v2.services.dag_governance import failed_gate, persist_gate_failure
 from taskhub_v2.services.dag_readiness import (
     add_selection_waiting_reasons,
     select_non_conflicting,
@@ -56,7 +63,7 @@ class PersistentDagScheduler:
             plan = await self._plan(plan_id, version)
             tasks = await self._tasks(plan)
             batches = await self._batches(plan)
-            base_commit = await self._current_base(plan)
+            base_commit = await current_base(self.executor, plan)
             while not all(item.status == ProductionTaskStatus.COMPLETED for item in tasks):
                 tasks = await self._tasks(plan)
                 if all(item.status == ProductionTaskStatus.COMPLETED for item in tasks):
@@ -154,7 +161,25 @@ class PersistentDagScheduler:
                         snapshot = await self._snapshot(plan, tasks, batches, "blocked")
                         raise DagExecutionError(str(failures[0]), snapshot) from failures[0]
                     completed_results = [item for item in results if isinstance(item, tuple)]
-                    base_commit = await self._integrate_batch(plan, completed_results, base_commit)
+                    base_commit = await integrate_batch(
+                        self.executor, plan, completed_results, base_commit
+                    )
+                    try:
+                        governance_gate = await verify_batch(self.executor, plan, base_commit)
+                    except Exception as error:
+                        governance_gate = failed_gate(error)
+                    if governance_gate and governance_gate.get("status") != "passed":
+                        batch, reason = await persist_gate_failure(
+                            store=self.store,
+                            batch=batch,
+                            completed_results=completed_results,
+                            governance_gate=governance_gate,
+                            save_task=self._save_task,
+                        )
+                        batches.append(batch)
+                        tasks = await self._tasks(plan)
+                        snapshot = await self._snapshot(plan, tasks, batches, "blocked")
+                        raise DagExecutionError(reason, snapshot)
                     assignments = {}
                     for task, attempt, _result in completed_results:
                         attempt = await self.store.save(
@@ -185,6 +210,7 @@ class PersistentDagScheduler:
                                 "finished_at": now(),
                                 "assignments": assignments,
                                 "selection_reasons": selection_reasons,
+                                "governance_gate": governance_gate,
                             }
                         )
                     )
@@ -197,7 +223,9 @@ class PersistentDagScheduler:
             )
             attempts = await self._attempts(plan)
             snapshot = await self._snapshot(plan, tasks, batches, "completed")
-            implementation = await self._finalize(plan, tasks, attempts, base_commit)
+            implementation = await finalize(
+                self.executor, plan, tasks, attempts, base_commit
+            )
             return DagExecutionOutcome(
                 plan=plan,
                 tasks=tasks,
@@ -295,37 +323,6 @@ class PersistentDagScheduler:
             self.active_locks = {
                 lock: owner for lock, owner in self.active_locks.items() if owner not in owners
             }
-
-    async def _integrate_batch(self, plan, results, base_commit: str) -> str:
-        integrate = getattr(self.executor, "integrate_batch", None)
-        if not integrate:
-            return base_commit
-        return await integrate(plan, results, base_commit=base_commit)
-
-    async def _current_base(self, plan) -> str:
-        current_base = getattr(self.executor, "current_base", None)
-        if not current_base:
-            return ""
-        return await current_base(plan)
-
-    async def _finalize(self, plan, tasks, attempts, base_commit: str) -> ExecutionResult:
-        finalize = getattr(self.executor, "finalize", None)
-        if finalize:
-            return await finalize(plan, tasks, attempts, base_commit=base_commit)
-        results = [
-            ExecutionResult.model_validate(item.result)
-            for item in attempts
-            if item.status == TaskAttemptStatus.VALIDATED and item.result
-        ]
-        return ExecutionResult(
-            summary=f"{len(tasks)} 个 DAG 任务已完成",
-            evidence="\n".join(item.evidence for item in results)[-50_000:],
-            tests=[test for item in results for test in item.tests],
-            artifacts=[artifact for item in results for artifact in item.artifacts],
-            coding_node=",".join(
-                sorted({item.coding_node for item in results if item.coding_node})
-            ),
-        )
 
     async def _snapshot(self, plan, tasks, batches, status, reasons=None):
         return await save_snapshot(

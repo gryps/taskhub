@@ -18,6 +18,8 @@ actions, and continuation. API handlers cannot set a run stage directly.
 | `persistence` | LangGraph checkpointer lifecycle |
 | `api` | HTTP validation and presentation transport |
 | `projects` | Authority repository provisioning, validation, and project registration |
+| `domain.governance` | Versioned global engineering policies, frozen bindings, and bounded exceptions |
+| `services.governance_gate` | Repeatable repository and contract checks after every integrated batch |
 
 Deterministic adapters remain available for tests. Production selects routed
 model adapters and a Git worker without changing graph ownership. Provider
@@ -67,6 +69,20 @@ api -> services -> workflows -> domain
                        +------ -> worker protocol
 persistence -> LangGraph checkpoint implementation
 ```
+
+## Global Engineering Governance
+
+The active `EngineeringPolicy` is the global rule authority. A new
+`ProjectContract` compiles only the rules applicable to its profile and freezes
+their version, digest and instructions in a `PolicyBinding`. The resulting
+`ExecutionPlan`, tasks and coding context retain that exact binding.
+
+The scheduler runs repository governance after every batch integration and
+stores the summary on `ExecutionBatch`. Final contract acceptance repeats the
+governance checks and runs the declared quality commands. Policy updates never
+rewrite an active plan. A project moves to a newer rule version through a new
+project-contract version. Approved `PolicyException` records can waive only
+named rules, within their declared scope and expiry window.
 
 ## Acceptance Evidence
 

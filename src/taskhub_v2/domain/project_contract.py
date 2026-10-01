@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from taskhub_v2.domain.governance import PolicyBinding
 from taskhub_v2.domain.production_base import ProductionRecord
 
 
@@ -145,6 +146,7 @@ class ProjectContract(ProductionRecord):
     environment_example: str = ".env.example"
     manual_review: list[ManualReviewRule] = Field(default_factory=list)
     manual_evidence: dict[str, str] = Field(default_factory=dict)
+    engineering_policy: PolicyBinding = Field(default_factory=PolicyBinding)
     approved_by: str = ""
     approved_at: str = ""
 

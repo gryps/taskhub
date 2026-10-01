@@ -2,6 +2,7 @@
 set -eu
 
 script_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$script_root/checksum.sh"
 repo_root=$(CDPATH= cd -- "$script_root/../.." && pwd)
 version=${TASKHUB_VERSION:-0.1.0-alpha}
 platform=${TASKHUB_PLATFORM:-linux/amd64}
@@ -50,5 +51,5 @@ cat >"$output/manifest.json" <<EOF
 }
 EOF
 (cd "$output" && find . -type f ! -name SHA256SUMS -print | sort | \
-  sed 's|^\./||' | xargs sha256sum >SHA256SUMS)
+  sed 's|^\./||' | while IFS= read -r file; do sha256_digest "$file"; done >SHA256SUMS)
 printf '离线交付包已生成: %s\n' "$output"

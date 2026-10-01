@@ -24,6 +24,7 @@ class ExecutionBatch(ProductionRecord):
     waiting_reasons: dict[str, list[str]] = Field(default_factory=dict)
     assignments: dict[str, str] = Field(default_factory=dict)
     selection_reasons: dict[str, str] = Field(default_factory=dict)
+    governance_gate: dict[str, Any] = Field(default_factory=dict)
     started_at: str = ""
     finished_at: str = ""
 

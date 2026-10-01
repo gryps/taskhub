@@ -8,6 +8,7 @@ from typing import Protocol
 from taskhub_v2.config import Settings
 from taskhub_v2.domain.capability import CapabilityPack, CapabilityPackLock
 from taskhub_v2.domain.dag import ExecutionBatch
+from taskhub_v2.domain.governance import EngineeringPolicy, PolicyException
 from taskhub_v2.domain.production import (
     ProductDecision,
     ProductionObject,
@@ -16,9 +17,9 @@ from taskhub_v2.domain.production import (
     immutable_content,
     object_identity,
     production_object_adapter,
-    validate_transition,
     with_content_digest,
 )
+from taskhub_v2.domain.production_transitions import validate_transition
 from taskhub_v2.domain.project_contract import ProjectContract
 
 
@@ -92,6 +93,32 @@ def _validate_replacement(previous: ProductionObject, record: ProductionObject) 
                 "project contract content is immutable during lifecycle transitions"
             )
         return
+    if isinstance(previous, EngineeringPolicy) and isinstance(record, EngineeringPolicy):
+        lifecycle = {
+            "status",
+            "activated_by",
+            "activated_at",
+            "updated_at",
+            "content_digest",
+        }
+        if previous.model_dump(exclude=lifecycle) != record.model_dump(exclude=lifecycle):
+            raise ProductionObjectConflictError(
+                "engineering policy content is immutable during lifecycle transitions"
+            )
+        return
+    if isinstance(previous, PolicyException) and isinstance(record, PolicyException):
+        lifecycle = {
+            "status",
+            "decided_by",
+            "decided_at",
+            "updated_at",
+            "content_digest",
+        }
+        if previous.model_dump(exclude=lifecycle) != record.model_dump(exclude=lifecycle):
+            raise ProductionObjectConflictError(
+                "policy exception content is immutable after submission"
+            )
+        return
     if isinstance(previous, ProductionTask) and isinstance(record, ProductionTask):
         runtime_fields = {
             "status",
@@ -138,6 +165,8 @@ def _validate_replacement(previous: ProductionObject, record: ProductionObject) 
         "change_request": {"proposed"},
         "capability_pack": {"draft"},
         "capability_pack_lock": {"draft"},
+        "engineering_policy": {"draft"},
+        "policy_exception": {"proposed"},
     }.get(record.object_type, set())
     changes_allowed = record.object_type in {"task_attempt", "change_request"} or (
         _state(previous) in mutable_states and _state(record) in mutable_states

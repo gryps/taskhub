@@ -57,6 +57,7 @@ def build_dag_runtime(
     node_scheduler,
     topology_resolver=None,
     design_contract_resolver=None,
+    project_contracts=None,
 ) -> ProductizedExecutionRuntime:
     async def capability_inventory():
         statuses = await node_scheduler.status()
@@ -100,6 +101,7 @@ def build_dag_runtime(
         capability_resolver=capability_resolver,
         test_scheduler=node_scheduler,
         topology_resolver=topology_resolver,
+        project_contracts=project_contracts,
     )
     scheduler = PersistentDagScheduler(store, executor)
     return ProductizedExecutionRuntime(planner=planner, scheduler=scheduler, store=store)

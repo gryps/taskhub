@@ -147,6 +147,13 @@ class DagPlanService:
                     project_policy.run_cost_budget_units if project_policy else 100
                 ),
                 "dynamic_batches": True,
+                **(
+                    {
+                        "engineering_policy": contract.engineering_policy.model_dump(mode="json")
+                    }
+                    if contract.engineering_policy.policy_id
+                    else {}
+                ),
             },
             created_by=actor,
         )
@@ -298,6 +305,14 @@ class DagPlanService:
                     required_capabilities=self._capabilities(contract, verification),
                     contracts=[
                         f"{contract.contract_id}:v{contract.version}",
+                        *(
+                            [
+                                f"{contract.engineering_policy.policy_id}:"
+                                f"v{contract.engineering_policy.policy_version}"
+                            ]
+                            if contract.engineering_policy.policy_id
+                            else []
+                        ),
                         *(
                             [f"{design_source[1].contract_id}:v{design_source[1].version}"]
                             if design_source
