@@ -3,6 +3,7 @@
 import importlib
 import os
 import socket
+import time
 
 import pytest
 
@@ -16,6 +17,17 @@ from tests.test_workflow import RecoveringPublisher
 pytestmark = pytest.mark.skipif(
     os.getenv("TASKHUB_TEST_BROWSER") != "1", reason="Browser acceptance is opt-in"
 )
+
+
+def wait_for_run(request_context, url, run_id, predicate, timeout=5):
+    """Wait for the background workflow to expose its terminal checkpoint."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        run = request_context.get(f"{url}/api/runs/{run_id}").json()
+        if predicate(run):
+            return run
+        time.sleep(0.02)
+    return request_context.get(f"{url}/api/runs/{run_id}").json()
 
 
 @pytest.mark.parametrize("width", [1440, 390])
@@ -172,7 +184,14 @@ def test_exception_center_opens_the_checkpoint_owned_recovery_action(monkeypatch
             data={"project_id": "demo", "requirement": "Verify exception recovery"},
         )
         assert created.status == 201
-        assert created.json()["status"] == "blocked"
+        run_id = created.json()["run_id"]
+        blocked = wait_for_run(
+            context.request,
+            url,
+            run_id,
+            lambda run: run["status"] == "blocked",
+        )
+        assert blocked["status"] == "blocked"
         page.locator("#nav-tasks").click()
         page.locator("#refresh-tasks").click()
 

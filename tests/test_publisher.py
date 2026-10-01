@@ -7,9 +7,9 @@ import pytest
 
 from taskhub_v2.domain.models import (
     ExecutionResult,
-    TestExecution as ExecutionTestResult,
     Workspace,
 )
+from taskhub_v2.domain.models import TestExecution as ExecutionTestResult
 from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.workers.publisher import GitPublisher, PublicationError
 

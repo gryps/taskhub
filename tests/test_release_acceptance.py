@@ -1,5 +1,6 @@
 import json
 import subprocess
+import time
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -15,6 +16,17 @@ from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.workers.git_coder import GitCodingWorker
 from taskhub_v2.workers.publisher import GitPublisher
 from tests.fakes import RecordingProvider
+
+
+def wait_for_run(client, run_id, predicate, timeout=10):
+    """Wait for background delivery to persist its final run state."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        run = client.get(f"/api/runs/{run_id}").json()
+        if predicate(run):
+            return run
+        time.sleep(0.02)
+    return client.get(f"/api/runs/{run_id}").json()
 
 
 def git(path: Path, *arguments: str) -> str:
@@ -150,11 +162,11 @@ def test_real_git_delivery_publishes_and_survives_controller_restart(
             },
         )
         assert response.status_code == 201
-        run = response.json()
+        run_id = response.json()["run_id"]
+        run = wait_for_run(client, run_id, lambda item: item["status"] == "completed")
         assert run["status"] == "completed"
         assert run["stage"] == "completed"
         assert run["pending_action"] is None
-        run_id = run["run_id"]
 
         history = client.get(f"/api/runs/{run_id}/history")
         assert history.status_code == 200

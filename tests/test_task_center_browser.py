@@ -42,6 +42,17 @@ def serve(app, port):
         assert not thread.is_alive(), "Acceptance server did not stop"
 
 
+def wait_for_run(request_context, url, run_id, predicate, timeout=5):
+    """Wait for an asynchronously executed run to reach an observable checkpoint."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        run = request_context.get(f"{url}/api/runs/{run_id}").json()
+        if predicate(run):
+            return run
+        time.sleep(0.02)
+    return request_context.get(f"{url}/api/runs/{run_id}").json()
+
+
 def test_browser_history_and_publication_recovery(monkeypatch, tmp_path, postgres_dsn):
     from playwright.sync_api import expect, sync_playwright
 
@@ -117,6 +128,16 @@ def test_browser_history_and_publication_recovery(monkeypatch, tmp_path, postgre
                 )
                 assert response.status == 201
                 ids.append(response.json()["run_id"])
+            states = [
+                wait_for_run(
+                    context.request,
+                    url,
+                    run_id,
+                    lambda run: run["status"] in {"blocked", "completed"},
+                )
+                for run_id in ids
+            ]
+            assert [run["status"] for run in states] == ["blocked", "completed", "completed"]
             page.locator("#refresh-tasks").click()
             rows(page, 3)
             expect(page.locator("#exception-items .exception-item")).to_have_count(1)

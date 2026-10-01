@@ -1,7 +1,7 @@
 """Fail closed on absent, empty, skipped or incomplete browser test reports."""
+
 import re
 import xml.etree.ElementTree as ET
-
 
 _ANSI_ESCAPE = re.compile(rb"\x1b(?:\[[0-?]*[ -/]*[@-~]|[@-_])")
 _ILLEGAL_XML10_CONTROL = re.compile(rb"[\x00-\x08\x0b\x0c\x0e-\x1f]")

@@ -83,7 +83,7 @@ def test_postgres_index_history_repair_and_resume_after_restart(postgres_dsn):
             restored = await service.get(target)
             assert restored.created_at == created_at
             assert restored.status == 'blocked'
-            assert restored.pending_action['choices'] == ['retry', 'cancel']
+            assert restored.pending_action['choices'] == ['retry', 'revise', 'cancel']
             assert (await index.get(runs[1].run_id)).production_line == 'B'
             filtered = await service.list(project_id='pg-history', production_line='A',
                                           status='blocked', stage='merge_blocked')
