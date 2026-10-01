@@ -2,6 +2,7 @@ import asyncio
 import os
 import re
 import shutil
+import signal
 import time
 import uuid
 from pathlib import Path
@@ -83,6 +84,7 @@ class CodexDeviceAuthService:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 env=env,
+                start_new_session=os.name != "nt",
             )
             session["process"] = process
             output = ""
@@ -150,11 +152,23 @@ class CodexDeviceAuthService:
     async def _terminate(process: asyncio.subprocess.Process) -> None:
         if process.returncode is not None:
             return
-        process.terminate()
+        try:
+            if os.name == "nt":
+                process.terminate()
+            else:
+                os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
         try:
             await asyncio.wait_for(process.wait(), timeout=3)
         except TimeoutError:
-            process.kill()
+            try:
+                if os.name == "nt":
+                    process.kill()
+                else:
+                    os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                return
             await process.wait()
 
     @staticmethod
