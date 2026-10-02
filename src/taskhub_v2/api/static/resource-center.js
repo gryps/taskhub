@@ -1086,6 +1086,7 @@ const resourceSections = [
     ["system-disclosure", loadSystemConfig],
     ["nodes-disclosure", loadWorkNodes],
     ["providers-disclosure", loadProviders],
+    ["engineering-policy-disclosure", () => window.loadEngineeringPolicies?.()],
     ["platform-disclosure", loadPlatformSettings],
 ];
 
@@ -1169,10 +1170,12 @@ document.querySelectorAll("[data-resource-target]").forEach((button) => {
 byId("refresh-system").addEventListener("click", loadSystemConfig);
 byId("refresh-providers").addEventListener("click", loadProviders);
 byId("refresh-nodes").addEventListener("click", loadWorkNodes);
+byId("refresh-engineering-policy").addEventListener("click", () => window.loadEngineeringPolicies?.());
 byId("refresh-platform").addEventListener("click", loadPlatformSettings);
 refreshWhenExpanded("system-disclosure", loadSystemConfig);
 refreshWhenExpanded("providers-disclosure", loadProviders);
 refreshWhenExpanded("nodes-disclosure", loadWorkNodes);
+refreshWhenExpanded("engineering-policy-disclosure", () => window.loadEngineeringPolicies?.());
 refreshWhenExpanded("platform-disclosure", loadPlatformSettings);
 byId("test-environment-disclosure").addEventListener("toggle", (event) => {
   if (event.currentTarget.open) loadTestEnvironmentConfig();

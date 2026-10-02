@@ -173,7 +173,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert "<label>生产线" not in html
         assert 'class="composer-requirement"' in html
         assert 'class="composer-actions"' in html
-        assert html.count('class="providers-section resource-disclosure') == 4
+        assert html.count('class="providers-section resource-disclosure') == 5
         assert 'id="hosts-disclosure"' not in html
         assert 'id="platform-disclosure"' in html
         assert 'id="container-form"' in html
@@ -190,10 +190,10 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert "task-center.js?v=15" in html
         assert "revision-center.js?v=1" in html
         assert "capability-center.js?v=1" in html
-        assert html.count('class="resource-disclosure-heading"') == 4
-        assert html.count('class="resource-order"') == 4
+        assert html.count('class="resource-disclosure-heading"') == 5
+        assert html.count('class="resource-order"') == 5
         assert 'id="model-operations"' in html
-        assert "resource-center.js?v=40" in html
+        assert "resource-center.js?v=41" in html
         assert html.count('class="configuration-card"') >= 6
         assert html.count('class="management-card-grid"') >= 3
         assert 'id="login-username"' in html
@@ -213,12 +213,13 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert html.count("data-public-image-downloads") == 1
         assert all(
             f'id="{name}-disclosure"' in html
-            for name in ("system", "providers", "nodes", "platform")
+            for name in ("system", "providers", "nodes", "engineering-policy", "platform")
         )
         assert "<strong>Seed 状态</strong><small>控制器、持久化与运行就绪</small>" in html
         assert "<strong>主机池</strong>" not in html
         assert "<strong>TaskHub 节点</strong><small>Seed 本机 Docker 运行角色</small>" in html
         assert "<strong>模型服务</strong><small>高级 · 认证、角色路由与主备切换</small>" in html
+        assert "<strong>工程治理</strong><small>全局规则、项目绑定与批次门禁</small>" in html
         assert "<strong>高级设置</strong><small>镜像策略、安全、备份与平台参数</small>" in html
         assert html.count('data-resource-target=') == 0
         assert "<strong>预生产验收</strong><small>按项目启用的访问与验收环境</small>" in html
@@ -239,7 +240,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="capability-inventory-disclosure"' in html
         assert "/static/app.js?v=33" in html
         assert "/static/governance-center.css?v=1" in html
-        assert "/static/governance-center.js?v=1" in html
+        assert "/static/governance-center.js?v=2" in html
         assert 'id="engineering-policy-disclosure"' in html
         assert 'id="engineering-policy-root"' in html
         assert 'id="project-governance-root"' in html

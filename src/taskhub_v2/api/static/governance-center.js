@@ -278,4 +278,5 @@
   });
   window.addEventListener("taskhub:contract", (event) => loadProjectGovernance(event.detail?.projectId));
   window.addEventListener("taskhub:execution-plan", (event) => renderBatchGovernance(event.detail));
+  window.loadEngineeringPolicies = loadPolicies;
 })();

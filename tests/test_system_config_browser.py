@@ -151,21 +151,22 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         ) == "12px"
         expect(page.locator("#test-environment-form .field-help")).to_have_count(3)
         page.locator("#nav-resources").click()
-        expect(page.locator(".resource-disclosure-heading")).to_have_count(4)
-        expect(page.locator(".resource-order")).to_have_count(4)
+        expect(page.locator(".resource-disclosure-heading")).to_have_count(5)
+        expect(page.locator(".resource-order")).to_have_count(5)
         expect(page.locator(".system-setup-flow")).to_have_count(0)
         expect(page.locator("#hosts-disclosure")).to_have_count(0)
         expect(page.locator("#nodes-disclosure > summary")).to_contain_text("TaskHub 节点")
-        page.locator("#platform-disclosure").evaluate("element => { element.open = true; }")
-        page.locator("#platform-config-disclosure").evaluate(
-            "element => { element.open = true; }"
+        expect(page.locator("#engineering-policy-disclosure > summary")).to_contain_text(
+            "工程治理"
         )
-        page.locator("#engineering-policy-disclosure").evaluate(
-            "element => { element.open = true; }"
-        )
+        page.locator("#engineering-policy-disclosure > summary").click()
         expect(page.locator("#engineering-policy-summary")).to_contain_text("已生效")
         expect(page.locator("#engineering-policy-root .governance-rule")).to_have_count(7)
         expect(page.locator("#open-policy-draft")).to_be_visible()
+        page.locator("#platform-disclosure > summary").click()
+        page.locator("#platform-config-disclosure").evaluate(
+            "element => { element.open = true; }"
+        )
         expect(page.locator("#platform-git-service-card")).to_be_visible()
         expect(page.locator("#platform-git-host")).to_have_value("gryps@192.168.31.3")
         expect(page.locator("#test-git-service")).to_be_visible()
