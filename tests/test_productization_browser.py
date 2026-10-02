@@ -55,10 +55,12 @@ def test_product_spec_card_layout(tmp_path):
         page = context.new_page()
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
-        page.goto(url, wait_until="networkidle")
+        page.goto(url, wait_until="domcontentloaded")
         page.locator("#admin-token").fill("browser-product-token")
         page.locator("#login-button").click()
         expect(page.locator("#workspace")).to_be_visible()
+        expect(page.locator("#workflow-project option")).to_have_count(1)
+        page.wait_for_load_state("networkidle")
         if page.locator("#onboarding-page").is_visible():
             page.locator("#onboarding-later").click()
 

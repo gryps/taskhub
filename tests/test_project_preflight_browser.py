@@ -63,9 +63,12 @@ def test_project_preflight_is_actionable_and_responsive(tmp_path, width):
         page = browser.new_page(viewport={"width": width, "height": 1000})
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
-        page.goto(url, wait_until="networkidle")
+        page.goto(url, wait_until="domcontentloaded")
         page.locator("#admin-token").fill("preflight-browser-token")
         page.locator("#login-button").click()
+        expect(page.locator("#workspace")).to_be_visible()
+        expect(page.locator("#workflow-project option")).to_have_count(1)
+        page.wait_for_load_state("networkidle")
         page.locator("#nav-workflow").click()
 
         expect(page.locator("#project-preflight")).to_be_visible()
@@ -109,10 +112,14 @@ def test_attached_project_quality_can_be_repaired_in_place(tmp_path, width):
         page = browser.new_page(viewport={"width": width, "height": 1000})
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
-        page.goto(f"http://127.0.0.1:{port}", wait_until="networkidle")
+        page.goto(f"http://127.0.0.1:{port}", wait_until="domcontentloaded")
         page.locator("#admin-token").fill("quality-browser-token")
         page.locator("#login-button").click()
-        page.locator("#onboarding-later").click()
+        expect(page.locator("#workspace")).to_be_visible()
+        expect(page.locator("#workflow-project option")).to_have_count(1)
+        page.wait_for_load_state("networkidle")
+        if page.locator("#onboarding-page").is_visible():
+            page.locator("#onboarding-later").click()
         page.locator("#nav-workflow").click()
 
         expect(page.locator("#project-preflight-state")).to_have_text("1 项阻塞")
@@ -132,6 +139,10 @@ def test_attached_project_quality_can_be_repaired_in_place(tmp_path, width):
         assert page.evaluate("document.activeElement.id") == "project-quality-windows-nodes"
         page.locator("#project-quality-windows-nodes").fill("windows-pilot-01")
         page.locator("#project-quality-windows-commands").fill("")
+        page.locator("#project-repository-disclosure").evaluate(
+            "element => { element.open = true; }"
+        )
+        expect(page.locator("#save-project-quality")).to_be_visible()
         page.locator("#save-project-quality").click()
         expect(page.locator("#project-quality-message")).to_have_text(
             "质量配置已保存，项目预检已刷新"
@@ -170,7 +181,7 @@ def test_exception_center_opens_the_checkpoint_owned_recovery_action(monkeypatch
         page = context.new_page()
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
-        page.goto(url, wait_until="networkidle")
+        page.goto(url, wait_until="domcontentloaded")
         page.locator("#admin-token").fill("exception-browser-token")
         page.locator("#login-button").click()
         csrf = next(
