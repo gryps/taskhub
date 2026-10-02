@@ -100,14 +100,14 @@ def _profile(
             required_files=[
                 "README.md",
                 ".env.example",
-                "docs/architecture.md",
+                "docs/ARCHITECTURE.md",
                 ".taskhub/project.yaml",
                 ".taskhub/architecture.yaml",
                 ".taskhub/acceptance.yaml",
             ],
             required_artifacts=["dist/**"] if node else ["dist/*"],
         ),
-        documentation_files=("README.md", "docs/architecture.md", "docs/adr/README.md"),
+        documentation_files=("README.md", "docs/ARCHITECTURE.md", "docs/DECISIONS/"),
     )
 
 

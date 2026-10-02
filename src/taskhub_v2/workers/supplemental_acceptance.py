@@ -1,4 +1,4 @@
-from taskhub_v2.workers import contract_acceptance
+import taskhub_v2.workers.contract_acceptance as contract_acceptance
 from taskhub_v2.workers.windows_acceptance import verify_windows_suite
 
 

@@ -7,7 +7,10 @@
 - Maintainers may change TaskHub, its deployment, nodes, configuration, diagnostics, and tests.
 - Maintainers must never directly change a project managed by TaskHub; managed-project changes belong to recorded TaskHub coding runs.
 
-Always read `AGENT.md` for the complete authority boundary.
+Always read `AGENTS.md` for the complete authority boundary. `AGENT.md` is retained only as a
+compatibility pointer for older tooling. The standard product and architecture context is in
+`docs/PRODUCT.md`, `docs/ARCHITECTURE.md`, `docs/MODULES.md`, `docs/DESIGN.md`, and
+`docs/FRONTEND_ARCHITECTURE.md`.
 
 ## Frontend Context
 
@@ -27,7 +30,10 @@ The version-controlled skill source is `skills/taskhub-frontend-design/`. Its in
 
 ## Verification
 
-Run JavaScript syntax checks, `git diff --check`, and `tests/test_task_center.py` for every frontend change. Run the complete test suite for broad structural changes. Inspect 1440px and 680px browser layouts when page geometry or responsive behavior changes.
+Run JavaScript syntax checks, `git diff --check`, and the focused frontend contract tests for every
+frontend change. Run the complete test suite for broad structural changes. Inspect 1440px, 768px,
+and 390px browser layouts when page geometry or responsive behavior changes; retain the historical
+680px compatibility check where the existing browser suite requires it.
 
 ## Deployment Context
 

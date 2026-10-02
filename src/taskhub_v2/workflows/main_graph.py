@@ -1,12 +1,12 @@
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
+import taskhub_v2.workflows.manual_handoff as handoff
 from taskhub_v2.domain.models import ExecutionResult, RunStatus, Stage
 from taskhub_v2.providers.base import ModelProvider
 from taskhub_v2.workers.acceptance import LocalAcceptanceGateway
 from taskhub_v2.workers.base import AcceptanceGateway, PublisherGateway, WorkerGateway
 from taskhub_v2.workers.publisher import LocalPublisher
-from taskhub_v2.workflows import manual_handoff as handoff
 from taskhub_v2.workflows.acceptance import build_acceptance_graph
 from taskhub_v2.workflows.acceptance_recovery import (
     prepare_acceptance_revision,

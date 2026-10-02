@@ -10,7 +10,6 @@ from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from taskhub_v2.api.auth_routes import router as auth_router
-from taskhub_v2.api.canvas import mount_canvas
 from taskhub_v2.api.capability_routes import router as capability_router
 from taskhub_v2.api.configuration_routes import router as configuration_router
 from taskhub_v2.api.container_routes import router as container_router
@@ -321,8 +320,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(governance_router)
     app.include_router(system_router)
     app.include_router(topology_router)
-    mount_canvas(app)
-
     if settings.enforce_https:
         app.add_middleware(HTTPSRedirectMiddleware)
     allowed_hosts = [item.strip() for item in settings.trusted_hosts.split(",") if item.strip()]

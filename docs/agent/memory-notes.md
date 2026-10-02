@@ -1,6 +1,36 @@
 # TaskHub V2 Memory Notes
 
-Updated: 2026-10-02
+Updated: 2026-10-03
+
+## Repository Engineering Convergence Baseline
+
+- `AGENTS.md` is now the canonical project instruction file; the historical singular `AGENT.md`
+  remains only as a compatibility pointer. Canonical product, architecture, module, design, frontend
+  architecture, and ADR records now exist at the standard global-rule paths.
+- Repository architecture tests now enforce those paths, the 400-line Python ceiling, exact no-growth
+  ceilings for four historical oversized frontend files, exact no-growth ceilings for historical
+  Python functions over 100 lines or complexity 15, and an acyclic internal Python import graph.
+  A reduced or removed exception deliberately fails until its baseline entry is lowered or deleted,
+  preventing later regression to the old size.
+- The first cycle check exposed package-level back edges in `workers` and `workflows`. Imports now name
+  the actual submodules, and the internal graph passes without a cycle waiver.
+- The native frontend now loads `api-client.js` before feature scripts. App, governance, capability,
+  and revision code share one CSRF/error/unauthorized contract instead of four implementations.
+  Public-image presentation and clipboard behavior are isolated in `image-downloads.css/js`;
+  `app.js` fell from 1,534 to 1,439 lines and `styles.css` from 1,514 to 1,472. Static asset versions
+  are `styles.css?v=64`, `api-client.js?v=1`, `image-downloads.css/js?v=1`,
+  `revision-center.js?v=2`, `capability-center.js?v=2`, `app.js?v=35`, and
+  `governance-center.js?v=3`.
+- The governance gate now executes `max_complexity` as well as file and Python-function limits through
+  shared source metrics. Policy quality rules also require format and architecture command groups for
+  newly compiled contracts. Startup performs one narrow built-in-policy migration from untouched v1
+  to v2; it preserves the v1 snapshot and frozen project bindings, and refuses to overwrite any
+  administrator-created draft or later policy.
+- Local verification passed repository Ruff, 6 architecture tests, the complete Python suite
+  (`386 passed, 23 skipped`), JavaScript syntax checks, 13 focused native-frontend tests, and real
+  Google Chrome acceptance for task center and system configuration across the required desktop,
+  intermediate, and phone layouts. The production canvas and second frontend build chain were
+  deliberately retired under ADR 0003. This source batch is ready for commit and release.
 
 ## Engineering Governance Web Discoverability
 
@@ -717,3 +747,18 @@ Updated: 2026-10-02
   four React tests, the Vite production build, and real Google Chrome coverage at 1440, 768/680
   and 390 pixels. The governance layout was visually reviewed at desktop and mobile widths with
   no page-level horizontal overflow.
+
+## Production Canvas Retirement
+
+- On 2026-10-03 the product owner removed the visual production canvas from the active TaskHub
+  product. `/canvas/`, its navigation entry, `taskhub-web`, the React/Vite build stages, and the
+  canvas browser acceptance were removed together.
+- Server-side production topology persistence, validation APIs, resource eligibility, and scheduler
+  integration remain for compatibility and existing runtime behavior. Their removal requires a
+  separate stored-data and scheduling compatibility decision (ADR 0003).
+- Generated `taskhub-web` dependencies and build output were moved to the macOS Trash under
+  `taskhub-web-retired-20261003`; no deployed TaskHub instance was changed.
+- The next no-growth batch extracted public image-registry rendering and copy interaction from
+  `app.js` into `image-downloads.js`, reducing the shell from 1,508 to 1,439 lines. The asset has an
+  independent cache marker and focused static contract coverage. Its responsive styles moved to
+  `image-downloads.css`, reducing the shared stylesheet from 1,514 to 1,472 lines.

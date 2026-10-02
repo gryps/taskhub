@@ -9,23 +9,7 @@ function capabilityEscape(value) {
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
   })[char]);
 }
-function capabilityCookie(name) {
-  const value = document.cookie.split("; ").find((item) => item.startsWith(`${name}=`));
-  return value ? decodeURIComponent(value.split("=").slice(1).join("=")) : "";
-}
-async function capabilityRequest(path, options = {}) {
-  const method = options.method || "GET";
-  const headers = {"Content-Type": "application/json", ...(options.headers || {})};
-  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
-    headers["X-CSRF-Token"] = capabilityCookie("taskhub_v2_csrf");
-  }
-  const response = await fetch(path, {...options, headers});
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `HTTP ${response.status}`);
-  }
-  return response.json();
-}
+const capabilityRequest = window.taskhubApi.request;
 
 function renderCapabilityInventory() {
   const stateLabels = {trusted: "受信可用", draft: "待审查", disabled: "已停用", rejected: "已拒绝"};

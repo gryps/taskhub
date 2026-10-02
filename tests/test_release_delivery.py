@@ -131,7 +131,8 @@ def test_seed_includes_node_runtime_and_persistent_npm_cache_for_preview_setup()
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
     assert "FROM node:22-bookworm-slim AS node-runtime" in dockerfile
-    assert "FROM node-runtime AS web" in dockerfile
+    assert "FROM node-runtime AS web" not in dockerfile
+    assert "taskhub-web" not in dockerfile
     assert "COPY --from=node-runtime /usr/local/ /usr/local/" in dockerfile
     assert "npm_config_cache=/var/lib/taskhub/cache/npm" in dockerfile
     assert "mkdir -p /var/lib/taskhub/cache/npm" in dockerfile

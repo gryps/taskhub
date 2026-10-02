@@ -41,16 +41,6 @@ TaskHub 将需求逐步冻结为可审计的软件交付对象：
 - 变更请求只重跑受影响子图；复用成果会明确引用原始尝试，不伪装成新执行。
 - 能力包固定前端样式、组件、布局、品牌、响应式和无障碍合同版本。
 
-## 生产画布
-
-`/canvas/` 提供独立的 React 生产拓扑画布，用于维护长期交付拓扑和查看最新运行叠加层。
-
-- 支持节点拖拽、类型化连线、平移缩放、小地图、自动布局和撤销/重做。
-- 草稿必须先保存并通过服务端校验，才能激活为调度约束。
-- 工具栏、键盘和列表视图提供与右键菜单等价的操作入口。
-- 窄屏保留节点编辑、资源绑定和校验能力，不依赖桌面拖线操作。
-- 浏览器只呈现服务端结果，不自行推导 DAG、Ready 状态或节点资格。
-
 ## Seed 与工作节点
 
 正式部署由 Seed 控制器、统一 Node 镜像和 PostgreSQL 组成。工作节点可按执行、测试或预生产角色启用能力，并由 Seed 统一管理：
@@ -94,7 +84,7 @@ Windows Docker Desktop 可运行：
 
 - [Seed 与 Node 部署](docs/deployment/seed-node.md)
 - [正式部署 README](deploy/release/README.md)
-- [系统架构](docs/architecture.md)
+- [系统架构](docs/ARCHITECTURE.md)
 - [前端设计规范](docs/frontend-design.md)
 
 运行时 `.env`、数据库、工作区、制品、模型凭据、浏览器授权和节点配置不得提交到 Git。
@@ -114,7 +104,7 @@ Windows Docker Desktop 可运行：
 ```bash
 make test
 make lint
-npm --prefix taskhub-web run build
+make architecture
 ```
 
 TaskHub 仍处于 Alpha 阶段。正式环境应使用 TLS、持久化 PostgreSQL、受限 Docker Socket Proxy、独立备份和经过验证的恢复流程。

@@ -5,16 +5,16 @@ from uuid import uuid4
 
 import httpx
 
+import taskhub_v2.workers.acceptance_checkpoint as checkpoint
+import taskhub_v2.workers.acceptance_support as support
+import taskhub_v2.workers.contract_acceptance as evidence
+import taskhub_v2.workers.supplemental_acceptance as supplemental_acceptance
 from taskhub_v2.artifacts import ArtifactStore
 from taskhub_v2.browser import PreviewManager, load_acceptance_contract
 from taskhub_v2.browser.contract import PREPRODUCTION_EXAMPLE, load_acceptance_suite
 from taskhub_v2.browser.reports import setup_failure_detail, validate_junit
 from taskhub_v2.domain.models import AcceptanceEvidence, AcceptanceResult
 from taskhub_v2.projects import ProjectRegistry
-from taskhub_v2.workers import acceptance_checkpoint as checkpoint
-from taskhub_v2.workers import acceptance_support as support
-from taskhub_v2.workers import contract_acceptance as evidence
-from taskhub_v2.workers import supplemental_acceptance
 
 
 class AcceptanceExecutionError(RuntimeError):

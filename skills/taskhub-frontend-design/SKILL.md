@@ -8,7 +8,7 @@ description: Maintain, refine, verify, and safely deploy the TaskHub V2 control-
 ## Establish Context
 
 1. Work only from `/Users/gryps/taskhub-v2`.
-2. Read `AGENT.md`, `docs/agent/project-context.md`, `docs/agent/memory-notes.md`, and `docs/frontend-design.md` completely before inspecting frontend source.
+2. Read `AGENTS.md`, `docs/agent/project-context.md`, `docs/agent/memory-notes.md`, `docs/DESIGN.md`, and `docs/FRONTEND_ARCHITECTURE.md` completely before inspecting frontend source.
 3. Treat `docs/frontend-design.md` as the design authority and `docs/agent/memory-notes.md` as the current implementation and deployment record.
 4. Never modify a project managed by TaskHub. Restrict changes to TaskHub itself, its tests, documentation, configuration, or deployment.
 
@@ -24,10 +24,6 @@ Read only the relevant files under `src/taskhub_v2/api/static/` for legacy pages
 
 Read the matching tests under `tests/` before changing a DOM contract. Do not introduce a build tool or framework for a local presentation fix.
 
-For the Phase 3A production canvas, inspect only the relevant source under `taskhub-web/` plus
-the topology API/domain files. This route intentionally uses React, TypeScript, Vite, React Flow
-and TanStack Query; do not copy its shared editable state back into legacy `app.js`.
-
 ## Apply the Design Contract
 
 - Preserve API routes, SSE behavior, DOM IDs, and existing business actions unless the task explicitly changes their contract.
@@ -41,13 +37,10 @@ and TanStack Query; do not copy its shared editable state back into legacy `app.
 - Keep the development requirement textarea on its own full-width row. Put run status and the single start action in a separate footer row with the action right-aligned on desktop and full-width on phones.
 - Keep one project repository card below the workflow project context. It is both the presentation and configuration surface for repository provider, Seed runtime authentication mode, remote name/URL, base branch and controller checkout. Never accept or display credentials inside a Git URL; validate the local repository, base branch and remote branch on save/test, restore the previous remote on a failed save, and block Git-mode runs before creation when repository preflight fails.
 - Keep one current-project selector in the workflow page header and make both new runs and project-scoped preproduction acceptance follow it. Do not repeat a visible project selector inside the acceptance card. Keep preproduction acceptance disabled by default; require only its access URL when enabled, and place optional gateway/origin variables under advanced configuration.
-- Keep the productized execution plan as a read-only workflow disclosure backed only by the server plan API. Show exact plan/spec/contract versions, status counts, dynamic batches, task dependencies, assigned nodes, resource locks and waiting reasons in 14/13/12px text cards. Do not calculate DAG or Ready state in the browser, let users edit batch numbers, or introduce a graph canvas before the Phase 3A frontend boundary.
-- Keep the Phase 3A production canvas at `/canvas/` as a separate `taskhub-web` route while the three legacy pages remain available. The saved topology and runtime overlay are separate layers. All edges are typed and server-validated; drafts must be saved and validated before activation. Right-click actions require toolbar, keyboard or list equivalents. Narrow screens must retain list editing, resource binding and validation without desktop drag wiring.
-- Convert canvas context-menu screen coordinates through the current React Flow viewport before creating a node, so the new card appears at the invocation point after pan or zoom. When adding from an empty or read-only canvas, create or select the editable draft and append the requested node as one user action; save, validation and activation still follow the draft lifecycle.
-- Serve `/canvas/` HTML with no-store/no-cache headers so it always points at the current hashed bundles. When applying an incremental image overlay, update the canvas resources in the Python package path actually served by `importlib.resources`; checking or replacing only the source/build directory is not sufficient.
+- Keep the productized execution plan as a read-only workflow disclosure backed only by the server plan API. Show exact plan/spec/contract versions, status counts, dynamic batches, task dependencies, assigned nodes, resource locks and waiting reasons in 14/13/12px text cards. Do not calculate DAG or Ready state in the browser, let users edit batch numbers, or introduce a graph canvas without a new approved product and architecture decision.
 - Keep ChangeRequest configuration and presentation in one compact Development Workflow disclosure. The browser may submit reasons, paths and explicit tasks, but the server owns impact analysis, regression scope and plan versions. Show rerun and reused work together, retain 14/13/12px typography, and never present reused evidence as a newly executed attempt.
 - Keep project capability selection in one Development Workflow disclosure and platform capability inventory in a secondary Platform Settings card. Render no more than three server-compatible recommendations with four representative previews and exact pack versions. A selection creates a draft lock; show migration tasks and require explicit activation. If ProductSpec changes, label the old lock as needing renewal. Keep wide/tablet/phone layouts at three/two/one recommendation columns and never infer compatibility in the browser.
-- Keep project scheduling policy in one Development Workflow card with only concurrency, priority weight and per-run cost budget. State that changes affect only future plans. Render critical path, width, cost, quality and bottlenecks only from the server analysis response; never calculate them in the browser. Paginate the text task view at 100 items with visible range and page controls. Keep 14/13/12px cards and collapse policy/analysis layouts to one column at 680px. The React canvas remains the sole editable topology surface until another complete route reaches API, permission, responsive and accessibility parity.
+- Keep project scheduling policy in one Development Workflow card with only concurrency, priority weight and per-run cost budget. State that changes affect only future plans. Render critical path, width, cost, quality and bottlenecks only from the server analysis response; never calculate them in the browser. Paginate the text task view at 100 items with visible range and page controls. Keep 14/13/12px cards and collapse policy/analysis layouts to one column at 680px.
 - Keep system-configuration primary disclosures single-open, retain their summary text, and keep the open heading reachable with a sticky title plus a visible collapse-current shortcut for long content. Put low-frequency forms, audits, load, and prerequisite details behind secondary disclosures without changing their DOM IDs or business actions.
 - Treat system-configuration primary summaries as navigation rows: show a stable order, title, short responsibility, health pill and bounded expand control, with a clear accent on the open row. Render secondary disclosures as fully bordered rounded function cards, visually distinct from primary rows and content cards.
 - Keep system-configuration card typography on one hierarchy: 15px primary disclosure title, 14px card title, 13px fact value, and 12px description, label, metadata and monospace value. Do not introduce isolated 10–11px text for ordinary readable content.
@@ -75,12 +68,11 @@ Run, at minimum:
 node --check src/taskhub_v2/api/static/app.js
 node --check src/taskhub_v2/api/static/task-center.js
 node --check src/taskhub_v2/api/static/resource-center.js
-npm --prefix taskhub-web run build
 git diff --check
 .venv/bin/python -m pytest tests/test_task_center.py -q
 ```
 
-For structural or responsive changes, inspect 1440px, 680px and 390px browser views. Confirm that menu/content regions do not overlap and that horizontal overflow stays inside table/resource containers. For canvas work, also exercise its real-browser test with `TASKHUB_TEST_BROWSER=1` and a known Chromium executable.
+For structural or responsive changes, inspect 1440px, 680px and 390px browser views. Confirm that menu/content regions do not overlap and that horizontal overflow stays inside table/resource containers.
 
 ## Deploy Safely
 

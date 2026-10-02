@@ -27,26 +27,14 @@ let currentProjectPreflight = null;
 let activeProject = null;
 let projectProvisioningDefaults = {};
 
-const publicImageRegistries = [
-  {
-    name: "GitHub Container Registry",
-    shortName: "GHCR",
-    images: [
-      ["Seed", "ghcr.io/gryps/taskhub-seed:0.1.0-alpha"],
-      ["Node", "ghcr.io/gryps/taskhub-node:0.1.0-alpha"],
-    ],
-  },
-  {
-    name: "阿里云容器镜像服务",
-    shortName: "杭州 ACR",
-    images: [
-      ["Seed", "crpi-kgqnka7pmz9f3sml.cn-hangzhou.personal.cr.aliyuncs.com/taskhub-v2/taskhub-seed:0.1.0-alpha"],
-      ["Node", "crpi-kgqnka7pmz9f3sml.cn-hangzhou.personal.cr.aliyuncs.com/taskhub-v2/taskhub-node:0.1.0-alpha"],
-    ],
-  },
-];
-
 const byId = (id) => document.getElementById(id);
+const request = window.taskhubApi.request;
+window.addEventListener("taskhub:unauthorized", () => {
+  byId("login").classList.remove("hidden");
+  byId("workspace").classList.add("hidden");
+  byId("logout").classList.add("hidden");
+  byId("login-message").textContent = "会话已超时，请重新登录";
+});
 const canPermission = (permission) => {
   const permissions = new Set(currentAuth?.permissions || []);
   return permissions.has("*") || permissions.has(permission);
@@ -61,51 +49,6 @@ const stageIndex = (name) => stages.findIndex(([id]) => id === (
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
 })[character]);
-
-function renderPublicImageDownloads() {
-  document.querySelectorAll("[data-public-image-downloads]").forEach((host) => {
-    const requestedRole = host.dataset.imageRole;
-    const groups = publicImageRegistries.map((registry) => `
-      <section class="image-registry-group">
-        <div><strong>${escapeHtml(registry.name)}</strong><span>${escapeHtml(registry.shortName)}</span></div>
-        ${registry.images.filter(([role]) => !requestedRole || role.toLowerCase() === requestedRole)
-          .map(([role, reference]) => `
-        <div class="image-download-row">
-          <span>${escapeHtml(role)}</span>
-          <code>${escapeHtml(reference)}</code>
-          <button type="button" class="secondary copy-image-reference" data-image-reference="${escapeHtml(reference)}" aria-label="复制 ${escapeHtml(role)} 镜像拉取命令" aria-live="polite">复制 pull</button>
-        </div>`).join("")}
-      </section>`).join("");
-    const title = requestedRole === "node" ? "公开工作节点镜像" : "公开镜像下载";
-    const description = requestedRole === "node"
-      ? "初始化时由 Seed 拉取，创建本机节点时直接使用；国内网络可改用阿里云 ACR 地址。"
-      : "两个镜像仓库均支持匿名拉取。国内网络优先使用阿里云 ACR。";
-    host.innerHTML = `<details class="public-image-downloads">
-      <summary><span><strong>${title}</strong><small>0.1.0-alpha · linux/amd64</small></span><span>GHCR · 阿里云 ACR</span></summary>
-      <div class="image-download-content">
-        <p>${description}</p>
-        <div class="image-registry-grid">${groups}</div>
-      </div>
-    </details>`;
-  });
-}
-
-async function copyImageReference(button) {
-  const command = `docker pull ${button.dataset.imageReference}`;
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(command);
-  } else {
-    const input = document.createElement("textarea");
-    input.value = command;
-    input.setAttribute("readonly", "");
-    document.body.appendChild(input);
-    input.select();
-    document.execCommand("copy");
-    input.remove();
-  }
-  button.textContent = "已复制";
-  window.setTimeout(() => { button.textContent = "复制 pull"; }, 1600);
-}
 
 function renderFlow(stage, status, backendSteps = null) {
   const active = stage ? stageIndex(stage) : -1;
@@ -128,11 +71,6 @@ function renderFlow(stage, status, backendSteps = null) {
 function stepStateLabel(state, actor) {
   return {done: "已完成", active: "进行中", "manual-wait": "待你处理",
     blocked: "已阻塞", "not-started": actor === "人工" ? "人工确认" : "未开始"}[state];
-}
-
-function cookie(name) {
-  const item = document.cookie.split("; ").find((value) => value.startsWith(`${name}=`));
-  return item ? decodeURIComponent(item.split("=").slice(1).join("=")) : "";
 }
 
 function render(run) {
@@ -523,34 +461,6 @@ async function deployRelease() {
     byId("deployment-detail").textContent = error.message;
     button.disabled = false;
   }
-}
-
-async function request(path, options = {}) {
-  const method = options.method || "GET";
-  const headers = {"Content-Type": "application/json", ...(options.headers || {})};
-  if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers["X-CSRF-Token"] = cookie("taskhub_v2_csrf");
-  const response = await fetch(path, {...options, headers});
-  if (!response.ok) {
-    const responseText = await response.text();
-    let payload = {};
-    try {
-      payload = responseText ? JSON.parse(responseText) : {};
-    } catch (_error) {
-      payload = {};
-    }
-    const rawDetail = payload.detail || `HTTP ${response.status}`;
-    const detail = Array.isArray(rawDetail)
-      ? rawDetail.map((item) => item?.msg || item?.detail || String(item)).join("；")
-      : typeof rawDetail === "object" ? rawDetail.message || JSON.stringify(rawDetail) : rawDetail;
-    if (response.status === 401 && !path.startsWith("/api/auth/")) {
-      byId("login").classList.remove("hidden");
-      byId("workspace").classList.add("hidden");
-      byId("logout").classList.add("hidden");
-      byId("login-message").textContent = "会话已超时，请重新登录";
-    }
-    throw new Error(detail);
-  }
-  return response.json();
 }
 
 function watch(runId) {
@@ -1428,10 +1338,6 @@ request("/api/health").then(() => {
   byId("health").innerHTML = '<i aria-hidden="true"></i>服务异常';
 });
 byId("login-button").addEventListener("click", login);
-document.addEventListener("click", (event) => {
-  const button = event.target.closest(".copy-image-reference");
-  if (button) copyImageReference(button).catch(() => { button.textContent = "复制失败"; });
-});
 ["login-username", "admin-token", "bootstrap-token", "new-admin-password", "confirm-admin-password"].forEach((id) => {
   byId(id).addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
 });
@@ -1530,5 +1436,4 @@ byId("workflow-project").addEventListener("change", (event) => {
   });
 });
 renderFlow();
-renderPublicImageDownloads();
 bootstrap().catch((error) => { byId("login-message").textContent = error.message; });

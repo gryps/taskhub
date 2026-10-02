@@ -1,16 +1,9 @@
 FROM node:22-bookworm-slim AS node-runtime
 
-FROM node-runtime AS web
-ARG NPM_REGISTRY=https://registry.npmjs.org
-WORKDIR /web
-COPY taskhub-web/package.json taskhub-web/package-lock.json ./
-RUN npm config set registry "${NPM_REGISTRY}" && npm ci
-COPY taskhub-web ./
-RUN npm run build
-
 FROM python:3.12-slim-bookworm AS runtime
 
 ARG CODEX_VERSION=0.153.4
+ARG NPM_REGISTRY=https://registry.npmjs.org
 ARG DEBIAN_MIRROR=http://deb.debian.org/debian
 ARG DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
 
@@ -51,7 +44,7 @@ RUN mkdir -p /opt/codex-home \
 # persist npm's download cache in the TaskHub data volume.
 COPY --from=node-runtime /usr/local/ /usr/local/
 ENV npm_config_cache=/var/lib/taskhub/cache/npm
-RUN node --version && npm --version
+RUN npm config set registry "${NPM_REGISTRY}" && node --version && npm --version
 
 ARG PYPI_INDEX_URL=https://pypi.org/simple
 COPY pyproject.toml README.md ./
@@ -62,7 +55,6 @@ RUN --mount=type=cache,id=taskhub-pip,target=/root/.cache/pip,sharing=locked \
     && PIP_INDEX_URL="${PYPI_INDEX_URL}" PIP_NO_CACHE_DIR=off python -m pip install --no-build-isolation . \
     && rm -rf src
 COPY src ./src
-COPY --from=web /web/dist ./src/taskhub_v2/api/canvas
 RUN python -m pip install --no-deps --no-build-isolation --force-reinstall .
 
 ARG TASKHUB_VERSION=0.1.0-alpha

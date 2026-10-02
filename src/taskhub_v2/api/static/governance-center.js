@@ -15,29 +15,7 @@
   let policies = [];
   let selectedPolicyVersion = null;
   let activeProjectId = "";
-
-  function cookie(name) {
-    const item = document.cookie.split("; ").find((value) => value.startsWith(`${name}=`));
-    return item ? decodeURIComponent(item.split("=").slice(1).join("=")) : "";
-  }
-
-  async function request(path, options = {}) {
-    const method = options.method || "GET";
-    const headers = {"Content-Type": "application/json", ...(options.headers || {})};
-    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
-      headers["X-CSRF-Token"] = cookie("taskhub_v2_csrf");
-    }
-    const response = await fetch(path, {...options, headers});
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      const raw = payload.detail || `HTTP ${response.status}`;
-      const detail = Array.isArray(raw)
-        ? raw.map((item) => item?.msg || String(item)).join("；")
-        : typeof raw === "object" ? raw.message || JSON.stringify(raw) : raw;
-      throw new Error(detail);
-    }
-    return response.json();
-  }
+  const request = window.taskhubApi.request;
 
   function tone(status) {
     if (["active", "approved", "passed"].includes(status)) return "ok";

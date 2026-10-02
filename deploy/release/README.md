@@ -36,10 +36,10 @@ Build local images with `build-images.sh` or `build-images.ps1`. Set
 Builds reuse the local BuildKit/base-image cache by default. Set
 `TASKHUB_PULL_BASE_IMAGES=true` only when an intentional base-image refresh is
 required; routine source releases must not re-download unchanged dependencies.
-The Dockerfiles use the official npm and Debian repositories by default;
+The Dockerfiles use the official npm and Debian repositories by default for managed-project previews;
 constrained networks may pass `NPM_REGISTRY`, `DEBIAN_MIRROR` and
 `DEBIAN_SECURITY_MIRROR` build arguments for trusted mirrors. npm package
-integrity remains pinned by `package-lock.json`.
+integrity remains pinned by each managed project's lock file.
 Create a self-contained, architecture-specific directory with `build-offline.sh`
 or `build-offline.ps1`. Generated archives belong under ignored `dist/`; do not
 commit image tar files.

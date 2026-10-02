@@ -40,7 +40,14 @@ def builtin_rules() -> list[EngineeringRule]:
                 "每个开发批次必须通过格式、静态检查、类型检查、测试和生产构建；"
                 "不得删除测试、放宽断言或关闭类型检查来伪造通过。"
             ),
-            required_command_groups=["lint", "type_check", "test", "build"],
+            required_command_groups=[
+                "format",
+                "lint",
+                "type_check",
+                "test",
+                "architecture",
+                "build",
+            ],
         ),
         EngineeringRule(
             rule_id="delivery.touch-governance",
@@ -85,8 +92,7 @@ def builtin_rules() -> list[EngineeringRule]:
             title="安全交付检查",
             category="security",
             instruction=(
-                "交付前检查实际差异，不得包含密钥、凭据、调试代码、临时产物或"
-                "与任务无关的改动。"
+                "交付前检查实际差异，不得包含密钥、凭据、调试代码、临时产物或与任务无关的改动。"
             ),
             required_command_groups=["security"],
         ),

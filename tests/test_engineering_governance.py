@@ -5,12 +5,15 @@ from datetime import UTC, datetime, timedelta
 from taskhub_v2.domain.governance import (
     EngineeringPolicy,
     EngineeringPolicyStatus,
+    EngineeringRule,
     PolicyExceptionStatus,
 )
 from taskhub_v2.domain.models import ProjectDefinition
 from taskhub_v2.persistence.production import MemoryProductionStore
 from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.services.engineering_governance import EngineeringGovernanceService
+from taskhub_v2.services.engineering_policy_catalog import builtin_rules
+from taskhub_v2.services.governance_gate import _python_function_findings
 from taskhub_v2.services.project_contracts import ProjectContractService
 
 
@@ -60,6 +63,45 @@ def test_new_contract_freezes_active_global_policy(tmp_path):
     assert all(module.max_file_lines <= 400 for module in draft.modules)
 
 
+def test_legacy_builtin_policy_is_upgraded_without_mutating_old_snapshot(tmp_path):
+    async def scenario():
+        store = MemoryProductionStore()
+        governance = EngineeringGovernanceService(store)
+        legacy_rules = builtin_rules()
+        quality = next(rule for rule in legacy_rules if rule.rule_id == "quality.batch-gates")
+        quality.required_command_groups = ["lint", "type_check", "test", "build"]
+        legacy = EngineeringPolicy(
+            project_id="__global__",
+            policy_id="ep_global_engineering",
+            version=1,
+            status=EngineeringPolicyStatus.ACTIVE,
+            name="TaskHub 全局软件工程规则",
+            source_reference="builtin://global-engineering-policy/v1",
+            source_digest=governance._rules_digest(legacy_rules),
+            rules=legacy_rules,
+        )
+        await store.save(legacy)
+        upgraded = await governance.ensure_builtin()
+        old = await store.get("engineering_policy", legacy.policy_id, "1")
+        return upgraded, old
+
+    upgraded, old = asyncio.run(scenario())
+
+    assert upgraded.version == 2
+    assert upgraded.previous_version == 1
+    assert upgraded.source_reference == "builtin://global-engineering-policy/v2"
+    assert old.status == EngineeringPolicyStatus.SUPERSEDED
+    quality = next(rule for rule in upgraded.rules if rule.rule_id == "quality.batch-gates")
+    assert quality.required_command_groups == [
+        "format",
+        "lint",
+        "type_check",
+        "test",
+        "architecture",
+        "build",
+    ]
+
+
 def test_policy_revision_does_not_mutate_existing_contract_binding(tmp_path):
     async def scenario():
         _repository_path, _store, governance, contracts = await _services(tmp_path)
@@ -74,13 +116,15 @@ def test_policy_revision_does_not_mutate_existing_contract_binding(tmp_path):
             source_reference="global-rules-v2",
             actor="admin",
         )
-        await governance.activate(revised.version, "admin")
-        return draft, original, await governance.binding_status(draft)
+        activated = await governance.activate(revised.version, "admin")
+        after_restart = await governance.ensure_builtin()
+        return draft, original, await governance.binding_status(draft), activated, after_restart
 
-    draft, original, status = asyncio.run(scenario())
+    draft, original, status, activated, after_restart = asyncio.run(scenario())
     assert status["valid"] is True
     assert status["current"] is False
     assert draft.engineering_policy == original
+    assert after_restart == activated
 
 
 def test_project_view_exposes_the_frozen_contract_rule_subset(tmp_path):
@@ -134,8 +178,7 @@ def test_approved_project_exception_waives_only_named_rule(tmp_path):
 
     before, approved, after = asyncio.run(scenario())
     assert any(
-        item.status == "failed" and "foundation.project-baseline" in item.gate_id
-        for item in before
+        item.status == "failed" and "foundation.project-baseline" in item.gate_id for item in before
     )
 
     assert approved.status == PolicyExceptionStatus.APPROVED
@@ -154,3 +197,53 @@ def test_policy_objects_round_trip_through_production_store(tmp_path):
     restored = asyncio.run(scenario())
     assert isinstance(restored, EngineeringPolicy)
     assert restored.status == EngineeringPolicyStatus.ACTIVE
+
+
+def test_python_governance_gate_enforces_function_length_and_complexity():
+    source = """\
+def decide(first, second, third):
+    result = 0
+    reason = "none"
+    if first and second:
+        result = 1
+        reason = "both"
+    if third:
+        result = 2
+        reason = "third"
+    message = f"{reason}:{result}"
+    if message:
+        return result
+    return -1
+"""
+    rule = EngineeringRule(
+        rule_id="architecture.test-limits",
+        title="Test limits",
+        category="architecture",
+        instruction="Verify both executable source limits.",
+        max_function_lines=10,
+        max_complexity=4,
+    )
+
+    findings = _python_function_findings("sample.py", source.splitlines(), rule)
+
+    assert any("函数超过全局上限 10 行" in summary for summary, _path in findings)
+    assert any("圈复杂度 5 超过全局上限 4" in summary for summary, _path in findings)
+
+
+def test_python_governance_gate_accepts_function_within_limits():
+    source = """\
+def choose(enabled):
+    if enabled:
+        return 1
+    return 0
+"""
+    rule = EngineeringRule(
+        rule_id="architecture.test-pass",
+        title="Test pass",
+        category="architecture",
+        instruction="Verify a compliant function passes.",
+        max_function_lines=10,
+        max_complexity=3,
+    )
+
+    assert _python_function_findings("sample.py", source.splitlines(), rule) == []

@@ -7,23 +7,7 @@ function revisionEscape(value) {
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
   })[char]);
 }
-function revisionCookie(name) {
-  const value = document.cookie.split("; ").find((item) => item.startsWith(`${name}=`));
-  return value ? decodeURIComponent(value.split("=").slice(1).join("=")) : "";
-}
-async function revisionRequest(path, options = {}) {
-  const method = options.method || "GET";
-  const headers = {"Content-Type": "application/json", ...(options.headers || {})};
-  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
-    headers["X-CSRF-Token"] = revisionCookie("taskhub_v2_csrf");
-  }
-  const response = await fetch(path, {...options, headers});
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `HTTP ${response.status}`);
-  }
-  return response.json();
-}
+const revisionRequest = window.taskhubApi.request;
 
 function revisionStateLabel(status) {
   return ({proposed: "待批准", approved: "已批准", applied: "已应用", rejected: "已拒绝"})[status] || status;

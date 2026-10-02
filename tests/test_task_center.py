@@ -182,14 +182,18 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="model-config-audit"' in html
         assert 'id="platform-settings-form"' in html
         assert 'id="platform-config-audit"' in html
-        assert "styles.css?v=62" in html
-        assert 'href="/canvas/"' in html and "打开生产画布" in html
-        assert "app.js?v=33" in html
+        assert "styles.css?v=64" in html
+        assert "image-downloads.css?v=1" in html
+        assert 'href="/canvas/"' not in html and "打开生产画布" not in html
+        assert client.get("/canvas/").status_code == 404
+        assert "api-client.js?v=1" in html
+        assert "image-downloads.js?v=1" in html
+        assert "app.js?v=35" in html
         assert 'id="exception-center"' in html
         assert 'id="evidence-center"' in html
         assert "task-center.js?v=15" in html
-        assert "revision-center.js?v=1" in html
-        assert "capability-center.js?v=1" in html
+        assert "revision-center.js?v=2" in html
+        assert "capability-center.js?v=2" in html
         assert html.count('class="resource-disclosure-heading"') == 5
         assert html.count('class="resource-order"') == 5
         assert 'id="model-operations"' in html
@@ -238,9 +242,9 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="execution-tasks"' in html
         assert 'id="capability-disclosure"' in html
         assert 'id="capability-inventory-disclosure"' in html
-        assert "/static/app.js?v=33" in html
+        assert "/static/app.js?v=35" in html
         assert "/static/governance-center.css?v=1" in html
-        assert "/static/governance-center.js?v=2" in html
+        assert "/static/governance-center.js?v=3" in html
         assert 'id="engineering-policy-disclosure"' in html
         assert 'id="engineering-policy-root"' in html
         assert 'id="project-governance-root"' in html
@@ -266,8 +270,12 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="save-project-quality"' in html
         assert 'id="workflow-project"' in html
         app_script = client.get("/static/app.js").text
+        api_client_script = client.get("/static/api-client.js").text
         assert "projectProvisioningDefaults" in app_script
-        assert "responseText ? JSON.parse(responseText)" in app_script
+        assert "responseText ? JSON.parse(responseText)" in api_client_script
+        assert 'headers["X-CSRF-Token"]' in api_client_script
+        assert 'CustomEvent("taskhub:unauthorized")' in api_client_script
+        assert "window.taskhubApi.request" in app_script
         assert 'remote_url: byId("project-remote-url")' in app_script
         assert 'local_path: byId("attach-project-local-path")' in app_script
         assert "openGitServiceSettings" in app_script
@@ -321,7 +329,8 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert html.count('id="archive-task"') == 1
         assert "<details><summary>规划方案" in html
         script = client.get("/static/app.js").text
-        assert "copy-image-reference" in script
+        image_script = client.get("/static/image-downloads.js").text
+        assert "copy-image-reference" in image_script
         assert "/repository/check" in script
         assert "/quality" in script
         assert "renderProjectRepository(active)" in script

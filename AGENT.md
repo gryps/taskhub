@@ -1,45 +1,6 @@
-# TaskHub V2 Maintenance Boundary
+# Compatibility pointer
 
-## Non-Negotiable Principle
+The canonical project instructions are in `AGENTS.md`. Read that file before making any change.
 
-TaskHub V2 maintainers and assisting agents may modify TaskHub V2 itself, its
-deployment, node environments, configuration, diagnostics, and tests. They must
-not directly implement, repair, format, or commit code in projects managed by
-TaskHub V2.
-
-All managed-project source changes must be produced by a TaskHub V2 run through
-its coding worker, verified by its configured gates, and retained with run,
-model, test, artifact, and Git evidence. When a managed-project run blocks,
-maintainers improve or repair the platform and then retry or start a clean run.
-They do not bypass the platform by completing the managed-project work manually.
-
-Reading a managed project and collecting non-mutating diagnostics is permitted.
-Direct managed-project modification by TaskHub maintainers or assisting agents is
-not permitted.
-
-## Operational Self-Sufficiency
-
-TaskHub V2 must not depend on a TaskHub maintainer or an external coding assistant
-for routine project delivery. Operators provide hardware, network access, and
-credentials through documented admission/configuration flows. The platform owns
-node bootstrap checks, candidate deployment, database preparation, acceptance
-execution, evidence collection, cleanup, and recovery.
-
-Project-specific automation belongs in a versioned TaskHub contract generated and
-maintained by the managed project's coding runs. Missing automation is returned to
-the coding worker with an exact contract diagnostic; it is never converted into a
-request for the operator to write commands, edit project code, or manufacture
-evidence. Unsatisfied infrastructure prerequisites must fail before a run starts,
-not appear for the first time during supervision.
-
-## Frontend Maintenance Context
-
-Before changing the TaskHub V2 frontend, read these files in order:
-
-1. `docs/agent/project-context.md`
-2. `docs/agent/memory-notes.md`
-3. `docs/frontend-design.md`
-
-The design document is the frontend specification. The memory notes record the
-currently deployed implementation and operational handoff. Keep both current
-when frontend behavior or deployment state changes.
+This singular filename is retained temporarily because older TaskHub tooling and local skills still
+reference it. It must not become a second, divergent rule source.

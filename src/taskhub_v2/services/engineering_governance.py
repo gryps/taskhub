@@ -22,6 +22,8 @@ from taskhub_v2.services.governance_gate import evaluate_policy
 
 GLOBAL_POLICY_PROJECT = "__global__"
 BUILTIN_POLICY_ID = "ep_global_engineering"
+BUILTIN_SOURCE_REFERENCE = "builtin://global-engineering-policy/v2"
+LEGACY_BUILTIN_SOURCE_REFERENCE = "builtin://global-engineering-policy/v1"
 
 
 class EngineeringGovernanceError(RuntimeError):
@@ -34,23 +36,41 @@ class EngineeringGovernanceService:
 
     async def ensure_builtin(self) -> EngineeringPolicy:
         policies = await self.list_policies()
-        if policies:
-            return await self.active_policy()
         rules = builtin_rules()
+        if policies:
+            active = await self.active_policy()
+            if self._can_upgrade_legacy_builtin(policies, active, rules):
+                await self.store.save(
+                    active.model_copy(update={"status": EngineeringPolicyStatus.SUPERSEDED})
+                )
+                return await self.store.save(self._builtin_policy(rules, version=2))
+            return active
+        return await self.store.save(self._builtin_policy(rules, version=1))
+
+    def _builtin_policy(self, rules, *, version: int) -> EngineeringPolicy:
         policy = EngineeringPolicy(
             project_id=GLOBAL_POLICY_PROJECT,
             policy_id=BUILTIN_POLICY_ID,
-            version=1,
+            version=version,
+            previous_version=version - 1 if version > 1 else None,
             status=EngineeringPolicyStatus.ACTIVE,
             name="TaskHub 全局软件工程规则",
-            source_reference="builtin://global-engineering-policy/v1",
+            source_reference=BUILTIN_SOURCE_REFERENCE,
             source_digest=self._rules_digest(rules),
             rules=rules,
             activated_by="system",
             activated_at=datetime.now(UTC).isoformat(),
             source_ids=["global:AGENTS.md"],
         )
-        return await self.store.save(policy)
+        return policy
+
+    def _can_upgrade_legacy_builtin(self, policies, active, rules) -> bool:
+        return (
+            len(policies) == 1
+            and active.version == 1
+            and active.source_reference == LEGACY_BUILTIN_SOURCE_REFERENCE
+            and active.source_digest != self._rules_digest(rules)
+        )
 
     async def list_policies(self) -> list[EngineeringPolicy]:
         records = await self.store.list(
@@ -283,9 +303,7 @@ class EngineeringGovernanceService:
             raise EngineeringGovernanceError("全局规则版本不存在")
         return record
 
-    async def _waived_rule_ids(
-        self, project_id: str, policy: EngineeringPolicy
-    ) -> set[str]:
+    async def _waived_rule_ids(self, project_id: str, policy: EngineeringPolicy) -> set[str]:
         records = await self.store.list(project_id=project_id, object_type="policy_exception")
         now = datetime.now(UTC)
         return {
