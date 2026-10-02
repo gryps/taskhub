@@ -169,6 +169,18 @@ def test_backup_restore_binds_encryption_key_to_database_identity():
     assert "verify-backup.ps1" in (RELEASE / "backup.ps1").read_text(encoding="utf-8-sig")
 
 
+def test_backup_exports_images_before_stopping_controller():
+    shell = (RELEASE / "backup.sh").read_text(encoding="utf-8")
+    powershell = (RELEASE / "backup.ps1").read_text(encoding="utf-8-sig")
+
+    assert shell.index('docker save -o "$backup/images.tar"') < shell.index(
+        "$compose stop controller"
+    )
+    assert powershell.index('docker save -o (Join-Path $BackupDirectory "images.tar")') < (
+        powershell.index("stop controller")
+    )
+
+
 def test_release_images_pin_codex_and_node_has_common_role_tools():
     seed = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     node = (ROOT / "deploy" / "node" / "Dockerfile").read_text(encoding="utf-8")

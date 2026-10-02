@@ -26,6 +26,19 @@ function Get-KeyFingerprint([string]$Key) {
     return ([BitConverter]::ToString($Hash)).Replace("-", "").ToLowerInvariant()
 }
 
+$PostgresImage = Get-EnvValue "TASKHUB_POSTGRES_IMAGE"
+$SeedImage = Get-EnvValue "TASKHUB_SEED_IMAGE"
+$NodeImage = Get-EnvValue "TASKHUB_NODE_IMAGE"
+$DataVolume = Get-EnvValue "TASKHUB_DATA_VOLUME"
+$PostgresVolume = Get-EnvValue "TASKHUB_POSTGRES_VOLUME"
+$KeyFingerprint = Get-KeyFingerprint (Get-EnvValue "TASKHUB_CONFIG_ENCRYPTION_KEY")
+if ("$DataVolume`:$PostgresVolume" -notin @(
+    "taskhub-data:taskhub-postgres-data",
+    "taskhub-seed_taskhub-data:taskhub-seed_postgres-data"
+)) { throw "数据卷名称不在 TaskHub 安全范围内。" }
+docker save -o (Join-Path $BackupDirectory "images.tar") $SeedImage $NodeImage $PostgresImage
+if ($LASTEXITCODE -ne 0) { throw "回退镜像导出失败。" }
+
 docker compose --project-directory $Root --env-file $EnvFile -f $ComposeFile stop controller
 if ($LASTEXITCODE -ne 0) { throw "控制器停止失败。" }
 try {
@@ -38,21 +51,9 @@ try {
     docker compose --project-directory $Root --env-file $EnvFile -f $ComposeFile `
         exec -T postgres rm -f /tmp/taskhub.dump
 
-    $PostgresImage = Get-EnvValue "TASKHUB_POSTGRES_IMAGE"
-    $SeedImage = Get-EnvValue "TASKHUB_SEED_IMAGE"
-    $NodeImage = Get-EnvValue "TASKHUB_NODE_IMAGE"
-    $DataVolume = Get-EnvValue "TASKHUB_DATA_VOLUME"
-    $PostgresVolume = Get-EnvValue "TASKHUB_POSTGRES_VOLUME"
-    $KeyFingerprint = Get-KeyFingerprint (Get-EnvValue "TASKHUB_CONFIG_ENCRYPTION_KEY")
-    if ("$DataVolume`:$PostgresVolume" -notin @(
-        "taskhub-data:taskhub-postgres-data",
-        "taskhub-seed_taskhub-data:taskhub-seed_postgres-data"
-    )) { throw "数据卷名称不在 TaskHub 安全范围内。" }
     docker run --rm -v "${DataVolume}:/data" -v "${BackupDirectory}:/backup" $PostgresImage `
         sh -c 'tar -czf /backup/taskhub-data.tar.gz -C /data .'
     if ($LASTEXITCODE -ne 0) { throw "TaskHub 数据卷备份失败。" }
-    docker save -o (Join-Path $BackupDirectory "images.tar") $SeedImage $NodeImage $PostgresImage
-    if ($LASTEXITCODE -ne 0) { throw "回退镜像导出失败。" }
 
     @(
         "TASKHUB_BACKUP_CREATED=$Timestamp"

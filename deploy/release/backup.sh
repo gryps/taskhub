@@ -16,10 +16,6 @@ cp "$env_file" "$backup/.env"
 cp "$compose_file" "$backup/compose.yaml"
 
 compose="docker compose --project-directory $root --env-file $env_file -f $compose_file"
-$compose stop controller
-trap '$compose start controller >/dev/null 2>&1 || true' EXIT INT TERM
-$compose exec -T postgres pg_dump -U taskhub -d taskhub -Fc >"$backup/postgres.dump"
-
 postgres_image=$(sed -n 's/^TASKHUB_POSTGRES_IMAGE=//p' "$env_file" | tail -n 1)
 seed_image=$(sed -n 's/^TASKHUB_SEED_IMAGE=//p' "$env_file" | tail -n 1)
 node_image=$(sed -n 's/^TASKHUB_NODE_IMAGE=//p' "$env_file" | tail -n 1)
@@ -32,9 +28,13 @@ case "$data_volume:$postgres_volume" in
   taskhub-data:taskhub-postgres-data|taskhub-seed_taskhub-data:taskhub-seed_postgres-data) ;;
   *) printf '数据卷名称不在 TaskHub 安全范围内。\n' >&2; exit 1 ;;
 esac
+docker save -o "$backup/images.tar" "$seed_image" "$node_image" "$postgres_image"
+
+$compose stop controller
+trap '$compose start controller >/dev/null 2>&1 || true' EXIT INT TERM
+$compose exec -T postgres pg_dump -U taskhub -d taskhub -Fc >"$backup/postgres.dump"
 docker run --rm -v "${data_volume:-taskhub-data}:/data" -v "$backup:/backup" "${postgres_image:-postgres:16-alpine}" \
   sh -c 'tar -czf /backup/taskhub-data.tar.gz -C /data .'
-docker save -o "$backup/images.tar" "$seed_image" "$node_image" "$postgres_image"
 {
   printf 'TASKHUB_BACKUP_CREATED=%s\n' "$timestamp"
   printf 'TASKHUB_SEED_IMAGE=%s\n' "$seed_image"

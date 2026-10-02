@@ -762,3 +762,23 @@ Updated: 2026-10-03
   `app.js` into `image-downloads.js`, reducing the shell from 1,508 to 1,439 lines. The asset has an
   independent cache marker and focused static contract coverage. Its responsive styles moved to
   `image-downloads.css`, reducing the shared stylesheet from 1,514 to 1,472 lines.
+
+## Alpha.7 Release And Local Deployment
+
+- Source commit `1697b05` and tag `v0.1.0-alpha.7` were pushed to GitHub. The alpha.7 Seed image is
+  `sha256:137abd3d1e1124c59335e7d197473fb98c7361c068fde492cdf0608a6a4a88f5`; the Node image is
+  `sha256:0baa8d3a771b4d2f2ad7cb928622d695be6c5ab3d7ac3a47a6f0934912c7b544`.
+- GHCR rejected the configured credential and Aliyun ACR rejected the fallback push, so alpha.7
+  image publication is not complete. A registry credential with package-write permission is still
+  required before another host can pull these tags.
+- The local formal stack was upgraded from Seed alpha.6 / Node alpha.4 to alpha.7 using the verified
+  local images. The controller is healthy with zero restarts, reports revision `1697b05`, serves
+  `styles.css?v=64` and `app.js?v=35`, and configures new execution nodes to use Node alpha.7.
+- The verified pre-upgrade recovery point is
+  `deploy/release/backups/20261002T184438Z`. Two interrupted, unverified backup directories were
+  moved to the macOS Trash after the valid recovery point was created.
+- Backup ordering now archives immutable container images before stopping the controller. The
+  service is stopped only for the PostgreSQL and TaskHub data snapshot, so a slow or failed Docker
+  image export cannot unnecessarily extend application downtime.
+- The formerly documented preproduction host at `192.168.31.51` was unreachable and was not
+  modified. This release was deployed only to the local formal stack exposed on port 8200.
