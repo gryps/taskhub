@@ -184,7 +184,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="platform-config-audit"' in html
         assert "styles.css?v=62" in html
         assert 'href="/canvas/"' in html and "打开生产画布" in html
-        assert "app.js?v=32" in html
+        assert "app.js?v=33" in html
         assert 'id="exception-center"' in html
         assert 'id="evidence-center"' in html
         assert "task-center.js?v=15" in html
@@ -237,7 +237,12 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="execution-tasks"' in html
         assert 'id="capability-disclosure"' in html
         assert 'id="capability-inventory-disclosure"' in html
-        assert "/static/app.js?v=32" in html
+        assert "/static/app.js?v=33" in html
+        assert "/static/governance-center.css?v=1" in html
+        assert "/static/governance-center.js?v=1" in html
+        assert 'id="engineering-policy-disclosure"' in html
+        assert 'id="engineering-policy-root"' in html
+        assert 'id="project-governance-root"' in html
         assert 'id="project-remote-url" required' in html
         assert 'id="project-local-path" required' in html
         assert 'id="attach-project-remote-url" required' in html
@@ -266,6 +271,10 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'local_path: byId("attach-project-local-path")' in app_script
         assert "openGitServiceSettings" in app_script
         assert "必须填写当前项目获授权的节点 ID" in app_script
+        governance_script = client.get("/static/governance-center.js").text
+        assert "/api/engineering-policies" in governance_script
+        assert "contract_binding" in governance_script
+        assert "data-batch-governance" in governance_script
         resource_script = client.get("/static/resource-center.js").text
         assert "/api/remote-nodes" not in resource_script
         assert "prepare-node-upgrade" not in resource_script

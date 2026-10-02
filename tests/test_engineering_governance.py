@@ -83,6 +83,29 @@ def test_policy_revision_does_not_mutate_existing_contract_binding(tmp_path):
     assert draft.engineering_policy == original
 
 
+def test_project_view_exposes_the_frozen_contract_rule_subset(tmp_path):
+    async def scenario():
+        _repository_path, _store, governance, contracts = await _services(tmp_path)
+        contract = await contracts.create_draft(
+            "demo", profile_id="frontend-spa", inferred=False, actor="owner"
+        )
+        return contract, await governance.project_view("demo", contract)
+
+    contract, view = asyncio.run(scenario())
+    binding = view["contract_binding"]
+    assert view["binding"]["valid"] is True
+    assert binding == contract.engineering_policy
+    assert binding.rule_ids
+    assert "frontend.foundation" in binding.rule_ids
+    assert len(binding.instructions) == len(binding.rule_ids)
+    expected = [
+        rule.rule_id
+        for rule in view["binding"]["policy"].rules
+        if rule.applies(contract.profile_id)
+    ]
+    assert binding.rule_ids == expected
+
+
 def test_approved_project_exception_waives_only_named_rule(tmp_path):
     async def scenario():
         repository, _store, governance, contracts = await _services(tmp_path)

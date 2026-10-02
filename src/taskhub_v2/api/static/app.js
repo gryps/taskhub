@@ -350,11 +350,12 @@ function renderExecutionPlan(data) {
       : "<p>当前未识别出重复资源争用或集中阻塞。</p>"}</div>`
     : '<p class="empty-state">尚无分析</p>';
   byId("execution-batches").innerHTML = batches.length ? batches.map((batch) => `
-    <article class="execution-batch-card">
+    <article class="execution-batch-card" data-batch-id="${escapeHtml(batch.batch_id)}">
       <header><strong>批次 ${batch.sequence}</strong><span class="dag-state dag-${escapeHtml(batch.status)}">${escapeHtml(dagStateLabels[batch.status] || batch.status)}</span></header>
       <p>${batch.task_ids.length} 项任务 · ${escapeHtml(batch.task_ids.join("、"))}</p>
       <small>${Object.keys(batch.assignments || {}).length ? `节点：${escapeHtml(Object.values(batch.assignments).join("、"))}` : "等待节点分配"}</small>
       ${Object.keys(batch.selection_reasons || {}).length ? `<small class="batch-selection-reason">${escapeHtml(Object.values(batch.selection_reasons).join("；"))}</small>` : ""}
+      <div class="batch-governance" data-batch-governance="${escapeHtml(batch.batch_id)}"></div>
     </article>`).join("") : '<p class="empty-state">尚无批次</p>';
   byId("execution-tasks").innerHTML = tasks.length ? tasks.map((task) => {
     const reasons = task.waiting_reasons || data.latest_snapshot?.waiting_reasons?.[task.task_id] || [];
@@ -372,6 +373,7 @@ function renderExecutionPlan(data) {
   byId("execution-task-previous").disabled = page.page <= 1;
   byId("execution-task-next").disabled = page.page >= pages;
   byId("execution-task-pagination").classList.toggle("hidden", pages <= 1);
+  window.dispatchEvent(new CustomEvent("taskhub:execution-plan", {detail: data}));
 }
 
 async function loadExecutionPlan(runId) {
@@ -721,6 +723,9 @@ function renderProjectContract(contract) {
     byId("create-project-contract").classList.remove("hidden");
     for (const id of ["review-project-contract", "activate-project-contract",
       "revise-project-contract", "run-project-contract-gate"]) byId(id).classList.add("hidden");
+    window.dispatchEvent(new CustomEvent("taskhub:contract", {
+      detail: {projectId: currentProjectId, contract: null},
+    }));
     refreshStartAction();
     return;
   }
@@ -754,6 +759,9 @@ function renderProjectContract(contract) {
   byId("revise-project-contract").classList.toggle("hidden", contract.status !== "active");
   byId("run-project-contract-gate").classList.toggle("hidden", contract.status !== "active");
   applyPermissions();
+  window.dispatchEvent(new CustomEvent("taskhub:contract", {
+    detail: {projectId: currentProjectId, contract},
+  }));
   refreshStartAction();
 }
 

@@ -273,6 +273,7 @@ class EngineeringGovernanceService:
         records = await self.store.list(project_id=project_id, object_type="policy_exception")
         return {
             "binding": await self.binding_status(contract),
+            "contract_binding": contract.engineering_policy if contract else None,
             "exceptions": [item for item in records if isinstance(item, PolicyException)],
         }
 

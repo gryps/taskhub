@@ -138,6 +138,7 @@ def test_browser_history_and_publication_recovery(monkeypatch, tmp_path, postgre
                 for run_id in ids
             ]
             assert [run["status"] for run in states] == ["blocked", "completed", "completed"]
+            page.locator("#nav-tasks").click()
             page.locator("#refresh-tasks").click()
             rows(page, 3)
             expect(page.locator("#exception-items .exception-item")).to_have_count(1)

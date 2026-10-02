@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
   <link rel="stylesheet" href="/static/styles.css?v=62">
+  <link rel="stylesheet" href="/static/governance-center.css?v=1">
 </head>
 <body>
   <header class="app-header">
@@ -254,6 +255,7 @@
               <span id="project-contract-source" class="muted">未绑定仓库版本</span>
             </div>
             <div id="project-contract-facts" class="project-contract-facts"></div>
+            <div id="project-governance-root" class="governance-project-root" aria-live="polite"></div>
             <div id="project-contract-gate" class="project-contract-gate hidden" role="status"></div>
             <footer class="management-card-actions project-contract-actions">
               <button id="create-project-contract" type="button" class="secondary" data-permission="projects:manage">生成契约草稿</button>
@@ -631,6 +633,10 @@
         </form>
       </div>
       </details>
+      <details id="engineering-policy-disclosure" class="resource-subdisclosure">
+      <summary class="resource-subsection-head"><strong>全局工程规则</strong><span id="engineering-policy-summary">正在读取</span></summary>
+      <div id="engineering-policy-root" class="governance-policy-root" aria-live="polite"><p class="muted">正在读取版本化开发与前端规则。</p></div>
+      </details>
       <details class="resource-subdisclosure">
       <summary class="resource-subsection-head"><strong>Seed 备份与恢复</strong><span>整库、主密钥、配置、凭据、节点与项目数据</span></summary>
       <div class="backup-contract">
@@ -714,7 +720,8 @@
   </main>
   <script src="/static/revision-center.js?v=1"></script>
   <script src="/static/capability-center.js?v=1"></script>
-  <script src="/static/app.js?v=32"></script>
+  <script src="/static/app.js?v=33"></script>
+  <script src="/static/governance-center.js?v=1"></script>
   <script src="/static/task-center.js?v=15"></script>
   <script src="/static/resource-center.js?v=40"></script>
   <script src="/static/onboarding.js?v=3"></script>

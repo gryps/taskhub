@@ -314,10 +314,11 @@ def test_online_initializers_preload_seed_and_node_images():
 
 
 def test_release_kit_has_no_site_specific_paths_or_addresses():
+    # The ignored .env is instance state, not a distributable release-kit file.
     text = "\n".join(
         path.read_text(encoding="utf-8")
         for path in RELEASE.iterdir()
-        if path.is_file()
+        if path.is_file() and path.name != ".env"
     )
     assert "192.168.31." not in text
     assert "/Users/gryps" not in text

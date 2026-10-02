@@ -58,8 +58,9 @@ def test_product_spec_card_layout(tmp_path):
         page.goto(url, wait_until="networkidle")
         page.locator("#admin-token").fill("browser-product-token")
         page.locator("#login-button").click()
-        expect(page.locator("#onboarding-page")).to_be_visible()
-        page.locator("#onboarding-later").click()
+        expect(page.locator("#workspace")).to_be_visible()
+        if page.locator("#onboarding-page").is_visible():
+            page.locator("#onboarding-later").click()
 
         csrf = next(
             cookie["value"] for cookie in context.cookies() if cookie["name"] == "taskhub_v2_csrf"
@@ -132,9 +133,13 @@ def test_product_spec_card_layout(tmp_path):
         expect(page.locator("#product-decision-form")).to_be_hidden()
         contract_disclosure = page.locator("#project-contract-disclosure")
         expect(contract_disclosure).to_be_visible()
-        contract_disclosure.locator("summary").click()
+        contract_disclosure.locator(":scope > summary").click()
         expect(page.locator("#project-contract-state")).to_have_text("已生效")
         expect(page.locator("#project-contract-facts > div")).to_have_count(6)
+        governance = page.locator("#project-governance-root")
+        expect(governance.locator(":scope > .governance-inline-disclosure")).to_be_visible()
+        expect(governance).to_contain_text("已绑定当前全局规则")
+        expect(governance.locator(".governance-rule")).not_to_have_count(0)
         policy_disclosure = page.locator("#scheduling-policy-disclosure")
         expect(policy_disclosure).to_be_visible()
         policy_disclosure.locator("summary").click()
@@ -145,6 +150,8 @@ def test_product_spec_card_layout(tmp_path):
         expect(page.locator("#execution-plan-state")).to_have_text("已完成")
         expect(page.locator("#execution-plan-facts > div")).to_have_count(4)
         expect(page.locator("#execution-analysis .execution-analysis-facts > div")).to_have_count(6)
+        expect(page.locator("#execution-batches .batch-governance")).not_to_have_count(0)
+        expect(page.locator("#execution-batches")).to_contain_text("工程治理")
         assert page.locator("#execution-tasks .execution-task-card").count() >= 2
         assert (
             page.locator("#product-spec-title").evaluate(
@@ -174,6 +181,12 @@ def test_product_spec_card_layout(tmp_path):
                 .split()
             )
             assert contract_columns == columns
+            governance_columns = len(
+                governance.locator(".governance-rule-list")
+                .evaluate("element => getComputedStyle(element).gridTemplateColumns")
+                .split()
+            )
+            assert governance_columns == columns
             dag_columns = len(
                 page.locator("#execution-tasks")
                 .evaluate("element => getComputedStyle(element).gridTemplateColumns")

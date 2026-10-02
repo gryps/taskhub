@@ -683,3 +683,20 @@ Updated: 2026-09-25
   either the original input or the already-modified output reuses that bundle instead of invoking
   the model again. Changed requirements, plans, feedback or workspace contents still force a fresh
   coding pass.
+
+## Engineering Governance Web Console
+
+- The versioned global engineering policy is now visible under System Configuration → Advanced
+  Settings → Global Engineering Rules. Administrators can compare versions, create a draft from
+  the current rule document and explicitly activate a draft; ordinary readers remain read-only.
+- Project Contract shows the exact frozen policy binding and only the rules selected for that
+  contract profile. Bounded, auditable project exceptions can be proposed and decided in place,
+  while stale bindings direct the operator through a contract revision instead of silently moving.
+- Every execution batch now reserves an engineering-governance result region and renders passed,
+  warning, failed or not-yet-executed status from the persisted batch gate. The standalone
+  `governance-center.js` and `governance-center.css` assets keep this concern out of the existing
+  large application bundle; the main bundle marker is `app.js?v=33`.
+- Verification passed repository-wide Ruff, 379 Python tests with 26 opt-in/environment skips,
+  four React tests, the Vite production build, and real Google Chrome coverage at 1440, 768/680
+  and 390 pixels. The governance layout was visually reviewed at desktop and mobile widths with
+  no page-level horizontal overflow.
