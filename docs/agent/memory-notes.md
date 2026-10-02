@@ -12,6 +12,12 @@ Updated: 2026-10-02
   门禁仍分别在“项目契约”和“执行计划与动态批次”中呈现。
 - 静态资源更新为 `governance-center.js?v=2` 与 `resource-center.js?v=41`。真实 Chrome
   浏览器验收覆盖 1440、768、390 像素，确认栏目可发现、可展开并成功呈现 7 条生效规则。
+- 源提交 `efde662` 已发布为 `v0.1.0-alpha.6`，GitHub 质量与镜像流水线均通过。本机正式栈
+  在升级前完成并验证备份 `deploy/release/backups/20261002T152036Z`，控制器现运行
+  `ghcr.io/gryps/taskhub-seed:v0.1.0-alpha.6` 且健康、零重启，首页确认加载新栏目与两个新版
+  静态资源。外部仓库拉取因本机 Docker 代理超时，控制器使用已验证 alpha.5 完整镜像加三份
+  已测试静态文件制作本地增量镜像；发布在 GHCR 的正式 alpha.6 镜像不受影响。执行节点没有
+  本次控制台改动，继续运行已验证的 alpha.4，避免无关重建。
 
 ## Global Engineering Governance
 
