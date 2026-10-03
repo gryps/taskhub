@@ -782,3 +782,21 @@ Updated: 2026-10-03
   image export cannot unnecessarily extend application downtime.
 - The formerly documented preproduction host at `192.168.31.51` was unreachable and was not
   modified. This release was deployed only to the local formal stack exposed on port 8200.
+
+## Alpha.7 Registry Recovery
+
+- GitHub Actions run `37045672359` successfully published the alpha.7 Seed and Node images to
+  GHCR from tag `v0.1.0-alpha.7`. The repository workflow uses its short-lived `GITHUB_TOKEN` with
+  `packages: write`; no long-lived GitHub PAT is stored on the release workstation.
+- GHCR exposes Seed manifest
+  `sha256:77d43d861779d499369d55f8b21beaa7dec4200a0e77cb80a88b529269c69929` and Node manifest
+  `sha256:3c45a48030ff0015b1898f6c9e4f53109da668191cd32b6a5fe0e7b06d2e3b14` for
+  `v0.1.0-alpha.7`.
+- The Aliyun Hangzhou Personal Edition ACR credential was reset and stored through Docker
+  Desktop's system credential helper. No registry password was written to the repository, shell
+  environment, or TaskHub configuration.
+- Aliyun ACR now exposes both `v0.1.0-alpha.7` and the rolling `0.1.0-alpha` tag. Both tags resolve
+  to Seed manifest `sha256:f07e666a9d0624a00dc6d001cedb58d2e68fd37c3284c86a5223f64e2e9936ed`
+  and Node manifest `sha256:f5bf6c4f5056834d7d2ff83567db72398092ce7af2419a1600a70b203d1c58af`.
+- Anonymous manifest reads succeeded for the versioned GHCR images and for both Aliyun ACR tag
+  forms using an empty temporary Docker configuration, confirming public pull availability.
