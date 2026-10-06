@@ -812,3 +812,26 @@ Updated: 2026-10-03
   browser CSRF.
 - The security console owns pending approvals, credential inventory and revocation through the
   standalone `agent-access.js` and `agent-access.css` assets. ADR 0004 records the boundary.
+
+## Alpha.8 Agent Access And Local Deployment
+
+- The local formal stack was upgraded to Seed `v0.1.0-alpha.8` from the verified recovery point
+  `deploy/release/backups/20261006T145328Z`. The controller remained healthy with zero restarts and
+  preserved the initialized administrator account and persisted platform configuration.
+- A browser-approved credential for `Codex on gryps Mac` was exchanged once and stored only in a
+  host file with mode `0600`; the non-secret connection descriptor contains the file path, TLS CA
+  and direct-proxy policy, never the credential. Authenticated status, project listing and run
+  listing all returned HTTP 200 with `auth_type=bearer` and the `project_owner` role.
+- The authenticated agent performed a real managed write by attaching
+  `ecommerce-operations-platform` from the configured authority Git service. Repository readiness
+  passed; subsequent preflight correctly reported project-contract, quality-command and explicit
+  Windows acceptance-node prerequisites instead of misreporting an unauthenticated Seed.
+- The access-security surface now refreshes immediately when opened or restored to the foreground
+  and polls pending approvals every two seconds while visible. Its typography reuses the platform
+  hierarchy (14px section title, 13px group/code, 12px supporting text) and keeps the existing
+  control, spacing and font system. Static assets are versioned as `agent-access.js?v=2` and
+  `agent-access.css?v=2`.
+- Verification passed repository-wide Ruff and architecture checks, `394 passed, 24 skipped`, and
+  a real Google Chrome pairing/approval/revocation regression at 1440px, 768px and 390px. The
+  incremental image builder reused only the locally verified alpha.8 runtime after confirming no
+  dependency or runtime-definition drift, avoiding another base-image download.
