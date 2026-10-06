@@ -22,6 +22,9 @@ permission, scheduling, or governance truth.
   `taskhub:unauthorized` event for the shell to render. Event-stream behavior remains with the run shell.
 - `image-downloads.js` and `image-downloads.css` own public image-registry rendering, responsive
   presentation, and clipboard interaction; the application shell does not own registry details.
+- `project-activation.js` and `project-activation.css` own the project-level activation read model,
+  repair navigation and draft-contract quality editor. They consume the server activation report;
+  they do not recalculate project readiness in the browser.
 - `styles.css` currently owns the incumbent token and component system. New styles must use semantic
   tokens and coherent component boundaries; the file is a registered no-growth migration target.
 - Page-level code assembles features. Data transformation and server calls belong in feature modules
@@ -37,6 +40,8 @@ user action -> page/feature controller -> same-origin API client -> FastAPI serv
 
 - Authentication and authorization are server-enforced on every request.
 - Local UI state covers disclosure, focus, selection, and unsaved draft interaction.
+- First-run flow has two visible phases: Seed infrastructure onboarding may transition to the
+  selected project's activation panel, while each project retains independent activation state.
 - Query/cache state covers server resources and invalidation.
 - Workflow, amount, resource eligibility, policy, and permission calculations remain server-owned.
 - SSE invalidates or refreshes relevant server views; it does not become an alternate data authority.

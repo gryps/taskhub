@@ -835,3 +835,23 @@ Updated: 2026-10-03
   a real Google Chrome pairing/approval/revocation regression at 1440px, 768px and 390px. The
   incremental image builder reused only the locally verified alpha.8 runtime after confirming no
   dependency or runtime-definition drift, avoiding another base-image download.
+
+## Two-stage Seed And Project Activation
+
+- First use is now split by ownership. Seed infrastructure initialization covers only global
+  administrator, Docker/host, address, node-image, model and local-node readiness and ends with
+  “Seed is ready to accept projects.” Repository, contract, quality and acceptance dependencies
+  are handled after a project is attached.
+- The server-owned project activation report composes the existing project registry, current
+  project contract and preflight report into five repairable steps. Windows nodes are conditional
+  on the selected project's acceptance declaration and are never hard-coded or promoted to a
+  platform-global prerequisite.
+- Draft and in-review project contracts can now persist real quality-command edits; active
+  contracts remain immutable and require a revision. The native console exposes the command lines,
+  saves them as argv without shell evaluation and then drives review, activation and preflight.
+- The change extracted project activation into standalone service, route and frontend modules,
+  reduced the historical application shell and API assembly baselines, and preserved the single
+  source of truth for readiness.
+- Verification passed repository-wide Ruff, architecture gates and `395 passed, 25 skipped`, plus
+  eight real Google Chrome regressions including the complete command-edit/review/activation path
+  and 1440px, 768px and 390px geometry with no page-level horizontal overflow.

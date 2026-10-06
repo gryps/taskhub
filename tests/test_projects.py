@@ -573,11 +573,17 @@ browsers: [chromium, edge]
     with TestClient(app) as client:
         client.post("/api/auth/login", json={"token": "admin-secret"})
         report = client.get("/api/projects/shop/preflight").json()
+        activation = client.get("/api/projects/shop/activation").json()
 
     acceptance = next(item for item in report["checks"] if item["id"] == "acceptance")
     assert report["ready"] is False
     assert acceptance["status"] == "failed"
     assert "windows-pilot-01" in acceptance["detail"]
+    assert activation["acceptance_required"] is True
+    acceptance_step = next(
+        item for item in activation["steps"] if item["id"] == "acceptance"
+    )
+    assert acceptance_step["target"] == "project-acceptance"
 
 
 def test_project_preflight_rejects_unavailable_windows_test_target(tmp_path: Path):

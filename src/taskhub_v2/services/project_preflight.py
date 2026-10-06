@@ -61,9 +61,7 @@ class ProjectPreflightService:
                     else "failed"
                 ),
                 models_detail,
-                remediation=(
-                    "完成模型认证、五类角色主路由和连接测试。" if not models_ok else ""
-                ),
+                remediation=("完成模型认证、五类角色主路由和连接测试。" if not models_ok else ""),
                 target="model-services",
                 blocking=not (models_ok and self.settings.provider == "deterministic"),
             )
@@ -183,9 +181,7 @@ class ProjectPreflightService:
                 )
                 authorized_nodes = authorized_windows_nodes(project)
                 if not authorized_nodes:
-                    browser_binding_error = (
-                        "浏览器验收未显式绑定当前项目获授权的 Windows 节点"
-                    )
+                    browser_binding_error = "浏览器验收未显式绑定当前项目获授权的 Windows 节点"
                 else:
                     browser_nodes = [
                         item
@@ -214,9 +210,7 @@ class ProjectPreflightService:
         if project.windows_test_suite:
             suite = project.windows_test_suite
             if not suite.node_ids:
-                windows_suite_error = (
-                    "Windows 实机测试集未显式绑定当前项目获授权的目标节点"
-                )
+                windows_suite_error = "Windows 实机测试集未显式绑定当前项目获授权的目标节点"
             else:
                 windows_workload = (
                     "browser_acceptance"
@@ -239,9 +233,7 @@ class ProjectPreflightService:
                 ]
                 if not compatible_windows:
                     target = "、".join(sorted(suite.node_ids))
-                    windows_suite_error = (
-                        f"Windows 实机测试集没有可用目标节点（{target}）"
-                    )
+                    windows_suite_error = f"Windows 实机测试集没有可用目标节点（{target}）"
         missing_capabilities = sorted(missing_capabilities)
         acceptance_failed = bool(
             missing_capabilities
@@ -259,11 +251,9 @@ class ProjectPreflightService:
                     if browser_contract_error
                     else browser_binding_error
                     if browser_binding_error
-                    else
-                    windows_suite_error
+                    else windows_suite_error
                     if windows_suite_error
-                    else
-                    "缺少验收能力：" + "、".join(missing_capabilities)
+                    else "缺少验收能力：" + "、".join(missing_capabilities)
                     if missing_capabilities
                     else "项目声明的验收能力、Windows 测试集与浏览器契约均可用"
                     if (
@@ -280,12 +270,11 @@ class ProjectPreflightService:
                     if browser_binding_error
                     else (
                         "在项目质量配置中显式绑定已授权的 Windows 节点。"
-                        if project.windows_test_suite
-                        and not project.windows_test_suite.node_ids
+                        if project.windows_test_suite and not project.windows_test_suite.node_ids
                         else "启用项目已授权且具备所需能力和工作负载的验收节点。"
                     )
                 ),
-                target="test-environment",
+                target="project-acceptance",
             )
         )
 

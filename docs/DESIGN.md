@@ -15,6 +15,8 @@ behavior must update both until the older document is consolidated.
 
 - Organize navigation around stable user goals: tasks, development flow, and system configuration.
 - Give each surface one primary purpose and keep current project/run context visible.
+- Present first use as two numbered phases: global Seed infrastructure first, then project activation
+  after repository attachment. Never label a project-specific Windows node as a global prerequisite.
 - Prefer compact tables for repeated comparison, cards for distinct objects, and timelines for process
   history. Do not convert all information into cards or dialogs.
 - Render server-owned facts; expose loading, empty, error, permission, stale, partial-success, and

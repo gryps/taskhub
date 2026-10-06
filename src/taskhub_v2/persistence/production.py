@@ -43,6 +43,30 @@ def _state(record: ProductionObject) -> str:
     return str(record.status)
 
 
+def _validate_project_contract_replacement(
+    previous: ProjectContract, record: ProjectContract
+) -> None:
+    excluded = {
+        "status",
+        "created_at",
+        "updated_at",
+        "created_by",
+        "content_digest",
+        "approved_by",
+        "approved_at",
+    }
+    content_changed = previous.model_dump(mode="json", exclude=excluded) != record.model_dump(
+        mode="json", exclude=excluded
+    )
+    editable_in_place = _state(previous) in {"draft", "in_review"} and _state(record) == _state(
+        previous
+    )
+    if content_changed and not editable_in_place:
+        raise ProductionObjectConflictError(
+            "project contract content is immutable after activation; create a revision"
+        )
+
+
 def _validate_replacement(previous: ProductionObject, record: ProductionObject) -> None:
     try:
         validate_transition(record.object_type, _state(previous), _state(record))
@@ -77,21 +101,7 @@ def _validate_replacement(previous: ProductionObject, record: ProductionObject) 
             raise ProductionObjectConflictError("resolved product decisions are immutable")
         return
     if isinstance(previous, ProjectContract) and isinstance(record, ProjectContract):
-        excluded = {
-            "status",
-            "created_at",
-            "updated_at",
-            "created_by",
-            "content_digest",
-            "approved_by",
-            "approved_at",
-        }
-        if previous.model_dump(mode="json", exclude=excluded) != record.model_dump(
-            mode="json", exclude=excluded
-        ):
-            raise ProductionObjectConflictError(
-                "project contract content is immutable during lifecycle transitions"
-            )
+        _validate_project_contract_replacement(previous, record)
         return
     if isinstance(previous, EngineeringPolicy) and isinstance(record, EngineeringPolicy):
         lifecycle = {

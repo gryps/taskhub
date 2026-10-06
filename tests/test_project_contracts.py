@@ -145,6 +145,65 @@ def test_official_profiles_and_contract_lifecycle(tmp_path):
         assert [item["status"] for item in versions] == ["active", "superseded"]
 
 
+def test_project_activation_edits_real_contract_quality_commands(tmp_path):
+    repo = repository(tmp_path / "repo")
+    with TestClient(create_app(settings(tmp_path, repo))) as client:
+        headers = login(client)
+        initial = client.get("/api/projects/demo/activation").json()
+        assert initial["ready"] is False
+        assert initial["contract"] is None
+        assert initial["acceptance_required"] is False
+        assert [step["id"] for step in initial["steps"]] == [
+            "repository",
+            "contract",
+            "quality_commands",
+            "acceptance",
+            "preflight",
+        ]
+
+        draft = client.post(
+            "/api/projects/demo/project-contracts/draft",
+            headers=headers,
+            json={"profile_id": "backend-api", "inferred": False},
+        ).json()
+        root = (
+            f"/api/projects/demo/project-contracts/{draft['contract_id']}"
+            f"/versions/{draft['version']}"
+        )
+        updated = client.put(
+            f"{root}/quality-commands",
+            headers=headers,
+            json={"quality_commands": "python3 -m pytest -q\nnpm run check"},
+        )
+        assert updated.status_code == 200
+        assert updated.json()["commands"]["test"] == [
+            ["python3", "-m", "pytest", "-q"],
+            ["npm", "run", "check"],
+        ]
+        assert updated.json()["commands"]["lint"] == []
+
+        activation = client.get("/api/projects/demo/activation").json()
+        assert activation["contract"]["editable"] is True
+        assert activation["quality_commands"] == "python3 -m pytest -q\nnpm run check"
+        quality = next(
+            step for step in activation["steps"] if step["id"] == "quality_commands"
+        )
+        assert quality["complete"] is True
+
+        client.post(f"{root}/review", headers=headers)
+        client.post(f"{root}/activate", headers=headers)
+        activated = client.get("/api/projects/demo/activation").json()
+        assert activated["contract"] == {
+            "contract_id": draft["contract_id"],
+            "version": draft["version"],
+            "status": "active",
+            "editable": False,
+        }
+        assert next(step for step in activated["steps"] if step["id"] == "contract")[
+            "complete"
+        ] is True
+
+
 def contract(**updates) -> ProjectContract:
     values = {
         "project_id": "demo",

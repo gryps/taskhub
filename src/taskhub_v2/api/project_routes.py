@@ -1,5 +1,4 @@
 import asyncio
-import shlex
 from typing import Literal
 
 import httpx
@@ -13,6 +12,7 @@ from taskhub_v2.domain.models import (
     WindowsTestSuiteDefinition,
 )
 from taskhub_v2.projects import ProjectConflictError, ProjectNotFoundError, ProjectProvisionError
+from taskhub_v2.services.command_lines import parse_command_lines
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -70,14 +70,7 @@ class ProjectSchedulingPolicyRequest(ProjectSchedulingPolicy):
 
 
 def parse_test_commands(value: str) -> list[list[str]]:
-    commands = []
-    for line in value.splitlines():
-        if line.strip():
-            try:
-                commands.append(shlex.split(line))
-            except ValueError as exc:
-                raise ValueError(f"测试命令格式错误：{exc}") from exc
-    return commands
+    return parse_command_lines(value, label="测试命令")
 
 
 def parse_lines(value: str) -> list[str]:
@@ -130,11 +123,10 @@ def project_view(item: ProjectDefinition, registry=None) -> dict:
                     mode="json", exclude={"node_ids", "required_capabilities"}
                 ),
                 "node_ids": sorted(item.windows_test_suite.node_ids),
-                "required_capabilities": sorted(
-                    item.windows_test_suite.required_capabilities
-                ),
+                "required_capabilities": sorted(item.windows_test_suite.required_capabilities),
             }
-            if item.windows_test_suite else None
+            if item.windows_test_suite
+            else None
         ),
         "test_environment": (
             item.test_environment.model_dump(mode="json") if item.test_environment else None

@@ -21,6 +21,7 @@ from taskhub_v2.api.governance_routes import router as governance_router
 from taskhub_v2.api.node_routes import router as node_router
 from taskhub_v2.api.onboarding_routes import router as onboarding_router
 from taskhub_v2.api.productization_routes import router as productization_router
+from taskhub_v2.api.project_activation_routes import router as project_activation_router
 from taskhub_v2.api.project_contract_routes import router as project_contract_router
 from taskhub_v2.api.project_routes import router as project_router
 from taskhub_v2.api.provider_routes import router as provider_router
@@ -58,6 +59,7 @@ from taskhub_v2.services.model_operations import ModelOperationsService
 from taskhub_v2.services.node_model_config import write_node_model_configuration
 from taskhub_v2.services.operational_log import OperationalLog
 from taskhub_v2.services.productization import ProductizationService
+from taskhub_v2.services.project_activation import ProjectActivationService
 from taskhub_v2.services.project_contracts import ProjectContractService
 from taskhub_v2.services.project_preflight import ProjectPreflightService
 from taskhub_v2.services.providers import ProviderCatalog
@@ -75,6 +77,45 @@ from taskhub_v2.workers.coding_router import ScheduledCodingRouter
 from taskhub_v2.workflows import build_main_graph
 
 _required_permission = required_permission
+
+
+def _project_services(settings, store, projects, scheduler, governance):
+    contracts = ProjectContractService(store, projects, scheduler, governance)
+    preflight = ProjectPreflightService(settings, projects, contracts, scheduler, governance)
+    activation = ProjectActivationService(
+        projects,
+        contracts,
+        preflight,
+        contracts_required=settings.production_orchestration_enabled,
+    )
+    return contracts, preflight, activation
+
+
+def _include_routers(app: FastAPI) -> None:
+    routers = (
+        router,
+        provider_router,
+        auth_router,
+        agent_auth_router,
+        configuration_router,
+        container_router,
+        revision_router,
+        capability_router,
+        project_router,
+        project_activation_router,
+        project_contract_router,
+        dag_router,
+        productization_router,
+        node_router,
+        onboarding_router,
+        deployment_router,
+        diagnostic_router,
+        governance_router,
+        system_router,
+        topology_router,
+    )
+    for api_router in routers:
+        app.include_router(api_router)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -123,6 +164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         test_database_admin_dsn=settings.test_database_admin_dsn,
         operation_log=operation_log,
     )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         async with (
@@ -204,16 +246,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 local_coder,
                 token_resolver=node_credentials.resolve,
             )
-            app.state.project_contracts = ProjectContractService(
+            (
+                app.state.project_contracts,
+                app.state.project_preflight,
+                app.state.project_activation,
+            ) = _project_services(
+                effective_settings,
                 production_objects,
                 projects,
-                test_scheduler,
-                app.state.engineering_governance,
-            )
-            app.state.project_preflight = ProjectPreflightService(
-                effective_settings,
-                projects,
-                app.state.project_contracts,
                 test_scheduler,
                 app.state.engineering_governance,
             )
@@ -312,25 +352,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.deployment_manager = DeploymentManager(settings)
     app.state.container_manager = default_container_manager
     app.state.operation_log = operation_log
-    app.include_router(router)
-    app.include_router(provider_router)
-    app.include_router(auth_router)
-    app.include_router(agent_auth_router)
-    app.include_router(configuration_router)
-    app.include_router(container_router)
-    app.include_router(revision_router)
-    app.include_router(capability_router)
-    app.include_router(project_router)
-    app.include_router(project_contract_router)
-    app.include_router(dag_router)
-    app.include_router(productization_router)
-    app.include_router(node_router)
-    app.include_router(onboarding_router)
-    app.include_router(deployment_router)
-    app.include_router(diagnostic_router)
-    app.include_router(governance_router)
-    app.include_router(system_router)
-    app.include_router(topology_router)
+    _include_routers(app)
     if settings.enforce_https:
         app.add_middleware(HTTPSRedirectMiddleware)
     allowed_hosts = [item.strip() for item in settings.trusted_hosts.split(",") if item.strip()]

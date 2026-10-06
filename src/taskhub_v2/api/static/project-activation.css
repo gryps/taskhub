@@ -1,0 +1,56 @@
+.project-activation { margin-top: 14px; }
+.project-activation > header { padding: 15px 16px; }
+.project-activation > header h2 { margin: 3px 0 4px; font-size: 16px; line-height: 1.4; }
+.project-activation > header p,
+.project-activation-progress span,
+.project-activation-step p,
+#project-activation-status,
+.project-contract-quality-editor p,
+#project-contract-quality-message { color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.project-activation-progress {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 13px 16px; border-top: 1px solid var(--border); background: var(--surface-subtle);
+}
+.project-activation-progress > div { display: grid; gap: 3px; }
+.project-activation-progress strong { font-size: 14px; line-height: 1.45; }
+.project-activation-progress > span {
+  min-width: 52px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--accent); font-weight: 700; text-align: center;
+}
+.project-activation-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 1px solid var(--border); }
+.project-activation-step { display: grid; align-content: start; gap: 7px; min-width: 0; padding: 14px; border-right: 1px solid var(--border); }
+.project-activation-step:last-child { border-right: 0; }
+.project-activation-step header { display: flex; align-items: center; gap: 8px; }
+.project-activation-step header span {
+  display: grid; place-items: center; width: 24px; height: 24px; flex: 0 0 24px;
+  border-radius: 50%; background: var(--surface-subtle); color: var(--text-secondary); font-size: 11px; font-weight: 800;
+}
+.project-activation-step.complete header span { color: var(--success); background: var(--success-soft); }
+.project-activation-step h3 { margin: 0; font-size: 13px; line-height: 1.4; }
+.project-activation-step p { margin: 0; overflow-wrap: anywhere; }
+.project-activation-step small { color: var(--text-tertiary); font-size: 11px; }
+.project-activation-step button { justify-self: start; min-height: 34px; margin-top: 2px; padding: 6px 10px; }
+.project-activation-actions { align-items: center; }
+#project-activation-status { flex: 1 1 220px; }
+.project-contract-quality-editor {
+  display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); gap: 10px 14px;
+  padding: 14px 16px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--surface-subtle);
+}
+.project-contract-quality-editor h4 { margin: 0 0 4px; font-size: 14px; }
+.project-contract-quality-editor p { margin: 0; }
+.project-contract-quality-editor label { color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.project-contract-quality-editor textarea { grid-column: 2; min-width: 0; resize: vertical; }
+.project-contract-quality-actions { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+
+@media (max-width: 1100px) {
+  .project-activation-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .project-activation-step { border-bottom: 1px solid var(--border); }
+}
+@media (max-width: 680px) {
+  .project-activation-progress { align-items: flex-start; flex-direction: column; }
+  .project-activation-steps { grid-template-columns: 1fr; }
+  .project-activation-step { border-right: 0; }
+  .project-contract-quality-editor { grid-template-columns: 1fr; }
+  .project-contract-quality-editor textarea,
+  .project-contract-quality-actions { grid-column: 1; }
+}

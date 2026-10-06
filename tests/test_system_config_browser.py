@@ -62,6 +62,12 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         page.locator("#login-button").click()
 
         expect(page.locator("#onboarding-page")).to_be_visible()
+        expect(page.locator("#onboarding-title")).to_have_text(
+            "第一阶段 · Seed 基础设施初始化"
+        )
+        expect(page.locator("#onboarding-page")).to_contain_text(
+            "项目仓库、契约和验收资源将在接入项目后配置"
+        )
         expect(page.locator("#onboarding-steps .onboarding-step")).to_have_count(6)
         assert page.locator("#onboarding-message").evaluate(
             "element => getComputedStyle(element).fontSize"

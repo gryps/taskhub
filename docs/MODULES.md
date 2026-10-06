@@ -23,6 +23,7 @@
 | `workflows` | 主流程与实施子图、阶段转换、中断和恢复 | LangGraph checkpoint 中的流程位置与时间线 |
 | `services.runs` | 启动、读取、恢复和归档运行 | 通过 graph thread 操作权威状态 |
 | `services.project_preflight` | 聚合项目开工条件并返回可修复诊断 | 预检报告；不复制下游数据 |
+| `services.project_activation` | 编排仓库接入后的契约、质量、验收与预检步骤 | 组合读模型；不持久化第二份就绪状态 |
 | `domain` | 稳定领域记录、枚举、状态和策略契约 | 领域 schema 与校验规则 |
 | `persistence` | checkpoint 和生产记录的持久化实现 | PostgreSQL/内存存储适配器 |
 | `providers` | 模型调用、路由、健康和回退适配 | 模型结果与独立运行健康状态 |
@@ -41,6 +42,7 @@
 | `api/static/*-center.js` | 对应运营中心的读取、渲染和交互 | 通过统一 API 客户端访问服务端 |
 | `api/static/image-downloads.*` | 公开镜像地址呈现、响应式样式与复制交互 | 不读取认证状态或业务流程数据 |
 | `api/static/agent-access.*` | 浏览器内审批、查看和吊销开发代理连接 | 只呈现非敏感元数据，不显示或复制 Bearer 凭据 |
+| `api/static/project-activation.*` | 呈现项目激活步骤并编辑草稿契约质量命令 | 复用服务端激活报告，不在浏览器推导门禁 |
 | `api/static/styles.css` | 原生 token、布局和组件样式 | 历史大文件，只减不增；按稳定组件边界拆分 |
 
 ## 公共能力准入

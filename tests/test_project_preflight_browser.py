@@ -157,6 +157,98 @@ def test_attached_project_quality_can_be_repaired_in_place(tmp_path, width):
         browser.close()
 
 
+def test_two_stage_project_activation_edits_and_activates_contract(tmp_path):
+    from playwright.sync_api import expect, sync_playwright
+
+    repo = repository(tmp_path / "activation-shop")
+    add_remote(repo, tmp_path / "activation-shop.git")
+    settings = Settings(
+        admin_token="activation-browser-token",
+        session_secret="activation-browser-session",
+        projects_file=str(tmp_path / "projects.json"),
+        operations_log_file=str(tmp_path / "operations.jsonl"),
+        production_orchestration_enabled=True,
+    )
+    app = create_app(settings)
+    app.state.projects.add(
+        ProjectDefinition(
+            id="activation-shop",
+            name="Activation Shop",
+            repository=str(repo),
+            authority_remote="origin",
+        )
+    )
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    url = f"http://127.0.0.1:{port}"
+    executable = os.getenv("TASKHUB_TEST_BROWSER_EXECUTABLE") or None
+
+    with sync_playwright() as playwright, serve(app, port):
+        browser = playwright.chromium.launch(executable_path=executable)
+        context = browser.new_context(viewport={"width": 1440, "height": 1000})
+        page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(url, wait_until="domcontentloaded")
+        page.locator("#admin-token").fill("activation-browser-token")
+        page.locator("#login-button").click()
+        expect(page.locator("#workspace")).to_be_visible()
+        expect(page.locator("#workflow-project option")).to_have_count(1)
+        page.wait_for_load_state("networkidle")
+        if page.locator("#onboarding-page").is_visible():
+            page.locator("#onboarding-later").click()
+        csrf = next(
+            cookie["value"]
+            for cookie in context.cookies()
+            if cookie["name"] == "taskhub_v2_csrf"
+        )
+        created = context.request.post(
+            f"{url}/api/projects/activation-shop/project-contracts/draft",
+            headers={"X-CSRF-Token": csrf},
+            data={"profile_id": "python-service", "inferred": False},
+        )
+        assert created.status == 201
+        page.locator("#nav-workflow").click()
+        page.evaluate("Promise.all([loadCurrentProjectContract(), loadProjectActivation()])")
+
+        expect(page.locator("#project-activation-steps .project-activation-step")).to_have_count(5)
+        expect(page.locator("#project-activation")).to_contain_text("确认验收范围")
+        page.locator("#project-contract-disclosure").evaluate(
+            "element => { element.open = true; }"
+        )
+        editor = page.locator("#project-contract-quality-commands")
+        expect(editor).to_be_visible()
+        expect(editor).to_be_enabled()
+        editor.fill("python3 -m pytest -q")
+        page.locator("#save-project-contract-quality").click()
+        expect(page.locator("#project-contract-quality-message")).to_have_text(
+            "质量命令已写入当前契约"
+        )
+        page.locator("#review-project-contract").click()
+        expect(page.locator("#activate-project-contract")).to_be_visible()
+        page.locator("#activate-project-contract").click()
+        expect(page.locator("#project-contract-state")).to_have_text("已生效")
+        expect(editor).to_be_disabled()
+        expect(page.locator("#project-activation-state")).to_have_text("可以开发")
+
+        for width, expected_columns in ((1440, 5), (768, 2), (390, 1)):
+            page.set_viewport_size({"width": width, "height": 900})
+            page.wait_for_timeout(100)
+            columns = len(
+                page.locator("#project-activation-steps")
+                .evaluate("element => getComputedStyle(element).gridTemplateColumns")
+                .split()
+            )
+            assert columns == expected_columns
+            assert page.evaluate(
+                "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+            )
+        assert not errors
+        context.close()
+        browser.close()
+
+
 def test_exception_center_opens_the_checkpoint_owned_recovery_action(monkeypatch, tmp_path):
     from playwright.sync_api import expect, sync_playwright
 

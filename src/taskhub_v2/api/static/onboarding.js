@@ -18,6 +18,7 @@ function renderOnboarding(data) {
   result.className = `onboarding-result ${data.ready ? "ready" : "pending"}`;
   byId("onboarding-message").textContent = data.message;
   byId("onboarding-progress").textContent = `${data.completed}/${data.total}`;
+  byId("continue-project-activation").classList.toggle("hidden", !data.ready);
   const engine = data.seed?.docker?.engine || {};
   const storage = data.seed?.storage || {};
   byId("onboarding-seed-facts").innerHTML = `
@@ -32,6 +33,7 @@ function renderOnboarding(data) {
       ${step.complete ? '<span class="onboarding-step-state ok">已完成</span>' :
         `<button type="button" class="secondary onboarding-step-action" data-target="${escapeHtml(step.target)}">去完成</button>`}
     </article>`).join("");
+  window.dispatchEvent(new CustomEvent("taskhub:onboarding", {detail: data}));
   byId("onboarding-restart").classList.toggle("hidden", !data.restart_required);
   if (!byId("offline-image-reference").value) {
     byId("offline-image-reference").value = data.image?.reference || "taskhub-node:0.1.0-alpha";
@@ -144,6 +146,12 @@ byId("open-onboarding").addEventListener("click", () => {
 byId("onboarding-later").addEventListener("click", () => {
   sessionStorage.setItem("taskhub_onboarding_dismissed", "true");
   showPage("tasks");
+});
+byId("continue-project-activation").addEventListener("click", () => {
+  showPage("workflow");
+  window.loadProjectActivation?.().then(() => {
+    byId("project-activation").scrollIntoView({behavior: "smooth", block: "start"});
+  });
 });
 byId("offline-image-form").addEventListener("submit", importOfflineImage);
 byId("cancel-offline-image").addEventListener("click", () => {

@@ -71,6 +71,14 @@ After every integrated batch, the scheduler runs contract and global-governance 
 result on the execution batch. Final acceptance repeats the full contract gate and declared quality
 commands. A policy exception can downgrade only named failures within an approved scope and expiry.
 
+## Two-stage activation
+
+Seed onboarding owns only platform-wide infrastructure readiness. Project activation is a separate
+application service that composes the project registry, current project contract and project
+preflight report after a repository has been attached. It does not persist a second readiness
+state. Project-specific Windows acceptance is conditional on the repository contract or project
+quality declaration and is never a Seed-global dependency.
+
 ## Recovery and idempotency
 
 - A run ID is also its LangGraph thread ID and selects one stable branch/worktree.

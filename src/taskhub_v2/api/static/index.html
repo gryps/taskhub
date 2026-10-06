@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TaskHub V2</title>
   <link rel="stylesheet" href="/static/styles.css?v=64">
-  <link rel="stylesheet" href="/static/image-downloads.css?v=1"><link rel="stylesheet" href="/static/governance-center.css?v=1"><link rel="stylesheet" href="/static/agent-access.css?v=2">
+  <link rel="stylesheet" href="/static/image-downloads.css?v=1"><link rel="stylesheet" href="/static/governance-center.css?v=1"><link rel="stylesheet" href="/static/agent-access.css?v=2"><link rel="stylesheet" href="/static/project-activation.css?v=1">
 </head>
 <body>
   <header class="app-header">
@@ -49,18 +49,11 @@
     </nav>
     <section id="onboarding-page" class="onboarding-page hidden" aria-labelledby="onboarding-title">
     <div class="page-head">
-        <div class="page-head-copy">
-          <span class="eyebrow">FIRST RUN</span><h1 id="onboarding-title">Seed 首次启动向导</h1>
-          <p>完成控制节点、模型、主机和第一个工作节点配置。</p>
-        </div>
-        <div class="page-actions">
-          <button id="refresh-onboarding" type="button" class="secondary">↻ 重新检测</button>
-          <button id="onboarding-later" type="button" class="secondary">稍后配置</button>
-        </div>
+        <div class="page-head-copy"><h1 id="onboarding-title">第一阶段 · Seed 基础设施初始化</h1><p>先完成平台全局能力；项目仓库、契约和验收资源将在接入项目后配置。</p></div>
+        <div class="page-actions"><button id="refresh-onboarding" type="button" class="secondary">↻ 重新检测</button><button id="continue-project-activation" type="button" class="hidden">继续激活项目</button><button id="onboarding-later" type="button" class="secondary">稍后配置</button></div>
       </div>
       <div id="onboarding-result" class="onboarding-result" role="status">
-        <div><span class="eyebrow">SYSTEM READINESS</span><h2 id="onboarding-message">正在检测初始化状态</h2></div>
-        <strong id="onboarding-progress">0/6</strong>
+        <div><span class="eyebrow">SYSTEM READINESS</span><h2 id="onboarding-message">正在检测初始化状态</h2></div><strong id="onboarding-progress">0/6</strong>
       </div>
       <div id="onboarding-seed-facts" class="onboarding-facts"></div>
       <div id="onboarding-steps" class="onboarding-steps"></div>
@@ -171,6 +164,9 @@
           </div>
         </div>
       </form>
+      <section id="project-activation" class="management-card project-activation" aria-labelledby="project-activation-title"><header><div><h2 id="project-activation-title">第二阶段 · 项目激活向导</h2><p id="project-activation-detail">接入项目后，逐项确认仓库、契约、质量命令和验收资源。</p></div><span id="project-activation-state" class="card-state warn">等待项目</span></header>
+        <div class="project-activation-progress" aria-live="polite"><div><strong id="project-activation-message">请选择或接入项目</strong><span>项目级条件不会阻塞其他项目，也不会写入 Seed 全局配置。</span></div><span id="project-activation-count">0/5</span></div>
+        <div id="project-activation-steps" class="project-activation-steps"></div><footer class="management-card-actions project-activation-actions"><button id="project-activation-next" type="button">接入项目</button><button id="project-activation-later" type="button" class="secondary">稍后处理</button><span id="project-activation-status" role="status"></span></footer></section>
       <section id="project-preflight" class="management-card project-preflight" aria-labelledby="project-preflight-title">
         <header>
           <div><h2 id="project-preflight-title">项目预检</h2><p id="project-preflight-detail">选择项目后统一检查启动开发所需条件。</p></div>
@@ -254,6 +250,8 @@
               <span id="project-contract-source" class="muted">未绑定仓库版本</span>
             </div>
             <div id="project-contract-facts" class="project-contract-facts"></div>
+            <section id="project-contract-quality-editor" class="project-contract-quality-editor hidden" aria-labelledby="project-contract-quality-title"><div><h4 id="project-contract-quality-title">可执行质量命令</h4><p>每行一条。保存会替换契约中的质量门禁命令，但保留安装、格式化和验收命令。</p></div><label for="project-contract-quality-commands">质量命令</label>
+              <textarea id="project-contract-quality-commands" rows="4" maxlength="4000" spellcheck="false" placeholder="例如：npm run check"></textarea><div class="project-contract-quality-actions"><button id="save-project-contract-quality" type="button" data-permission="projects:manage">保存到契约</button><span id="project-contract-quality-message" role="status"></span></div></section>
             <div id="project-governance-root" class="governance-project-root" aria-live="polite"></div>
             <div id="project-contract-gate" class="project-contract-gate hidden" role="status"></div>
             <footer class="management-card-actions project-contract-actions">
@@ -727,6 +725,7 @@
   <script src="/static/governance-center.js?v=3"></script>
   <script src="/static/task-center.js?v=15"></script>
   <script src="/static/resource-center.js?v=41"></script>
-  <script src="/static/onboarding.js?v=3"></script><script src="/static/agent-access.js?v=2"></script>
+  <script src="/static/project-activation.js?v=1"></script>
+  <script src="/static/onboarding.js?v=4"></script><script src="/static/agent-access.js?v=2"></script>
 </body>
 </html>

@@ -209,7 +209,9 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'id="node-upgrade-form"' not in html
         assert 'id="container-target"' not in html
         assert "Seed 备份与恢复" in html
-        assert "onboarding.js?v=3" in html
+        assert "project-activation.js?v=1" in html
+        assert "project-activation.css?v=1" in html
+        assert "onboarding.js?v=4" in html
         assert 'id="collapse-current-resource"' in html
         assert 'class="resource-subdisclosure"' in html
         assert 'id="platform-registry-username"' in html

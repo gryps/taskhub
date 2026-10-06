@@ -56,9 +56,7 @@ def model_ready(settings) -> tuple[bool, str]:
         ready = configured and roles == {"planner", "coder", "supervisor", "reviewer", "risk"}
         return (
             ready,
-            "模型卡片与五类角色主路由已生效"
-            if ready
-            else "模型认证或角色主路由尚未全部就绪",
+            "模型卡片与五类角色主路由已生效" if ready else "模型认证或角色主路由尚未全部就绪",
         )
     if settings.provider == "deterministic":
         return True, "内置确定性模型已启用，可用于流程验证"
@@ -107,8 +105,7 @@ async def onboarding_status(request) -> dict[str, Any]:
         image = {}
         image_local = False
     remote_source = bool(
-        platform_desired.get("node_image_registry")
-        or platform_desired.get("node_image_proxy")
+        platform_desired.get("node_image_registry") or platform_desired.get("node_image_proxy")
     )
     image_ready = image_local or remote_source
 
@@ -186,7 +183,7 @@ async def onboarding_status(request) -> dict[str, Any]:
     ready = all(item["complete"] for item in steps)
     return {
         "ready": ready,
-        "message": "系统已具备运行任务条件" if ready else "系统尚未具备运行任务条件",
+        "message": "Seed 已具备接入项目条件" if ready else "Seed 尚未具备接入项目条件",
         "completed": sum(item["complete"] for item in steps),
         "total": len(steps),
         "restart_required": bool(

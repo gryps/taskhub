@@ -601,21 +601,6 @@ async function loadProjectPreflight() {
   }
 }
 
-function openPreflightTarget(target) {
-  if (target === "model-services" || target === "nodes") {
-    showPage("resources");
-    const disclosure = byId(target === "model-services" ? "providers-disclosure" : "nodes-disclosure");
-    disclosure.open = true;
-    disclosure.scrollIntoView({behavior: "smooth", block: "start"});
-    return;
-  }
-  const disclosure = byId(`${target}-disclosure`);
-  if (disclosure) {
-    disclosure.open = true;
-    disclosure.scrollIntoView({behavior: "smooth", block: "start"});
-  }
-}
-
 function renderProjectContract(contract) {
   currentProjectContract = contract || null;
   const labels = {draft: "草稿", in_review: "待批准", active: "已生效",

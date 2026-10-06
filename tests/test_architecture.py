@@ -17,8 +17,8 @@ REQUIRED_BASELINE_PATHS = (
 )
 
 LEGACY_FRONTEND_FILE_LINES = {
-    "src/taskhub_v2/api/static/app.js": 1439,
-    "src/taskhub_v2/api/static/index.html": 732,
+    "src/taskhub_v2/api/static/app.js": 1424,
+    "src/taskhub_v2/api/static/index.html": 731,
     "src/taskhub_v2/api/static/resource-center.js": 1291,
     "src/taskhub_v2/api/static/styles.css": 1472,
 }
@@ -30,9 +30,9 @@ LEGACY_FUNCTION_LINES = {
     ("src/taskhub_v2/node_agent/app.py", "create_node_app"): 261,
     ("src/taskhub_v2/node_agent/app.py", "create_node_app.execute"): 101,
     ("src/taskhub_v2/deployment/runner.py", "deploy"): 104,
-    ("src/taskhub_v2/persistence/production.py", "_validate_replacement"): 132,
-    ("src/taskhub_v2/api/app.py", "create_app"): 270,
-    ("src/taskhub_v2/api/app.py", "create_app.lifespan"): 178,
+    ("src/taskhub_v2/persistence/production.py", "_validate_replacement"): 118,
+    ("src/taskhub_v2/api/app.py", "create_app"): 251,
+    ("src/taskhub_v2/api/app.py", "create_app.lifespan"): 176,
     ("src/taskhub_v2/workers/git_coder.py", "GitCodingWorker.execute"): 168,
     ("src/taskhub_v2/workers/acceptance.py", "ProjectAcceptanceGateway.verify"): 256,
     ("src/taskhub_v2/workers/publisher.py", "GitPublisher.publish"): 125,
@@ -40,10 +40,10 @@ LEGACY_FUNCTION_LINES = {
     ("src/taskhub_v2/services/topologies.py", "TopologyService._findings"): 122,
     ("src/taskhub_v2/services/capability_catalog.py", "builtin_capability_packs"): 120,
     ("src/taskhub_v2/services/containers.py", "ContainerManager.create"): 126,
-    ("src/taskhub_v2/services/onboarding.py", "onboarding_status"): 124,
+    ("src/taskhub_v2/services/onboarding.py", "onboarding_status"): 123,
     ("src/taskhub_v2/services/revisions.py", "RevisionService.apply"): 114,
     ("src/taskhub_v2/services/remote_nodes.py", "RemoteNodeService._provision_locked"): 106,
-    ("src/taskhub_v2/services/project_preflight.py", "ProjectPreflightService.run"): 283,
+    ("src/taskhub_v2/services/project_preflight.py", "ProjectPreflightService.run"): 272,
 }
 
 LEGACY_FUNCTION_COMPLEXITY = {
@@ -59,7 +59,7 @@ LEGACY_FUNCTION_COMPLEXITY = {
     ("src/taskhub_v2/browser/reports.py", "validate_junit"): 30,
     ("src/taskhub_v2/execution/scheduler.py", "NodeScheduler.run"): 19,
     ("src/taskhub_v2/execution/scheduler.py", "NodeScheduler._acquire"): 36,
-    ("src/taskhub_v2/persistence/production.py", "_validate_replacement"): 44,
+    ("src/taskhub_v2/persistence/production.py", "_validate_replacement"): 43,
     ("src/taskhub_v2/api/app.py", "create_app.lifespan"): 16,
     ("src/taskhub_v2/api/routes.py", "start_run"): 19,
     ("src/taskhub_v2/workers/git_coder.py", "GitCodingWorker.execute"): 29,
