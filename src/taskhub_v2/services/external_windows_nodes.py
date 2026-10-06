@@ -176,10 +176,24 @@ disk_free_bytes=[int64]$disk.FreeSpace} | ConvertTo-Json -Compress
             )
             wheel = next(Path(directory).glob("taskhub_v2-*.whl"))
             installer = files("taskhub_v2").joinpath("assets/install-windows-node-agent.ps1")
-            script = _deployment_script(request, token, wheel.read_bytes(), installer.read_bytes())
+            installer_path = Path(directory, "install.ps1")
+            installer_path.write_bytes(installer.read_bytes())
+            private_key = request.private_key.get_secret_value().strip()
             _run_windows_ssh(
                 request,
-                request.private_key.get_secret_value().strip(),
+                private_key,
+                host_key,
+                "$root='C:\\TaskHub\\incoming';"
+                "New-Item -ItemType Directory -Force -Path $root | Out-Null",
+                30,
+            )
+            _copy_windows_files(
+                request, private_key, host_key, (wheel, installer_path)
+            )
+            script = _deployment_script(request, token)
+            _run_windows_ssh(
+                request,
+                private_key,
                 host_key,
                 script,
                 1200,
@@ -236,21 +250,14 @@ disk_free_bytes=[int64]$disk.FreeSpace} | ConvertTo-Json -Compress
             )
 
 
-def _deployment_script(request, token: str, wheel: bytes, installer: bytes) -> str:
+def _deployment_script(request, token: str) -> str:
     browser = "$true" if request.browser_mode else "$false"
-    wheel_data = base64.b64encode(wheel).decode()
-    installer_data = base64.b64encode(installer).decode()
     node_id = _powershell_quote(request.node_id)
     browser_target = _powershell_quote(request.browser_auth_target)
     credential = _powershell_quote(token)
     return f"""
 $ErrorActionPreference='Stop'
 $root='C:\\TaskHub\\incoming'
-New-Item -ItemType Directory -Force -Path $root | Out-Null
-[IO.File]::WriteAllBytes(
-  (Join-Path $root 'taskhub.whl'),[Convert]::FromBase64String('{wheel_data}'))
-[IO.File]::WriteAllBytes(
-  (Join-Path $root 'install.ps1'),[Convert]::FromBase64String('{installer_data}'))
 $env:TASKHUB_NODE_TOKEN='{credential}'
 $python=(Get-Command python -ErrorAction SilentlyContinue).Source
 if(-not $python){{$python=(Get-Command py -ErrorAction SilentlyContinue).Source}}
@@ -260,6 +267,40 @@ if(-not $python){{$python=(Get-Command py -ErrorAction SilentlyContinue).Source}
   -BrowserMode:{browser} -BrowserAuthTarget '{browser_target}'
 if($LASTEXITCODE -ne 0){{throw 'TaskHub Windows Agent installer failed'}}
 """
+
+
+def _copy_windows_files(request, private_key: str, host_key: str, sources) -> None:
+    with tempfile.TemporaryDirectory(prefix="taskhub-windows-scp-") as directory:
+        key = Path(directory, "identity")
+        known_hosts = Path(directory, "known_hosts")
+        key.write_text(private_key + "\n", encoding="utf-8")
+        key.chmod(0o600)
+        known_hosts.write_text(host_key + "\n", encoding="utf-8")
+        common = [
+            "-i", str(key), "-P", str(request.ssh_port), "-q",
+            "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
+            "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes",
+            "-o", f"UserKnownHostsFile={known_hosts}",
+        ]
+        for source in sources:
+            destination = (
+                f"{request.username}@{request.address}:"
+                f"C:/TaskHub/incoming/{source.name}"
+            )
+            try:
+                result = subprocess.run(
+                    ["scp", *common, str(source), destination],
+                    capture_output=True, text=True, timeout=180,
+                    env={**os.environ, "LC_ALL": "C"}, check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise ExternalWindowsNodeError(
+                    f"SCP 安装文件传输失败：{_safe_error(exc)}"
+                ) from exc
+            if result.returncode:
+                raise ExternalWindowsNodeError(
+                    f"SCP 安装文件传输失败：{_safe_error(result.stderr)}"
+                )
 
 
 def _powershell_quote(value: str) -> str:

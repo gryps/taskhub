@@ -6,6 +6,7 @@ from taskhub_v2.domain.external_windows import WindowsNodeConnection, WindowsNod
 from taskhub_v2.execution.registry import NodeRegistry
 from taskhub_v2.services.external_windows_nodes import (
     ExternalWindowsNodeService,
+    _deployment_script,
     _powershell_stdin_bootstrap,
 )
 
@@ -150,3 +151,12 @@ def test_windows_ssh_bootstrap_reads_the_complete_script_before_execution():
     assert "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)" in bootstrap
     assert "[Console]::In.ReadToEnd()" in bootstrap
     assert "[ScriptBlock]::Create($source)" in bootstrap
+
+
+def test_windows_deployment_script_uses_transferred_assets_not_embedded_wheel():
+    script = _deployment_script(request(), "secret-node-token")
+
+    assert "C:\\TaskHub\\incoming" in script
+    assert "taskhub.whl" in script
+    assert "install.ps1" in script
+    assert "FromBase64String" not in script
