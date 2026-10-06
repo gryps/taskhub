@@ -24,7 +24,10 @@ def probe_browsers() -> dict:
 def _run_probe() -> dict:
     names = ("windows_gui", "playwright", "chromium", "edge", "screenshot", "video", "trace")
     empty = {"capabilities": dict.fromkeys(names, False), "versions": {}}
-    if os.name != "nt":
+    browser_mode = os.getenv("TASKHUB_WINDOWS_GUI", "").lower() in {
+        "1", "true", "yes", "on"
+    }
+    if os.name != "nt" or not browser_mode:
         return empty
     try:
         result = subprocess.run(

@@ -13,6 +13,7 @@ $Root = "C:\TaskHub"
 $Venv = Join-Path $Root "venv"
 $Jobs = Join-Path $Root "jobs"
 $Cache = Join-Path $Root "cache\pip"
+$DependencyMarker = Join-Path $Venv ".taskhub-dependencies-v1"
 $Secrets = Join-Path $Root "secrets"
 $TokenFile = Join-Path $Secrets "node-token.dpapi"
 $StartScript = Join-Path $Root "start-node-agent.ps1"
@@ -24,8 +25,11 @@ if (-not (Test-Path $Venv)) { & $Python -m venv $Venv }
 $VenvPython = Join-Path $Venv "Scripts\python.exe"
 $Packages = @($PackagePath,"pytest>=8.3,<10")
 if ($BrowserMode) { $Packages += "playwright>=1.51,<2" }
-& $VenvPython -m pip install --cache-dir $Cache --timeout 180 --retries 5 @Packages
-if ($LASTEXITCODE -ne 0) { throw "Agent dependencies could not be installed" }
+if (-not (Test-Path $DependencyMarker)) {
+  & $VenvPython -m pip install --cache-dir $Cache --timeout 180 --retries 5 @Packages
+  if ($LASTEXITCODE -ne 0) { throw "Agent dependencies could not be installed" }
+  Set-Content -Path $DependencyMarker -Value "ready" -Encoding ascii
+}
 & $VenvPython -m pip install --no-deps --force-reinstall $PackagePath
 if ($LASTEXITCODE -ne 0) { throw "TaskHub Agent package could not be installed" }
 $Bytes = [Text.Encoding]::UTF8.GetBytes($env:TASKHUB_NODE_TOKEN)
@@ -71,4 +75,9 @@ if (Get-NetFirewallRule -DisplayName $FirewallName -ErrorAction SilentlyContinue
 }
 Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*taskhub_v2.node_agent*--port $Port*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 Start-ScheduledTask -TaskName $TaskName
+Start-Sleep -Seconds 2
+if (-not (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)) {
+  Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -ArgumentList @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$StartScript`"")
+}
 Write-Host "TaskHub Windows Agent installed: $NodeId"

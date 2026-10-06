@@ -1,3 +1,4 @@
+from taskhub_v2.node_agent import browser_capabilities
 from taskhub_v2.node_agent.browser_capabilities import browser_prerequisites
 
 
@@ -26,3 +27,17 @@ def test_configured_browser_reports_exact_authorization_action(tmp_path, monkeyp
 
     marker.write_text("{}", encoding="utf-8")
     assert browser_prerequisites()["action"] is None
+
+
+def test_non_browser_windows_node_skips_expensive_browser_probe(monkeypatch):
+    monkeypatch.setattr(browser_capabilities.os, "name", "nt")
+    monkeypatch.delenv("TASKHUB_WINDOWS_GUI", raising=False)
+    monkeypatch.setattr(
+        browser_capabilities.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not run")),
+    )
+
+    result = browser_capabilities._run_probe()
+
+    assert not any(result["capabilities"].values())

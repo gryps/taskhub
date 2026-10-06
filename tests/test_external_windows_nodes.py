@@ -140,9 +140,12 @@ def test_windows_installer_uses_persistent_cache_and_no_plaintext_token():
         .read_text(encoding="utf-8")
     )
     assert "cache\\pip" in script
+    assert ".taskhub-dependencies-v1" in script
+    assert "if (-not (Test-Path $DependencyMarker))" in script
     assert "ProtectedData" in script
     assert "node-token.dpapi" in script
     assert "TaskHubNodeAgent" in script
+    assert "Start-Process -FilePath \"powershell.exe\"" in script
 
 
 def test_windows_ssh_bootstrap_reads_the_complete_script_before_execution():
