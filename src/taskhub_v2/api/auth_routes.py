@@ -3,6 +3,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
+from taskhub_v2.security.agent_access import bearer_token
 from taskhub_v2.security.auth import (
     CSRF_COOKIE,
     SESSION_COOKIE,
@@ -36,7 +37,11 @@ class UserWriteRequest(BaseModel):
 @router.get("/status")
 async def status(request: Request) -> dict:
     auth = request.app.state.auth
-    session = auth.read_session(request.cookies.get(SESSION_COOKIE))
+    authorization = request.headers.get("authorization")
+    token = bearer_token(authorization)
+    session = request.app.state.agent_access.authenticate(token) if token else None
+    if not authorization and not session:
+        session = auth.read_session(request.cookies.get(SESSION_COOKIE))
     return {
         "authenticated": bool(session),
         "configured": auth.configured(),
@@ -47,6 +52,7 @@ async def status(request: Request) -> dict:
         "permissions": sorted(ROLE_PERMISSIONS.get(session.get("role"), set())) if session else [],
         "idle_expires": session.get("idle_expires") if session else None,
         "absolute_expires": session.get("expires") if session else None,
+        "auth_type": session.get("auth_type", "session") if session else None,
     }
 
 

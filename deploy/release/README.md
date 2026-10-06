@@ -87,3 +87,10 @@ Service**. Supply the SSH user/host, port, authoritative bare-repository root, S
 root, and an optional dedicated private key. Test the draft values before saving. Saved
 credentials are encrypted and take effect after Seed restarts; they are never returned to the
 browser as plaintext.
+
+To connect Codex or another development agent, run `connect-agent.py` from this release kit with
+the Seed URL, trusted CA file, private token-file path and optional
+connection JSON path. The helper displays a short pairing code. Review and approve that code under
+**System Configuration → Advanced Settings → Users, Permissions and Access Security**. It writes the
+Bearer credential directly to the protected token file and never prints or embeds it in the
+connection JSON. Windows applies an explicit current-user ACL; Unix-like systems use mode `0600`.

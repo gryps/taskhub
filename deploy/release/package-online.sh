@@ -9,7 +9,7 @@ archive=${2:-"$output.tar.gz"}
 [ ! -e "$output" ] || { printf '输出目录已存在: %s\n' "$output" >&2; exit 1; }
 [ ! -e "$archive" ] || { printf '输出文件已存在: %s\n' "$archive" >&2; exit 1; }
 mkdir -p "$output/docs"
-for file in "$script_root"/*.sh "$script_root"/*.ps1 "$script_root/compose.yaml" "$script_root/.env.example" "$script_root/README.md"; do
+for file in "$script_root"/*.sh "$script_root"/*.ps1 "$script_root"/*.py "$script_root/compose.yaml" "$script_root/.env.example" "$script_root/README.md"; do
   cp "$file" "$output/"
 done
 cp "$repo_root/docs/deployment/ubuntu.md" "$repo_root/docs/deployment/windows-docker-desktop.md" "$output/docs/"

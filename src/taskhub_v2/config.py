@@ -26,6 +26,9 @@ class Settings(BaseModel):
     users_file: str = ""
     session_state_file: str = ""
     session_signing_keys_file: str = ""
+    agent_access_file: str = ""
+    agent_pairing_ttl_seconds: int = 600
+    agent_credential_days: int = 30
     session_idle_seconds: int = 1800
     session_absolute_seconds: int = 43200
     login_max_failures: int = 5
@@ -105,6 +108,26 @@ class Settings(BaseModel):
     model_account_root: str = "/var/lib/taskhub/config/model-accounts"
 
 
+def _access_settings() -> dict:
+    return {
+        "users_file": os.getenv("TASKHUB_USERS_FILE", ""),
+        "session_state_file": os.getenv("TASKHUB_SESSION_STATE_FILE", ""),
+        "session_signing_keys_file": os.getenv("TASKHUB_SESSION_SIGNING_KEYS_FILE", ""),
+        "agent_access_file": os.getenv("TASKHUB_AGENT_ACCESS_FILE", ""),
+        "agent_pairing_ttl_seconds": int(
+            os.getenv("TASKHUB_AGENT_PAIRING_TTL_SECONDS", "600")
+        ),
+        "agent_credential_days": int(os.getenv("TASKHUB_AGENT_CREDENTIAL_DAYS", "30")),
+        "session_idle_seconds": int(os.getenv("TASKHUB_SESSION_IDLE_SECONDS", "1800")),
+        "session_absolute_seconds": int(
+            os.getenv("TASKHUB_SESSION_ABSOLUTE_SECONDS", "43200")
+        ),
+        "login_max_failures": int(os.getenv("TASKHUB_LOGIN_MAX_FAILURES", "5")),
+        "login_window_seconds": int(os.getenv("TASKHUB_LOGIN_WINDOW_SECONDS", "900")),
+        "login_lock_seconds": int(os.getenv("TASKHUB_LOGIN_LOCK_SECONDS", "900")),
+    }
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings(
@@ -131,14 +154,7 @@ def get_settings() -> Settings:
         in {"1", "true", "yes", "on"},
         enforce_https=os.getenv("TASKHUB_ENFORCE_HTTPS", "false").lower()
         in {"1", "true", "yes", "on"},
-        users_file=os.getenv("TASKHUB_USERS_FILE", ""),
-        session_state_file=os.getenv("TASKHUB_SESSION_STATE_FILE", ""),
-        session_signing_keys_file=os.getenv("TASKHUB_SESSION_SIGNING_KEYS_FILE", ""),
-        session_idle_seconds=int(os.getenv("TASKHUB_SESSION_IDLE_SECONDS", "1800")),
-        session_absolute_seconds=int(os.getenv("TASKHUB_SESSION_ABSOLUTE_SECONDS", "43200")),
-        login_max_failures=int(os.getenv("TASKHUB_LOGIN_MAX_FAILURES", "5")),
-        login_window_seconds=int(os.getenv("TASKHUB_LOGIN_WINDOW_SECONDS", "900")),
-        login_lock_seconds=int(os.getenv("TASKHUB_LOGIN_LOCK_SECONDS", "900")),
+        **_access_settings(),
         trusted_hosts=os.getenv("TASKHUB_TRUSTED_HOSTS", "*"),
         projects_file=os.getenv(
             "TASKHUB_PROJECTS_FILE", "/home/gryps/.config/taskhub-v2/projects.json"

@@ -31,6 +31,12 @@ def production_readiness(settings: Settings, app_state) -> dict:
             "需要管理员、项目负责人、开发人员和只读审计角色",
         ),
         _check(
+            "agent_access",
+            "开发代理安全连接",
+            bool(settings.agent_access_file and settings.config_encryption_key),
+            "需要持久化代理凭据摘要，并使用平台加密主密钥保护待领取授权",
+        ),
+        _check(
             "audit",
             "管理操作审计",
             bool(settings.operations_log_file),

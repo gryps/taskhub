@@ -1,0 +1,89 @@
+.agent-access {
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+  padding-top: 20px;
+}
+
+.agent-access-head,
+.agent-access-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.agent-access-head h3,
+.agent-access-list h4 {
+  margin: 0;
+}
+
+.agent-access-head p {
+  color: var(--text-secondary);
+  margin: 4px 0 0;
+}
+
+.agent-access-list {
+  margin-top: 16px;
+}
+
+.agent-access-row {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-top: 8px;
+  padding: 12px;
+}
+
+.agent-access-primary {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.agent-access-primary strong,
+.agent-access-primary span,
+.agent-access-primary small {
+  overflow-wrap: anywhere;
+}
+
+.agent-access-primary code {
+  font-size: 14px;
+  letter-spacing: .08em;
+}
+
+.agent-access-row label {
+  min-width: 132px;
+}
+
+.agent-access-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.agent-access-empty {
+  color: var(--text-secondary);
+  margin: 8px 0 0;
+}
+
+@media (max-width: 768px) {
+  .agent-access-head,
+  .agent-access-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .agent-access-head button,
+  .agent-access-actions button,
+  .agent-credential-row > button {
+    min-height: 44px;
+  }
+
+  .agent-access-row label {
+    min-width: 0;
+  }
+
+  .agent-access-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}

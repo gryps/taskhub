@@ -51,6 +51,16 @@ than reaching into another module's internal state.
 
 Detailed module-level ownership and public interfaces are listed in `docs/MODULES.md`.
 
+## Human and agent authentication
+
+Browser users authenticate with signed, server-revocable session cookies and CSRF protection.
+Development agents authenticate through a browser-approved pairing and a separately revocable
+Bearer credential. `security.agent_access` owns pairing state, credential digests, expiry and
+revocation; API middleware maps either authentication mechanism into the same RBAC principal before
+calling application services. Bearer authentication never falls back to an ambient browser session,
+and connection metadata contains only the path to a host-protected credential file. ADR 0004 records
+the security decision and rejected alternatives.
+
 ## Governance flow
 
 An active engineering policy is compiled into a new project-contract draft. The contract freezes the

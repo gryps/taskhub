@@ -19,6 +19,7 @@
 | 模块 | 职责 | 公共边界 / 数据所有权 |
 | --- | --- | --- |
 | `api` | HTTP/SSE、认证授权、输入输出适配与静态资源交付 | 路由契约；不拥有流程状态 |
+| `security.agent_access` | 开发代理配对、凭据摘要、到期与吊销 | `agent-access.json`；不拥有用户密码或浏览器会话 |
 | `workflows` | 主流程与实施子图、阶段转换、中断和恢复 | LangGraph checkpoint 中的流程位置与时间线 |
 | `services.runs` | 启动、读取、恢复和归档运行 | 通过 graph thread 操作权威状态 |
 | `services.project_preflight` | 聚合项目开工条件并返回可修复诊断 | 预检报告；不复制下游数据 |
@@ -39,6 +40,7 @@
 | `api/static/app.js` | 原生壳层、认证与开发流程装配 | 历史大文件，只减不增；逐步提取公共客户端和功能模块 |
 | `api/static/*-center.js` | 对应运营中心的读取、渲染和交互 | 通过统一 API 客户端访问服务端 |
 | `api/static/image-downloads.*` | 公开镜像地址呈现、响应式样式与复制交互 | 不读取认证状态或业务流程数据 |
+| `api/static/agent-access.*` | 浏览器内审批、查看和吊销开发代理连接 | 只呈现非敏感元数据，不显示或复制 Bearer 凭据 |
 | `api/static/styles.css` | 原生 token、布局和组件样式 | 历史大文件，只减不增；按稳定组件边界拆分 |
 
 ## 公共能力准入

@@ -34,6 +34,7 @@ def test_release_kit_contains_cross_platform_lifecycle_assets():
         "verify.ps1",
         "configure-tls.sh",
         "configure-tls.ps1",
+        "connect-agent.py",
         "package-online.sh",
         "package-online.ps1",
     }
@@ -115,6 +116,7 @@ def test_release_compose_preloads_unified_node_reference():
     assert "TASKHUB_OPERATIONS_LOG_FILE: /var/lib/taskhub/state/operations.jsonl" in text
     assert "TASKHUB_COOKIE_SECURE: ${TASKHUB_COOKIE_SECURE:-true}" in text
     assert "TASKHUB_SESSION_STATE_FILE: /var/lib/taskhub/state/sessions.json" in text
+    assert "TASKHUB_AGENT_ACCESS_FILE: /var/lib/taskhub/config/agent-access.json" in text
 
 
 def test_unified_node_uses_official_node_22_runtime():

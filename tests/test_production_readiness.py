@@ -13,6 +13,7 @@ def test_formal_settings_pass_production_readiness_contract():
             cookie_secure=True,
             session_state_file="/data/sessions.json",
             session_signing_keys_file="/data/signing-keys.json",
+            agent_access_file="/data/agent-access.json",
             operations_log_file="/data/operations.jsonl",
             config_encryption_key="configured-for-test",
             docker_socket="http://docker-proxy:2375",
@@ -21,7 +22,7 @@ def test_formal_settings_pass_production_readiness_contract():
         SimpleNamespace(container_manager=object()),
     )
     assert report["ready"] is True
-    assert report["summary"] == {"passed": 8, "total": 8}
+    assert report["summary"] == {"passed": 9, "total": 9}
 
 
 def test_development_defaults_explain_failed_production_controls():
@@ -31,6 +32,7 @@ def test_development_defaults_explain_failed_production_controls():
     assert {
         "persistent_orchestration",
         "https_session",
+        "agent_access",
         "docker_isolation",
         "local_node_management",
     } <= failed.keys()

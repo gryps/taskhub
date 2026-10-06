@@ -19,6 +19,8 @@ behavior must update both until the older document is consolidated.
   history. Do not convert all information into cards or dialogs.
 - Render server-owned facts; expose loading, empty, error, permission, stale, partial-success, and
   long-running states where applicable.
+- Development-agent pairing belongs under access security: show the device label, confirmation
+  code, granted role, expiry, last use and revocation action, but never render the Bearer credential.
 - Preserve API, route, SSE, permissions, stable DOM hooks, and keyboard behavior during visual work.
 
 ## Tokens and visual rules

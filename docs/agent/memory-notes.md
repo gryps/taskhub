@@ -800,3 +800,15 @@ Updated: 2026-10-03
   and Node manifest `sha256:f5bf6c4f5056834d7d2ff83567db72398092ce7af2419a1600a70b203d1c58af`.
 - Anonymous manifest reads succeeded for the versioned GHCR images and for both Aliyun ACR tag
   forms using an empty temporary Docker configuration, confirming public pull availability.
+
+## Browser-approved Development-agent Access
+
+- On 2026-10-06 TaskHub added device-style pairing for Codex and other development agents. A logged-in
+  browser approves a bounded role and expiry; the agent receives a one-time Bearer credential and
+  stores it in a host-protected file. The ordinary connection JSON contains only that file path.
+- Active credentials are persisted only as SHA-256 digests. Unclaimed grants are Fernet-encrypted,
+  expire with the pairing and are deleted after exchange. Revoked or invalid Bearer requests return
+  401 without falling back to browser cookies; Bearer mutations retain RBAC and audit but do not use
+  browser CSRF.
+- The security console owns pending approvals, credential inventory and revocation through the
+  standalone `agent-access.js` and `agent-access.css` assets. ADR 0004 records the boundary.

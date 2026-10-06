@@ -4,11 +4,12 @@ from importlib.resources import files
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from taskhub_v2.api.agent_auth_routes import router as agent_auth_router
 from taskhub_v2.api.auth_routes import router as auth_router
 from taskhub_v2.api.capability_routes import router as capability_router
 from taskhub_v2.api.configuration_routes import router as configuration_router
@@ -37,11 +38,11 @@ from taskhub_v2.persistence.topologies import topology_store
 from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.providers import build_provider
 from taskhub_v2.providers.health import ProviderHealthStore
-from taskhub_v2.security.auth import CSRF_COOKIE, SESSION_COOKIE, AuthService
+from taskhub_v2.security.agent_access import AgentAccessService
+from taskhub_v2.security.auth import AuthService
 from taskhub_v2.security.backup_identity import backup_key_fingerprint
-from taskhub_v2.security.encryption import SecretCipher
-from taskhub_v2.security.http import required_permission as _required_permission
-from taskhub_v2.security.http import secure_response as _secure_response
+from taskhub_v2.security.encryption import SecretCipher, build_secret_cipher
+from taskhub_v2.security.http import authentication_middleware, required_permission
 from taskhub_v2.security.node_credentials import NodeCredentialVault
 from taskhub_v2.services import RunService
 from taskhub_v2.services.capabilities import CapabilityService
@@ -73,6 +74,8 @@ from taskhub_v2.workers import (
 from taskhub_v2.workers.coding_router import ScheduledCodingRouter
 from taskhub_v2.workflows import build_main_graph
 
+_required_permission = required_permission
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
@@ -88,6 +91,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         login_max_failures=settings.login_max_failures,
         login_window_seconds=settings.login_window_seconds,
         login_lock_seconds=settings.login_lock_seconds,
+    )
+    agent_access = AgentAccessService(
+        settings.agent_access_file,
+        build_secret_cipher(settings.config_encryption_key),
+        pairing_ttl_seconds=settings.agent_pairing_ttl_seconds,
+        credential_days=settings.agent_credential_days,
     )
     projects = ProjectRegistry(settings.projects_file)
     default_project_provisioner = build_project_provisioner(settings, projects)
@@ -297,6 +306,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="TaskHub V2", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.auth = auth
+    app.state.agent_access = agent_access
     app.state.projects = projects
     app.state.project_provisioner = default_project_provisioner
     app.state.deployment_manager = DeploymentManager(settings)
@@ -305,6 +315,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(provider_router)
     app.include_router(auth_router)
+    app.include_router(agent_auth_router)
     app.include_router(configuration_router)
     app.include_router(container_router)
     app.include_router(revision_router)
@@ -326,56 +337,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if allowed_hosts and allowed_hosts != ["*"]:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
-    @app.middleware("http")
-    async def require_authentication(request, call_next):
-        path = request.url.path
-        public = (
-            path == "/"
-            or path.startswith("/static/")
-            or path
-            in {
-                "/api/health",
-                "/api/auth/status",
-                "/api/auth/login",
-                "/api/auth/setup",
-            }
-        )
-        if public:
-            response = await call_next(request)
-            return _secure_response(response)
-        session = auth.read_session(request.cookies.get(SESSION_COOKIE))
-        if not session:
-            return JSONResponse({"detail": "authentication required"}, status_code=401)
-        request.state.session = session
-        permission = _required_permission(path, request.method)
-        if permission and not auth.allowed(session, permission):
-            operation_log.record(
-                "access_denied",
-                "forbidden",
-                actor=session.get("actor"),
-                role=session.get("role"),
-                method=request.method,
-                path=path,
-            )
-            return JSONResponse({"detail": "permission denied"}, status_code=403)
-        if request.method not in {"GET", "HEAD", "OPTIONS"} and not auth.valid_csrf(
-            session,
-            request.headers.get("x-csrf-token", ""),
-            request.cookies.get(CSRF_COOKIE, ""),
-        ):
-            return JSONResponse({"detail": "CSRF validation failed"}, status_code=403)
-        response = await call_next(request)
-        if request.method not in {"GET", "HEAD", "OPTIONS"}:
-            operation_log.record(
-                "management_api",
-                "passed" if response.status_code < 400 else "failed",
-                actor=session.get("actor"),
-                role=session.get("role"),
-                method=request.method,
-                path=path,
-                status_code=response.status_code,
-            )
-        return _secure_response(response)
+    app.middleware("http")(authentication_middleware(auth, agent_access, operation_log))
 
     static_dir = files("taskhub_v2.api").joinpath("static")
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
