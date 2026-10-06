@@ -698,6 +698,10 @@ def test_seed_package_generates_and_injects_configuration_encryption_key():
     assert "function New-FernetKey" in script
     assert "TASKHUB_CONFIG_ENCRYPTION_KEY=$(New-FernetKey)" in script
     assert "TASKHUB_CONFIG_ENCRYPTION_KEY:" in compose
+    assert (
+        "TASKHUB_EXTERNAL_WINDOWS_NODES_FILE: "
+        "/var/lib/taskhub/config/external-windows-nodes.json"
+    ) in compose
     assert "TASKHUB_CONFIG_ENCRYPTION_KEY=replace-with-fernet-key" in example
 
 
