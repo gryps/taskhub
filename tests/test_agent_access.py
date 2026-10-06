@@ -143,6 +143,7 @@ def test_console_loads_agent_access_as_separate_feature_asset(tmp_path):
     with TestClient(create_app(agent_settings(tmp_path))) as client:
         html = client.get("/").text
         script = client.get("/static/agent-access.js").text
-    assert "/static/agent-access.css?v=1" in html
-    assert "/static/agent-access.js?v=1" in html
+    assert "/static/agent-access.css?v=2" in html
+    assert "/static/agent-access.js?v=2" in html
     assert "开发代理连接" in script
+    assert "setInterval(loadAgentAccess, 2000)" in script

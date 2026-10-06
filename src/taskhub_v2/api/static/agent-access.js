@@ -30,6 +30,8 @@
   const pairings = document.getElementById("agent-pairings");
   const credentials = document.getElementById("agent-credentials");
   const message = document.getElementById("agent-access-message");
+  let refreshTimer;
+  let loading = false;
 
   function pairingView(item) {
     return `<article class="agent-access-row" data-pairing-id="${escapeHtml(item.pairing_id)}">
@@ -63,6 +65,8 @@
   }
 
   async function loadAgentAccess() {
+    if (loading) return;
+    loading = true;
     message.textContent = "正在读取代理连接";
     try {
       const [pairingData, credentialData] = await Promise.all([
@@ -79,7 +83,17 @@
       pairings.innerHTML = "";
       credentials.innerHTML = "";
       message.textContent = error.message;
+    } finally {
+      loading = false;
     }
+  }
+
+  function syncAutoRefresh() {
+    window.clearInterval(refreshTimer);
+    refreshTimer = undefined;
+    if (!disclosure.open || document.hidden) return;
+    loadAgentAccess();
+    refreshTimer = window.setInterval(loadAgentAccess, 2000);
   }
 
   async function decidePairing(row, action) {
@@ -123,5 +137,7 @@
     }
   });
   document.getElementById("refresh-agent-access").addEventListener("click", loadAgentAccess);
-  disclosure.addEventListener("toggle", () => { if (disclosure.open) loadAgentAccess(); });
+  disclosure.addEventListener("toggle", syncAutoRefresh);
+  document.addEventListener("visibilitychange", syncAutoRefresh);
+  syncAutoRefresh();
 })();

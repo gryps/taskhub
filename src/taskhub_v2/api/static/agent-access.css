@@ -17,8 +17,21 @@
   margin: 0;
 }
 
+.agent-access-head h3 {
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.agent-access-list h4 {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .agent-access-head p {
   color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
   margin: 4px 0 0;
 }
 
@@ -47,11 +60,19 @@
 }
 
 .agent-access-primary code {
-  font-size: 14px;
+  font-size: 13px;
   letter-spacing: .08em;
 }
 
+.agent-access-primary span,
+.agent-access-primary small,
+.agent-owner {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .agent-access-row label {
+  font-size: 12px;
   min-width: 132px;
 }
 

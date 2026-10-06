@@ -41,9 +41,6 @@ def test_agent_pairing_approval_is_responsive_and_revocable(tmp_path):
         serve(create_app(settings), port),
         httpx.Client(base_url=url, trust_env=False) as client,
     ):
-        pairing = client.post(
-            "/api/auth/agent-pairings/start", json={"label": "Windows 试点机 · 长设备名称"}
-        ).json()
         browser = playwright.chromium.launch(executable_path=executable)
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
         errors = []
@@ -55,6 +52,10 @@ def test_agent_pairing_approval_is_responsive_and_revocable(tmp_path):
         page.locator("#nav-resources").click()
         page.locator("#platform-disclosure > summary").click()
         page.locator("#access-security-disclosure > summary").click()
+
+        pairing = client.post(
+            "/api/auth/agent-pairings/start", json={"label": "Windows 试点机 · 长设备名称"}
+        ).json()
 
         row = page.locator("#agent-pairings [data-pairing-id]")
         expect(row).to_have_count(1)
