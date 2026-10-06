@@ -1,9 +1,13 @@
 import asyncio
+import base64
 import json
 
 from taskhub_v2.domain.external_windows import WindowsNodeConnection, WindowsNodeInstall
 from taskhub_v2.execution.registry import NodeRegistry
-from taskhub_v2.services.external_windows_nodes import ExternalWindowsNodeService
+from taskhub_v2.services.external_windows_nodes import (
+    ExternalWindowsNodeService,
+    _powershell_stdin_bootstrap,
+)
 
 
 class Credentials:
@@ -138,3 +142,11 @@ def test_windows_installer_uses_persistent_cache_and_no_plaintext_token():
     assert "ProtectedData" in script
     assert "node-token.dpapi" in script
     assert "TaskHubNodeAgent" in script
+
+
+def test_windows_ssh_bootstrap_reads_the_complete_script_before_execution():
+    bootstrap = base64.b64decode(_powershell_stdin_bootstrap()).decode("utf-16-le")
+
+    assert "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)" in bootstrap
+    assert "[Console]::In.ReadToEnd()" in bootstrap
+    assert "[ScriptBlock]::Create($source)" in bootstrap

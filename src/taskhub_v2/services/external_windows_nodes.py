@@ -279,7 +279,7 @@ def _run_windows_ssh(request, private_key: str, host_key: str, script: str, time
             "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={known_hosts}",
             f"{request.username}@{request.address}",
             "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-            "-Command", "-",
+            "-EncodedCommand", _powershell_stdin_bootstrap(),
         ]
         try:
             result = subprocess.run(
@@ -291,6 +291,24 @@ def _run_windows_ssh(request, private_key: str, host_key: str, script: str, time
         if result.returncode:
             raise ExternalWindowsNodeError(f"SSH 远程操作失败：{_safe_error(result.stderr)}")
         return result
+
+
+def _powershell_stdin_bootstrap() -> str:
+    """Execute stdin as one script block on Windows PowerShell 5.1 and newer.
+
+    ``-Command -`` parses piped input incrementally on Windows PowerShell 5.1.
+    Multi-line constructs can consequently finish with exit code zero without
+    ever executing the complete probe or installer.  The small encoded
+    bootstrap has no command-shell metacharacters and evaluates stdin only
+    after it has been read in full.
+    """
+    bootstrap = (
+        "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);"
+        "$OutputEncoding=[Console]::OutputEncoding;"
+        "$source=[Console]::In.ReadToEnd();"
+        "& ([ScriptBlock]::Create($source))"
+    )
+    return base64.b64encode(bootstrap.encode("utf-16-le")).decode("ascii")
 
 
 def _last_json_line(output: str) -> str:
