@@ -25,6 +25,8 @@ permission, scheduling, or governance truth.
 - `project-activation.js` and `project-activation.css` own the project-level activation read model,
   repair navigation and draft-contract quality editor. They consume the server activation report;
   they do not recalculate project readiness in the browser.
+- `external-windows-nodes.js` and its scoped stylesheet own native Windows admission. The feature
+  renders server health facts and keeps the one-use SSH private key out of browser storage.
 - `styles.css` currently owns the incumbent token and component system. New styles must use semantic
   tokens and coherent component boundaries; the file is a registered no-growth migration target.
 - Page-level code assembles features. Data transformation and server calls belong in feature modules

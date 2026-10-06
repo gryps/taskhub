@@ -62,6 +62,9 @@ class Settings(BaseModel):
     nodes_file: str = "/home/gryps/.config/taskhub-v2/nodes.json"
     node_state_file: str = "/home/gryps/.local/state/taskhub-v2/node-state.json"
     node_credentials_file: str = "/home/gryps/.config/taskhub-v2/node-credentials.json"
+    external_windows_nodes_file: str = (
+        "/home/gryps/.config/taskhub-v2/external-windows-nodes.json"
+    )
     node_token: str = Field(default="", repr=False)
     container_provisioning_enabled: bool = False
     docker_socket: str = "/var/run/docker.sock"
@@ -125,6 +128,53 @@ def _access_settings() -> dict:
         "login_max_failures": int(os.getenv("TASKHUB_LOGIN_MAX_FAILURES", "5")),
         "login_window_seconds": int(os.getenv("TASKHUB_LOGIN_WINDOW_SECONDS", "900")),
         "login_lock_seconds": int(os.getenv("TASKHUB_LOGIN_LOCK_SECONDS", "900")),
+    }
+
+
+def _node_settings() -> dict:
+    return {
+        "worker_mode": os.getenv("TASKHUB_WORKER_MODE", "local"),
+        "test_runner": os.getenv("TASKHUB_TEST_RUNNER", "local"),
+        "nodes_file": os.getenv(
+            "TASKHUB_NODES_FILE", "/home/gryps/.config/taskhub-v2/nodes.json"
+        ),
+        "node_state_file": os.getenv(
+            "TASKHUB_NODE_STATE_FILE", "/home/gryps/.local/state/taskhub-v2/node-state.json"
+        ),
+        "node_credentials_file": os.getenv(
+            "TASKHUB_NODE_CREDENTIALS_FILE",
+            "/home/gryps/.config/taskhub-v2/node-credentials.json",
+        ),
+        "external_windows_nodes_file": os.getenv(
+            "TASKHUB_EXTERNAL_WINDOWS_NODES_FILE",
+            "/home/gryps/.config/taskhub-v2/external-windows-nodes.json",
+        ),
+        "node_token": os.getenv("TASKHUB_NODE_TOKEN", ""),
+        "container_provisioning_enabled": os.getenv(
+            "TASKHUB_CONTAINER_PROVISIONING_ENABLED", "false"
+        ).lower()
+        in {"1", "true", "yes", "on"},
+        "docker_socket": os.getenv("TASKHUB_DOCKER_SOCKET", "/var/run/docker.sock"),
+        "docker_network": os.getenv("TASKHUB_DOCKER_NETWORK", "taskhub-seed_default"),
+        "data_volume_name": os.getenv("TASKHUB_DATA_VOLUME_NAME", ""),
+        "model_accounts_volume_subpath": os.getenv(
+            "TASKHUB_MODEL_ACCOUNTS_VOLUME_SUBPATH", ""
+        ),
+        "node_container_image": os.getenv(
+            "TASKHUB_NODE_CONTAINER_IMAGE", "taskhub-node:0.1.0-alpha"
+        ),
+        "seed_public_url": os.getenv("TASKHUB_SEED_PUBLIC_URL", ""),
+        "node_callback_url": os.getenv("TASKHUB_NODE_CALLBACK_URL", ""),
+        "node_image_registry": os.getenv("TASKHUB_NODE_IMAGE_REGISTRY", ""),
+        "node_image_proxy": os.getenv("TASKHUB_NODE_IMAGE_PROXY", ""),
+        "node_registry_username": os.getenv("TASKHUB_NODE_REGISTRY_USERNAME", ""),
+        "node_registry_password": os.getenv("TASKHUB_NODE_REGISTRY_PASSWORD", ""),
+        "test_database_admin_dsn": os.getenv("TASKHUB_TEST_DATABASE_ADMIN_DSN", ""),
+        "default_node_slots": int(os.getenv("TASKHUB_DEFAULT_NODE_SLOTS", "1")),
+        "default_node_cpu_limit": os.getenv("TASKHUB_DEFAULT_NODE_CPU_LIMIT", ""),
+        "default_node_memory_limit": os.getenv("TASKHUB_DEFAULT_NODE_MEMORY_LIMIT", ""),
+        "node_heartbeat_seconds": int(os.getenv("TASKHUB_NODE_HEARTBEAT_SECONDS", "15")),
+        "node_offline_seconds": int(os.getenv("TASKHUB_NODE_OFFLINE_SECONDS", "60")),
     }
 
 
@@ -199,41 +249,7 @@ def get_settings() -> Settings:
             os.getenv("TASKHUB_PROVIDER_PROBE_INTERVAL_SECONDS", "30")
         ),
         provider_switch_lock_seconds=int(os.getenv("TASKHUB_PROVIDER_SWITCH_LOCK_SECONDS", "300")),
-        worker_mode=os.getenv("TASKHUB_WORKER_MODE", "local"),
-        test_runner=os.getenv("TASKHUB_TEST_RUNNER", "local"),
-        nodes_file=os.getenv("TASKHUB_NODES_FILE", "/home/gryps/.config/taskhub-v2/nodes.json"),
-        node_state_file=os.getenv(
-            "TASKHUB_NODE_STATE_FILE",
-            "/home/gryps/.local/state/taskhub-v2/node-state.json",
-        ),
-        node_credentials_file=os.getenv(
-            "TASKHUB_NODE_CREDENTIALS_FILE",
-            "/home/gryps/.config/taskhub-v2/node-credentials.json",
-        ),
-        node_token=os.getenv("TASKHUB_NODE_TOKEN", ""),
-        container_provisioning_enabled=os.getenv(
-            "TASKHUB_CONTAINER_PROVISIONING_ENABLED", "false"
-        ).lower()
-        in {"1", "true", "yes", "on"},
-        docker_socket=os.getenv("TASKHUB_DOCKER_SOCKET", "/var/run/docker.sock"),
-        docker_network=os.getenv("TASKHUB_DOCKER_NETWORK", "taskhub-seed_default"),
-        data_volume_name=os.getenv("TASKHUB_DATA_VOLUME_NAME", ""),
-        model_accounts_volume_subpath=os.getenv(
-            "TASKHUB_MODEL_ACCOUNTS_VOLUME_SUBPATH", ""
-        ),
-        node_container_image=os.getenv("TASKHUB_NODE_CONTAINER_IMAGE", "taskhub-node:0.1.0-alpha"),
-        seed_public_url=os.getenv("TASKHUB_SEED_PUBLIC_URL", ""),
-        node_callback_url=os.getenv("TASKHUB_NODE_CALLBACK_URL", ""),
-        node_image_registry=os.getenv("TASKHUB_NODE_IMAGE_REGISTRY", ""),
-        node_image_proxy=os.getenv("TASKHUB_NODE_IMAGE_PROXY", ""),
-        node_registry_username=os.getenv("TASKHUB_NODE_REGISTRY_USERNAME", ""),
-        node_registry_password=os.getenv("TASKHUB_NODE_REGISTRY_PASSWORD", ""),
-        test_database_admin_dsn=os.getenv("TASKHUB_TEST_DATABASE_ADMIN_DSN", ""),
-        default_node_slots=int(os.getenv("TASKHUB_DEFAULT_NODE_SLOTS", "1")),
-        default_node_cpu_limit=os.getenv("TASKHUB_DEFAULT_NODE_CPU_LIMIT", ""),
-        default_node_memory_limit=os.getenv("TASKHUB_DEFAULT_NODE_MEMORY_LIMIT", ""),
-        node_heartbeat_seconds=int(os.getenv("TASKHUB_NODE_HEARTBEAT_SECONDS", "15")),
-        node_offline_seconds=int(os.getenv("TASKHUB_NODE_OFFLINE_SECONDS", "60")),
+        **_node_settings(),
         log_retention_days=int(os.getenv("TASKHUB_LOG_RETENTION_DAYS", "30")),
         operations_log_file=os.getenv(
             "TASKHUB_OPERATIONS_LOG_FILE",

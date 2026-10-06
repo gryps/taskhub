@@ -22,6 +22,7 @@ platform by directly completing a managed project's work.
 | `providers` | Model-provider adapters behind capability protocols | provider SDKs, domain contracts |
 | `workers` | Coding, testing, acceptance, publication capabilities | execution and external adapters |
 | `execution` | Node registry, matching, slots, assignments, runners | node-agent/public service contracts |
+| `external_windows_nodes` | Native Windows SSH admission, Agent installation and scheduler registration | node registry and per-node credential vault |
 | `node_agent` | Authenticated workspace upload and isolated execution | operating system and container adapters |
 | `persistence` | Checkpoints and production-record storage | PostgreSQL/LangGraph implementations |
 | `projects` | Authority repository provisioning and registry | Git/SSH adapters |

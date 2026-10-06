@@ -1,99 +1,45 @@
 # Windows browser acceptance node
 
-Build the candidate package, copy it and `deploy/windows/install-node-agent.ps1` to
-`192.168.31.34`, then run the installer in the desktop account that will operate the
-browser. The installer creates an isolated environment under `C:\TaskHub`, encrypts
-the existing `TASKHUB_NODE_TOKEN` with that account's DPAPI key, and registers an
-interactive at-logon scheduled task. Never put the token in the repository or an
-installer argument.
+Native Windows nodes use the authenticated Node Agent contract but run in the interactive desktop
+account required by headed Chrome or Edge. They are external test resources, not members of a
+physical-host pool.
 
-Set `BrowserProfileDir` and `BrowserAuthTarget` during installation, then run
-`deploy/windows/authorize-browser-profile.ps1` in the same interactive account. Complete the
-external login once and close the browser before creating the readiness marker. Node health
-reports `browser_profile` and `browser_authenticated`; browser acceptance cannot be scheduled
-until both are true.
+## Product onboarding
 
-For a newly registered node, **系统配置 / 验收前置配置** displays the exact command for
-its current state with a copy button. Operators do not need to locate this document before
-admission can be completed.
+Use **System Configuration → TaskHub Nodes → Attach external Windows test machine**. The wizard:
 
-Install Playwright in that environment and provide system Google Chrome and Microsoft
-Edge. The installer does not download a second bundled browser; both system browsers
-must pass the interactive screenshot, video, and trace probe. First verify the isolated candidate endpoint on port
-`8391` with bearer authentication. The production endpoint remains port `8301` and
-must only be promoted after candidate acceptance. The registry entry
-must retain only the `browser_acceptance` workload. Health must report
-`windows_gui`, `playwright`, `chromium`, `edge`, `screenshot`, `video`, and `trace`.
+1. accepts a stable node ID, Windows address, SSH user/port and Agent port;
+2. reads and displays the SSH host fingerprint for out-of-band confirmation;
+3. verifies Windows and Python over SSH;
+4. issues a distinct node credential, transfers the current package and installer, and registers an
+   interactive-at-logon scheduled task;
+5. admits the node to scheduling only after its authenticated health response returns the same node
+   ID.
 
-Projects own their scenarios in `tests/e2e/` and declare the portable command,
-preview lifecycle, browser matrix, timeout, and required evidence in
-`.taskhub/acceptance.yaml`. The agent contains no project-specific scripts.
+The submitted SSH private key is not retained. A later repair requires submitting it again. The
+virtual environment and pip cache live under `C:\TaskHub`, so reinstalling the same package does not
+redownload unchanged dependencies.
 
-## Revision verification status
+## Browser mode
 
-The current workspace cannot connect to `192.168.31.34:8301` and has no
-Playwright installation. No Windows deployment, authenticated online status,
-autostart, Edge/Chromium pass, or production task evidence is claimed.
-The dedicated E2E command fails on missing dependencies; it does not skip.
-The project suite manifest covers login and pending approval, structured blocker
-metadata, refresh and two independent contexts, automatic retry recovery, and
-state-dependent actions. These checks still require a real Windows run; the
-deterministic preview adapters do not prove a real model supervision cycle.
+Browser mode additionally requires a browser login target. Install system Chrome and Microsoft Edge,
+then authorize the persistent profile in the same Windows desktop account. Health must report
+`windows_gui`, `playwright`, `chromium`, `edge`, `screenshot`, `video`, `trace`, `browser_profile`
+and `browser_authenticated` before browser acceptance is schedulable.
 
-Preview startup requires a clean committed worktree. The controller supplies
-`TASKHUB_PREVIEW_DSN` (with a schema-only search path) and
-`TASKHUB_PREVIEW_STATE_DIR`; the Agent supplies `TASKHUB_TARGET_URL` and
-`TASKHUB_GIT_COMMIT` to the test process. JUnit must repeat both values on each
-case, identify both browsers, and contain no skipped, failed or empty suites.
-The packaged controller publishes ports 8400-8499 for these short-lived previews.
-Set `TASKHUB_PREVIEW_BIND_ADDRESS` to the interface reachable from remote browser
-nodes. The controller probes each preview over its container-local loopback address,
-while browser nodes receive the routable Seed host (or an explicit
-`TASKHUB_PREVIEW_HOST`), so host routing and internal health checks remain separate.
+Windows services run in session 0 and cannot operate an interactive browser. The installer therefore
+uses an interactive-at-logon scheduled task. After reboot, sign in to that account and verify Agent
+health and the browser profile again.
 
-Windows services run in session 0 and cannot establish the required interactive
-desktop. The installer therefore uses an interactive at-logon scheduled task.
-Run `python -m taskhub_v2.node_agent.browser_probe` under the actual service
-identity/session. An unavailable headed desktop must leave capabilities false;
-provision an interactive runner before accepting this deployment. Restart the
-machine and verify the authenticated health endpoint and browser probe again.
-Do not replace or regenerate the existing node token.
+Projects own browser scenarios in `tests/e2e/` and declare their command, preview lifecycle, browser
+matrix, timeout and evidence in `.taskhub/acceptance.yaml`. They must also bind the admitted node ID
+in project quality configuration. TaskHub never falls back to an arbitrary Windows node.
 
-Remaining preview operational gaps: port ownership is currently local to one
-manager process, and abrupt controller termination requires operator cleanup.
-Cross-process port leases and restart reconciliation must be completed before
-claiming concurrent/restart cleanup acceptance. The unit cancellation test mocks
-schema operations; a real PostgreSQL isolation and cleanup run remains required.
+## Security and recovery
 
-## Supervisor follow-up in this worktree
-
-Base HEAD: `9243acaf908d76bed4583ab63e0c85b93153921c`. This revision is an
-uncommitted worktree patch, as requested; HEAD identifies the base and does **not**
-identify the modified candidate. Use `git diff --name-only` and `git diff` to
-review the delivered changes. No browser result for the base can validate this
-patch. The clean-commit preview guard intentionally remains enabled.
-
-The follow-up changes contract validation, JUnit scenario coverage, scheduler
-preflight, the project acceptance gateway, and the project E2E report, with
-regression tests in `tests/test_browser_acceptance.py` and `tests/test_scheduler.py`.
-JUnit now requires each manifest scenario on each declared browser. Project tests
-record completion only after their assertions pass, including a changing retry
-countdown and rendered recommended action. JSON and HTML reports list completed
-scenarios. The controller checks node eligibility before starting the preview,
-and execution repeats the health check before upload.
-
-Validation performed here: 21 browser-contract/report/preview and scheduler tests
-passed (the subprocess identity test was deselected). Compilation and
-`git diff --check` passed. Workflow test runs stalled in asynchronous waiting and
-were interrupted; the isolated structured-browser workflow run timed out.
-Explicit E2E execution failed on missing Playwright, with no skips. TCP connection
-to `192.168.31.34:8301` failed. Consequently this is not evidence of a deployed
-Windows node or a completed browser acceptance cycle.
-
-Outstanding supervisor requirements remain: actual Windows startup/listener/auth
-and resource-center evidence; full node/model-switch action coverage; real
-artifact upload through re-supervision to publication approval; PostgreSQL
-cross-process allocation and restart cleanup; and real Chromium/Edge execution
-against the eventual committed candidate. Existing at-logon deployment is not a
-Windows startup service. These must not be marked accepted using local unit
-results or a two-test pass count.
+- Never disable SSH host-key checking.
+- Never place the SSH private key or node credential in a repository, installer argument or log.
+- Removing the node from TaskHub revokes its credential and stops scheduling but leaves remote files
+  for diagnosis. Remote deletion is a separate explicit operation.
+- If installation fails, correct the reported Python, package, firewall, browser or reachability
+  problem and repeat admission; the failed credential is already revoked.

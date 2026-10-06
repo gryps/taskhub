@@ -24,15 +24,15 @@ LEGACY_FRONTEND_FILE_LINES = {
 }
 
 LEGACY_FUNCTION_LINES = {
-    ("src/taskhub_v2/config.py", "get_settings"): 136,
+    ("src/taskhub_v2/config.py", "get_settings"): 102,
     ("src/taskhub_v2/workflows/main_graph.py", "build_main_graph"): 343,
     ("src/taskhub_v2/workflows/implementation.py", "build_implementation_graph"): 103,
     ("src/taskhub_v2/node_agent/app.py", "create_node_app"): 261,
     ("src/taskhub_v2/node_agent/app.py", "create_node_app.execute"): 101,
     ("src/taskhub_v2/deployment/runner.py", "deploy"): 104,
     ("src/taskhub_v2/persistence/production.py", "_validate_replacement"): 118,
-    ("src/taskhub_v2/api/app.py", "create_app"): 251,
-    ("src/taskhub_v2/api/app.py", "create_app.lifespan"): 176,
+    ("src/taskhub_v2/api/app.py", "create_app"): 250,
+    ("src/taskhub_v2/api/app.py", "create_app.lifespan"): 175,
     ("src/taskhub_v2/workers/git_coder.py", "GitCodingWorker.execute"): 168,
     ("src/taskhub_v2/workers/acceptance.py", "ProjectAcceptanceGateway.verify"): 256,
     ("src/taskhub_v2/workers/publisher.py", "GitPublisher.publish"): 125,

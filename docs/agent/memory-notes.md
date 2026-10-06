@@ -876,3 +876,21 @@ Updated: 2026-10-03
   when the Seed, Node and PostgreSQL image references match exactly. A fresh database and TaskHub
   data snapshot is still taken. This avoids repeated large Docker image exports without weakening
   recovery integrity.
+
+## Native Windows Test-node Onboarding
+
+- System Configuration → TaskHub Nodes now owns a progressive external-Windows admission flow:
+  address and SSH identity, host-key fingerprint confirmation, Windows/Python probe, package install,
+  authenticated Agent health confirmation and scheduler registration. It does not restore the
+  retired physical-host pool or distributed-node migration model.
+- The existing Node Agent is reused. Seed issues its per-node encrypted credential and transfers the
+  current TaskHub wheel plus an interactive-at-logon installer. The request-scoped SSH private key is
+  never persisted, logged or returned. Failed first admission revokes the credential and leaves no
+  scheduler record; repair preserves an already active credential.
+- Windows keeps its virtual environment and pip cache under `C:\TaskHub`, so repeated installation
+  reuses unchanged dependencies. Browser mode is optional and remains unschedulable until health
+  reports the required interactive browser, profile and evidence capabilities.
+- Architecture governance improved while adding the surface: `config.get_settings`, `create_app` and
+  its lifespan all reduced their historical line baselines. Verification passed `400 passed, 26
+  skipped`, focused native-node tests, and real Chrome at 1440px, 768px and 390px with no page-level
+  overflow.

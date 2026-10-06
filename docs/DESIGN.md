@@ -17,6 +17,9 @@ behavior must update both until the older document is consolidated.
 - Give each surface one primary purpose and keep current project/run context visible.
 - Present first use as two numbered phases: global Seed infrastructure first, then project activation
   after repository attachment. Never label a project-specific Windows node as a global prerequisite.
+- Place native Windows admission inside TaskHub Nodes as progressive disclosure. Separate SSH and
+  fingerprint admission from project authorization, and never equate an open SSH port with a healthy
+  schedulable Agent.
 - Prefer compact tables for repeated comparison, cards for distinct objects, and timelines for process
   history. Do not convert all information into cards or dialogs.
 - Render server-owned facts; expose loading, empty, error, permission, stale, partial-success, and

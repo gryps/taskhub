@@ -17,6 +17,7 @@ from taskhub_v2.api.container_routes import router as container_router
 from taskhub_v2.api.dag_routes import router as dag_router
 from taskhub_v2.api.deployment_routes import router as deployment_router
 from taskhub_v2.api.diagnostic_routes import router as diagnostic_router
+from taskhub_v2.api.external_windows_node_routes import router as external_windows_node_router
 from taskhub_v2.api.governance_routes import router as governance_router
 from taskhub_v2.api.node_routes import router as node_router
 from taskhub_v2.api.onboarding_routes import router as onboarding_router
@@ -31,6 +32,7 @@ from taskhub_v2.api.system_routes import router as system_router
 from taskhub_v2.api.topology_routes import router as topology_router
 from taskhub_v2.config import Settings, get_settings
 from taskhub_v2.deployment import DeploymentManager
+from taskhub_v2.execution.registry import NodeRegistry
 from taskhub_v2.persistence.checkpoints import checkpoint_store
 from taskhub_v2.persistence.configuration import configuration_store
 from taskhub_v2.persistence.production import production_store
@@ -54,6 +56,7 @@ from taskhub_v2.services.device_auth import CodexDeviceAuthService
 from taskhub_v2.services.engineering_governance import EngineeringGovernanceService
 from taskhub_v2.services.evidence import EvidenceCenterService
 from taskhub_v2.services.exceptions import ExceptionCenterService
+from taskhub_v2.services.external_windows_nodes import ExternalWindowsNodeService
 from taskhub_v2.services.git_authority import build_project_provisioner
 from taskhub_v2.services.model_operations import ModelOperationsService
 from taskhub_v2.services.node_model_config import write_node_model_configuration
@@ -91,6 +94,21 @@ def _project_services(settings, store, projects, scheduler, governance):
     return contracts, preflight, activation
 
 
+def _external_windows_service(settings, scheduler, credentials, operation_log):
+    registry = getattr(scheduler, "registry", NodeRegistry(settings.nodes_file))
+    return ExternalWindowsNodeService(
+        settings.external_windows_nodes_file, registry, credentials, operation_log
+    )
+
+
+def _attach_nodes(app, settings, scheduler, credentials, operation_log):
+    app.state.node_scheduler = scheduler
+    app.state.node_credentials = credentials
+    app.state.external_windows_nodes = _external_windows_service(
+        settings, scheduler, credentials, operation_log
+    )
+
+
 def _include_routers(app: FastAPI) -> None:
     routers = (
         router,
@@ -110,6 +128,7 @@ def _include_routers(app: FastAPI) -> None:
         onboarding_router,
         deployment_router,
         diagnostic_router,
+        external_windows_node_router,
         governance_router,
         system_router,
         topology_router,
@@ -322,8 +341,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.provider_catalog,
                 app.state.run_service,
             )
-            app.state.node_scheduler = test_scheduler
-            app.state.node_credentials = node_credentials
+            _attach_nodes(app, effective_settings, test_scheduler, node_credentials, operation_log)
             app.state.system_diagnostics = SystemDiagnosticsService(
                 effective_settings,
                 None,

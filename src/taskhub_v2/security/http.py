@@ -16,7 +16,7 @@ def required_permission(path: str, method: str) -> str | None:
     if path.startswith("/api/change-requests"):
         return "delivery:execute"
     if path.startswith(
-        ("/api/containers", "/api/settings", "/api/onboarding")
+        ("/api/containers", "/api/external-windows-nodes", "/api/settings", "/api/onboarding")
     ):
         return "infrastructure:manage"
     if path.startswith("/api/deployment"):
