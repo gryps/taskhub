@@ -9,6 +9,9 @@ from taskhub_v2.api.app import create_app
 from taskhub_v2.config import Settings
 
 SCRIPT_PATH = Path(__file__).parents[1] / "deploy" / "release" / "connect-agent.py"
+CHECK_SCRIPT_PATH = (
+    Path(__file__).parents[1] / "deploy" / "release" / "check-agent-connection.py"
+)
 
 
 def agent_settings(tmp_path):
@@ -137,6 +140,100 @@ def test_connection_helper_writes_private_token_reference_without_embedding_secr
     assert connection["agent_token_file"] == str(token_file.resolve())
     assert "secret-agent-token" not in connection_file.read_text(encoding="utf-8")
     assert token_file.stat().st_mode & 0o077 == 0
+
+
+def test_connection_check_uses_declared_urls_tls_direct_mode_and_bearer(tmp_path, monkeypatch):
+    spec = importlib.util.spec_from_file_location("taskhub_agent_check", CHECK_SCRIPT_PATH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    ca_file = tmp_path / "taskhub.crt"
+    ca_file.write_text("test certificate", encoding="utf-8")
+    token_file = tmp_path / "agent-token"
+    token_file.write_text("private-token\n", encoding="utf-8")
+    connection_file = tmp_path / "connection.json"
+    connection_file.write_text(
+        json.dumps(
+            {
+                "base_url": "https://taskhub.test:8200",
+                "health_url": "https://taskhub.test:8200/api/health",
+                "auth_status_url": "https://taskhub.test:8200/api/auth/status",
+                "tls_ca_file": str(ca_file),
+                "proxy_mode": "direct",
+                "api_auth": "bearer-token",
+                "agent_token_file": str(token_file),
+            }
+        ),
+        encoding="utf-8",
+    )
+    observed = {"urls": []}
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = json.dumps(payload).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self, size=-1):
+            if not self.payload:
+                return b""
+            if size < 0:
+                result, self.payload = self.payload, b""
+                return result
+            result, self.payload = self.payload[:size], self.payload[size:]
+            return result
+
+    class Opener:
+        def open(self, request, timeout):
+            url = request.full_url
+            observed["urls"].append(url)
+            observed["authorization"] = request.get_header("Authorization")
+            observed["timeout"] = timeout
+            if url.endswith("/api/health"):
+                return Response({"status": "ok"})
+            return Response({"authenticated": True, "role": "project_owner"})
+
+    def fake_build_http_opener(ca_path, trust_env):
+        observed["ca_file"] = ca_path
+        observed["trust_env"] = trust_env
+        return Opener()
+
+    monkeypatch.setattr(module, "build_http_opener", fake_build_http_opener)
+    result = module.check_connection(connection_file, 10)
+
+    assert observed["urls"] == [
+        "https://taskhub.test:8200/api/health",
+        "https://taskhub.test:8200/api/auth/status",
+    ]
+    assert observed["ca_file"] == str(ca_file)
+    assert observed["trust_env"] is False
+    assert observed["authorization"] == "Bearer private-token"
+    assert result == {
+        "connection": "present",
+        "health": "ok",
+        "authentication": "authenticated",
+        "role": "project_owner",
+    }
+
+
+def test_connection_check_refuses_to_guess_health_path(tmp_path):
+    spec = importlib.util.spec_from_file_location("taskhub_agent_check_missing", CHECK_SCRIPT_PATH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    connection_file = tmp_path / "connection.json"
+    connection_file.write_text(
+        json.dumps({"base_url": "https://taskhub.test:8200"}), encoding="utf-8"
+    )
+
+    try:
+        module.load_connection(connection_file)
+    except ValueError as error:
+        assert "must not be guessed" in str(error)
+    else:
+        raise AssertionError("missing health_url should fail closed")
 
 
 def test_console_loads_agent_access_as_separate_feature_asset(tmp_path):

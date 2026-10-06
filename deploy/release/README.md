@@ -108,3 +108,8 @@ connection JSON path. The helper displays a short pairing code. Review and appro
 **System Configuration → Advanced Settings → Users, Permissions and Access Security**. It writes the
 Bearer credential directly to the protected token file and never prints or embeds it in the
 connection JSON. Windows applies an explicit current-user ACL; Unix-like systems use mode `0600`.
+
+Verify an existing connection with `check-agent-connection.py --connection-file PATH`. The helper
+uses the descriptor's exact `health_url` and `auth_status_url`; it never derives endpoint paths from
+`base_url`. It also applies the declared CA, direct-proxy policy and Bearer token file, while its
+output contains only health, authentication and role status.

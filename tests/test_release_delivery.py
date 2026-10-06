@@ -36,6 +36,7 @@ def test_release_kit_contains_cross_platform_lifecycle_assets():
         "configure-tls.sh",
         "configure-tls.ps1",
         "connect-agent.py",
+        "check-agent-connection.py",
         "package-online.sh",
         "package-online.ps1",
     }
