@@ -190,7 +190,7 @@ disk_free_bytes=[int64]$disk.FreeSpace} | ConvertTo-Json -Compress
             _copy_windows_files(
                 request, private_key, host_key, (wheel, installer_path)
             )
-            script = _deployment_script(request, token)
+            script = _deployment_script(request, token, wheel.name)
             _run_windows_ssh(
                 request,
                 private_key,
@@ -250,11 +250,12 @@ disk_free_bytes=[int64]$disk.FreeSpace} | ConvertTo-Json -Compress
             )
 
 
-def _deployment_script(request, token: str) -> str:
+def _deployment_script(request, token: str, wheel_name: str) -> str:
     browser = "$true" if request.browser_mode else "$false"
     node_id = _powershell_quote(request.node_id)
     browser_target = _powershell_quote(request.browser_auth_target)
     credential = _powershell_quote(token)
+    package_name = _powershell_quote(wheel_name)
     return f"""
 $ErrorActionPreference='Stop'
 $root='C:\\TaskHub\\incoming'
@@ -262,7 +263,7 @@ $env:TASKHUB_NODE_TOKEN='{credential}'
 $python=(Get-Command python -ErrorAction SilentlyContinue).Source
 if(-not $python){{$python=(Get-Command py -ErrorAction SilentlyContinue).Source}}
 & (Join-Path $root 'install.ps1') -Python $python `
-  -PackagePath (Join-Path $root 'taskhub.whl') `
+  -PackagePath (Join-Path $root '{package_name}') `
   -NodeId '{node_id}' -Port {request.agent_port} -Slots {request.slots} `
   -BrowserMode:{browser} -BrowserAuthTarget '{browser_target}'
 if($LASTEXITCODE -ne 0){{throw 'TaskHub Windows Agent installer failed'}}

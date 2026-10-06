@@ -154,9 +154,11 @@ def test_windows_ssh_bootstrap_reads_the_complete_script_before_execution():
 
 
 def test_windows_deployment_script_uses_transferred_assets_not_embedded_wheel():
-    script = _deployment_script(request(), "secret-node-token")
+    script = _deployment_script(
+        request(), "secret-node-token", "taskhub_v2-0.1.0-py3-none-any.whl"
+    )
 
     assert "C:\\TaskHub\\incoming" in script
-    assert "taskhub.whl" in script
+    assert "taskhub_v2-0.1.0-py3-none-any.whl" in script
     assert "install.ps1" in script
     assert "FromBase64String" not in script
