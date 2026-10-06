@@ -855,3 +855,24 @@ Updated: 2026-10-03
 - Verification passed repository-wide Ruff, architecture gates and `395 passed, 25 skipped`, plus
   eight real Google Chrome regressions including the complete command-edit/review/activation path
   and 1440px, 768px and 390px geometry with no page-level horizontal overflow.
+
+## Alpha.9 Two-stage Activation Release
+
+- Commit `4b9c2a54b735c84963295db3e2238c009b1af63e` was tagged as `v0.1.0-alpha.9`, pushed to
+  both authority Git repositories and published to GHCR and Aliyun ACR. The local formal stack was
+  upgraded from the verified recovery point `deploy/release/backups/20261006T165057Z` and remained
+  healthy on port 8200.
+- The ecommerce project uses its repository-owned unified quality command `npm run check`. Its
+  project contract reached review with that command, and the project registry names the logical
+  Windows acceptance node `windows-pilot-21`; no host address is embedded in TaskHub product code.
+- The Windows acceptance prerequisite is not yet satisfied: `gryps@192.168.31.21` refused the SSH
+  connection and no agent with node id `windows-pilot-21` is registered. TaskHub therefore keeps
+  the acceptance and final-preflight steps incomplete instead of reporting a false activation.
+- Activating an inferred contract exposed a persistence-boundary defect: service-generated manual
+  approval evidence was incorrectly compared as immutable contract content. Approval evidence is
+  now excluded from the immutable business-content comparison while commands and architecture
+  remain protected, with an inferred-contract regression test.
+- Release backup scripts can reuse the image archive from a previously verified recovery set only
+  when the Seed, Node and PostgreSQL image references match exactly. A fresh database and TaskHub
+  data snapshot is still taken. This avoids repeated large Docker image exports without weakening
+  recovery integrity.

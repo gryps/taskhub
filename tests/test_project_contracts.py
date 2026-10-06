@@ -164,7 +164,7 @@ def test_project_activation_edits_real_contract_quality_commands(tmp_path):
         draft = client.post(
             "/api/projects/demo/project-contracts/draft",
             headers=headers,
-            json={"profile_id": "backend-api", "inferred": False},
+            json={"profile_id": "backend-api", "inferred": True},
         ).json()
         root = (
             f"/api/projects/demo/project-contracts/{draft['contract_id']}"
@@ -202,6 +202,9 @@ def test_project_activation_edits_real_contract_quality_commands(tmp_path):
         assert next(step for step in activated["steps"] if step["id"] == "contract")[
             "complete"
         ] is True
+        assert client.get("/api/projects/demo/project-contract").json()[
+            "project_contract"
+        ]["manual_evidence"]["confirm_inferred_boundaries"]
 
 
 def contract(**updates) -> ProjectContract:

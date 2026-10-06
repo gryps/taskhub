@@ -45,6 +45,11 @@ skips registry pulls while retaining the normal backup, health check and automat
 When a complete backup was just created and verified, `TASKHUB_VERIFIED_BACKUP` may point to that
 exact directory so a retry re-verifies and reuses it instead of exporting the same images again.
 Never point it at an interrupted or unverified directory.
+When creating a new backup without changing any of the three runtime image references,
+`TASKHUB_REUSE_IMAGE_BACKUP` may point to a prior verified backup. The backup tool first verifies
+that recovery set and requires exact Seed, Node and PostgreSQL image matches, then reuses its image
+archive while still capturing fresh PostgreSQL and TaskHub volume data. This avoids repeatedly asking
+Docker Desktop to export the same large images.
 The Dockerfiles use the official npm and Debian repositories by default for managed-project previews;
 constrained networks may pass `NPM_REGISTRY`, `DEBIAN_MIRROR` and
 `DEBIAN_SECURITY_MIRROR` build arguments for trusted mirrors. npm package

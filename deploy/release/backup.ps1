@@ -1,4 +1,7 @@
-﻿param([string]$BackupDirectory = "")
+﻿param(
+    [string]$BackupDirectory = "",
+    [string]$ReuseImageBackup = $env:TASKHUB_REUSE_IMAGE_BACKUP
+)
 $ErrorActionPreference = "Continue"
 $PSDefaultParameterValues["*:ErrorAction"] = "Stop"
 
@@ -36,8 +39,23 @@ if ("$DataVolume`:$PostgresVolume" -notin @(
     "taskhub-data:taskhub-postgres-data",
     "taskhub-seed_taskhub-data:taskhub-seed_postgres-data"
 )) { throw "数据卷名称不在 TaskHub 安全范围内。" }
-docker save -o (Join-Path $BackupDirectory "images.tar") $SeedImage $NodeImage $PostgresImage
-if ($LASTEXITCODE -ne 0) { throw "回退镜像导出失败。" }
+if ($ReuseImageBackup) {
+    & (Join-Path $Root "verify-backup.ps1") -BackupDirectory $ReuseImageBackup
+    if ($LASTEXITCODE -ne 0) { throw "复用镜像备份验证失败。" }
+    $Prior = @{}
+    Get-Content (Join-Path $ReuseImageBackup "backup.env") | ForEach-Object {
+        if ($_ -match '^([^=]+)=(.*)$') { $Prior[$Matches[1]] = $Matches[2] }
+    }
+    if ($Prior["TASKHUB_SEED_IMAGE"] -ne $SeedImage -or
+        $Prior["TASKHUB_NODE_IMAGE"] -ne $NodeImage -or
+        $Prior["TASKHUB_POSTGRES_IMAGE"] -ne $PostgresImage) {
+        throw "复用备份的运行镜像与当前部署不一致。"
+    }
+    Copy-Item (Join-Path $ReuseImageBackup "images.tar") (Join-Path $BackupDirectory "images.tar")
+} else {
+    docker save -o (Join-Path $BackupDirectory "images.tar") $SeedImage $NodeImage $PostgresImage
+    if ($LASTEXITCODE -ne 0) { throw "回退镜像导出失败。" }
+}
 
 docker compose --project-directory $Root --env-file $EnvFile -f $ComposeFile stop controller
 if ($LASTEXITCODE -ne 0) { throw "控制器停止失败。" }

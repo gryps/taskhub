@@ -197,6 +197,20 @@ def test_backup_exports_images_before_stopping_controller():
     )
 
 
+def test_backup_can_reuse_only_a_verified_matching_image_archive():
+    shell = (RELEASE / "backup.sh").read_text(encoding="utf-8")
+    powershell = (RELEASE / "backup.ps1").read_text(encoding="utf-8-sig")
+
+    for script in (shell, powershell):
+        assert "TASKHUB_REUSE_IMAGE_BACKUP" in script
+        assert "verify-backup" in script
+        assert "TASKHUB_SEED_IMAGE" in script
+        assert "TASKHUB_NODE_IMAGE" in script
+        assert "TASKHUB_POSTGRES_IMAGE" in script
+        assert "images.tar" in script
+        assert "运行镜像与当前部署不一致" in script
+
+
 def test_release_images_pin_codex_and_node_has_common_role_tools():
     seed = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     node = (ROOT / "deploy" / "node" / "Dockerfile").read_text(encoding="utf-8")

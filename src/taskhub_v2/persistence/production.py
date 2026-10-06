@@ -54,6 +54,7 @@ def _validate_project_contract_replacement(
         "content_digest",
         "approved_by",
         "approved_at",
+        "manual_evidence",
     }
     content_changed = previous.model_dump(mode="json", exclude=excluded) != record.model_dump(
         mode="json", exclude=excluded
