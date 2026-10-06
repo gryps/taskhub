@@ -36,8 +36,13 @@ else
   docker pull "${prefix}taskhub-node:$version"
 fi
 
-backup=$("$root/backup.sh" | sed -n 's/^备份完成: //p')
-[ -n "$backup" ] || { printf '升级前备份失败。\n' >&2; exit 1; }
+backup=${TASKHUB_VERIFIED_BACKUP:-}
+if [ -n "$backup" ]; then
+  "$root/verify-backup.sh" "$backup"
+else
+  backup=$("$root/backup.sh" | sed -n 's/^备份完成: //p')
+  [ -n "$backup" ] || { printf '升级前备份失败。\n' >&2; exit 1; }
+fi
 if [ -n "$bundle" ]; then
   cp "$bundle/compose.yaml" "$root/compose.yaml"
 fi

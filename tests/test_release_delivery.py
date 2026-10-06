@@ -80,6 +80,8 @@ def test_upgrade_can_use_verified_local_images_without_skipping_backup():
         assert "TASKHUB_USE_LOCAL_IMAGES" in script
         assert "image inspect" in script
         assert "backup" in script.lower()
+        assert "TASKHUB_VERIFIED_BACKUP" in script
+        assert "verify-backup" in script
 
 
 def test_release_compose_is_immutable_and_keeps_postgres_private():

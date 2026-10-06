@@ -42,6 +42,9 @@ entrypoint definitions have not changed, then overlays and reinstalls the curren
 contacting a base-image registry; it fails closed when a full rebuild is required.
 For a verified image built on the deployment host, `TASKHUB_USE_LOCAL_IMAGES=true upgrade.sh VERSION`
 skips registry pulls while retaining the normal backup, health check and automatic rollback path.
+When a complete backup was just created and verified, `TASKHUB_VERIFIED_BACKUP` may point to that
+exact directory so a retry re-verifies and reuses it instead of exporting the same images again.
+Never point it at an interrupted or unverified directory.
 The Dockerfiles use the official npm and Debian repositories by default for managed-project previews;
 constrained networks may pass `NPM_REGISTRY`, `DEBIAN_MIRROR` and
 `DEBIAN_SECURITY_MIRROR` build arguments for trusted mirrors. npm package
