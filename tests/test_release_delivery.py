@@ -72,6 +72,16 @@ def test_release_image_builds_reuse_cache_unless_pull_is_explicit():
         assert "TASKHUB_REUSE_RUNTIME_VERSION" in script
 
 
+def test_upgrade_can_use_verified_local_images_without_skipping_backup():
+    shell = (RELEASE / "upgrade.sh").read_text(encoding="utf-8")
+    powershell = (RELEASE / "upgrade.ps1").read_text(encoding="utf-8-sig")
+
+    for script in (shell, powershell):
+        assert "TASKHUB_USE_LOCAL_IMAGES" in script
+        assert "image inspect" in script
+        assert "backup" in script.lower()
+
+
 def test_release_compose_is_immutable_and_keeps_postgres_private():
     payload = yaml.safe_load((RELEASE / "compose.yaml").read_text(encoding="utf-8"))
     controller = payload["services"]["controller"]

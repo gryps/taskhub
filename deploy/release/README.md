@@ -40,6 +40,8 @@ metadata is unavailable but the previous TaskHub images are present locally, set
 `TASKHUB_REUSE_RUNTIME_VERSION` to that version. The build verifies that dependency, base-image and
 entrypoint definitions have not changed, then overlays and reinstalls the current source without
 contacting a base-image registry; it fails closed when a full rebuild is required.
+For a verified image built on the deployment host, `TASKHUB_USE_LOCAL_IMAGES=true upgrade.sh VERSION`
+skips registry pulls while retaining the normal backup, health check and automatic rollback path.
 The Dockerfiles use the official npm and Debian repositories by default for managed-project previews;
 constrained networks may pass `NPM_REGISTRY`, `DEBIAN_MIRROR` and
 `DEBIAN_SECURITY_MIRROR` build arguments for trusted mirrors. npm package

@@ -26,6 +26,12 @@ if ($OfflineBundle) {
     $Archive = Get-ChildItem (Join-Path $OfflineBundle "images") -Filter "taskhub-images-*.tar" | Select-Object -First 1
     docker load -i $Archive.FullName
     if ($LASTEXITCODE -ne 0) { throw "离线镜像导入失败。" }
+} elseif ($env:TASKHUB_USE_LOCAL_IMAGES -eq "true") {
+    $Registry = if ($env:TASKHUB_REGISTRY) { $env:TASKHUB_REGISTRY.TrimEnd('/') + "/" } else { "" }
+    foreach ($Image in @("${Registry}taskhub-seed:$Version", "${Registry}taskhub-node:$Version")) {
+        docker image inspect $Image *> $null
+        if ($LASTEXITCODE -ne 0) { throw "缺少本地升级镜像: $Image" }
+    }
 } else {
     $Registry = if ($env:TASKHUB_REGISTRY) { $env:TASKHUB_REGISTRY.TrimEnd('/') + "/" } else { "" }
     docker pull "${Registry}taskhub-seed:$Version"

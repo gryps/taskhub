@@ -18,6 +18,16 @@ if [ -n "$bundle" ]; then
   }
   archive=$(find "$bundle/images" -maxdepth 1 -type f -name 'taskhub-images-*.tar' | head -n 1)
   docker load -i "$archive"
+elif [ "${TASKHUB_USE_LOCAL_IMAGES:-false}" = "true" ]; then
+  registry=${TASKHUB_REGISTRY:-}
+  prefix=""
+  [ -z "$registry" ] || prefix="${registry%/}/"
+  for image in "${prefix}taskhub-seed:$version" "${prefix}taskhub-node:$version"; do
+    docker image inspect "$image" >/dev/null 2>&1 || {
+      printf '缺少本地升级镜像: %s\n' "$image" >&2
+      exit 1
+    }
+  done
 else
   registry=${TASKHUB_REGISTRY:-}
   prefix=""
