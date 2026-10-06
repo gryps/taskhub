@@ -6,6 +6,7 @@ version=${TASKHUB_VERSION:-0.1.0-alpha}
 codex_version=${CODEX_VERSION:-0.153.4}
 platform=${TASKHUB_PLATFORM:-linux/amd64}
 registry=${TASKHUB_REGISTRY:-}
+reuse_runtime_version=${TASKHUB_REUSE_RUNTIME_VERSION:-}
 commit=${TASKHUB_COMMIT:-}
 if [ -z "$commit" ]; then
   commit=$(git -C "$root" rev-parse HEAD 2>/dev/null || printf 'unknown')
@@ -41,17 +42,51 @@ node_image="${prefix}taskhub-node:${version}"
 docker info >/dev/null
 docker buildx version >/dev/null
 
-for specification in "Dockerfile|$seed_image" "deploy/node/Dockerfile|$node_image"; do
+if [ -n "$reuse_runtime_version" ]; then
+  base_seed="${prefix}taskhub-seed:${reuse_runtime_version}"
+  base_node="${prefix}taskhub-node:${reuse_runtime_version}"
+  for image in "$base_seed" "$base_node"; do
+    docker image inspect "$image" >/dev/null 2>&1 || {
+      printf '缺少本地运行时基础镜像: %s\n' "$image" >&2
+      exit 1
+    }
+  done
+  base_commit=$(docker image inspect "$base_seed" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
+  [ -n "$base_commit" ] && git -C "$root" cat-file -e "$base_commit^{commit}" 2>/dev/null || {
+    printf '无法验证复用镜像对应的源码提交。\n' >&2
+    exit 1
+  }
+  if ! git -C "$root" diff --quiet "$base_commit" HEAD -- \
+    pyproject.toml Dockerfile deploy/node/Dockerfile deploy/docker/entrypoint.sh; then
+    printf '依赖或运行时定义已变化，不能复用旧运行时；请执行完整构建。\n' >&2
+    exit 1
+  fi
+fi
+
+for specification in "Dockerfile|$seed_image|TaskHub V2 Seed Controller|taskhub-seed" "deploy/node/Dockerfile|$node_image|TaskHub Unified Worker Node|taskhub-node"; do
   dockerfile=${specification%%|*}
-  image=${specification#*|}
-  docker buildx build --load $pull_args --provenance=false \
-    --platform "$platform" \
-    --build-arg "TASKHUB_VERSION=$version" \
-    --build-arg "TASKHUB_COMMIT=$commit" \
-    --build-arg "CODEX_VERSION=$codex_version" \
-    $mirror_args \
-    --tag "$image" \
-    --file "$root/$dockerfile" "$root"
+  remainder=${specification#*|}
+  image=${remainder%%|*}
+  remainder=${remainder#*|}
+  title=${remainder%%|*}
+  repository=${remainder##*|}
+  if [ -n "$reuse_runtime_version" ]; then
+    docker buildx build --load --provenance=false --platform "$platform" \
+      --build-arg "BASE_IMAGE=${prefix}${repository}:${reuse_runtime_version}" \
+      --build-arg "IMAGE_TITLE=$title" \
+      --build-arg "TASKHUB_VERSION=$version" \
+      --build-arg "TASKHUB_COMMIT=$commit" \
+      --tag "$image" --file "$root/deploy/release/Dockerfile.incremental" "$root"
+  else
+    docker buildx build --load $pull_args --provenance=false \
+      --platform "$platform" \
+      --build-arg "TASKHUB_VERSION=$version" \
+      --build-arg "TASKHUB_COMMIT=$commit" \
+      --build-arg "CODEX_VERSION=$codex_version" \
+      $mirror_args \
+      --tag "$image" \
+      --file "$root/$dockerfile" "$root"
+  fi
 done
 
 if [ "${TASKHUB_PUSH:-false}" = "true" ]; then

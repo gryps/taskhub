@@ -11,6 +11,7 @@ def test_release_kit_contains_cross_platform_lifecycle_assets():
     expected = {
         ".env.example",
         "README.md",
+        "Dockerfile.incremental",
         "compose.yaml",
         "init.sh",
         "init.ps1",
@@ -68,6 +69,7 @@ def test_release_image_builds_reuse_cache_unless_pull_is_explicit():
         assert "TASKHUB_PULL_BASE_IMAGES" in script
         assert "--pull" in script
         assert "buildx build --load --pull" not in script
+        assert "TASKHUB_REUSE_RUNTIME_VERSION" in script
 
 
 def test_release_compose_is_immutable_and_keeps_postgres_private():

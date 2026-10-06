@@ -35,7 +35,11 @@ Build local images with `build-images.sh` or `build-images.ps1`. Set
 `TASKHUB_REGISTRY` and `TASKHUB_PUSH=true` to publish the two TaskHub images.
 Builds reuse the local BuildKit/base-image cache by default. Set
 `TASKHUB_PULL_BASE_IMAGES=true` only when an intentional base-image refresh is
-required; routine source releases must not re-download unchanged dependencies.
+required; routine source releases must not re-download unchanged dependencies. When Docker Hub
+metadata is unavailable but the previous TaskHub images are present locally, set
+`TASKHUB_REUSE_RUNTIME_VERSION` to that version. The build verifies that dependency, base-image and
+entrypoint definitions have not changed, then overlays and reinstalls the current source without
+contacting a base-image registry; it fails closed when a full rebuild is required.
 The Dockerfiles use the official npm and Debian repositories by default for managed-project previews;
 constrained networks may pass `NPM_REGISTRY`, `DEBIAN_MIRROR` and
 `DEBIAN_SECURITY_MIRROR` build arguments for trusted mirrors. npm package
