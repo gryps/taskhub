@@ -32,6 +32,7 @@ from taskhub_v2.services.dag_scheduler_models import (
     DagTaskExecutor,
     idempotency_key,
     lock_conflicts,
+    no_ready_error,
     now,
 )
 from taskhub_v2.services.dag_scheduler_state import save_snapshot
@@ -118,7 +119,7 @@ class PersistentDagScheduler:
                 selected = [refreshed[item.task_id] for item in selected]
                 if not selected:
                     snapshot = await self._snapshot(plan, tasks, batches, "waiting", reasons)
-                    raise DagExecutionError("没有任务满足 Ready 条件", snapshot)
+                    raise no_ready_error(reasons, snapshot)
                 sequence = len(batches) + 1
                 batch = ExecutionBatch(
                     project_id=plan.project_id,

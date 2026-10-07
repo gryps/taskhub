@@ -90,6 +90,8 @@ quality declaration and is never a Seed-global dependency.
 - Stale production lines rebase and retest before an authority fast-forward.
 - A blocked managed-project run is repaired by correcting TaskHub, configuration, infrastructure, or
   its generated project contract, then retrying through the workflow.
+- Missing eligible execution-node capacity is an infrastructure recovery condition; it must not
+  consume a code-revision attempt or manufacture a replacement execution-plan version.
 
 ## Delivery and deployment boundary
 

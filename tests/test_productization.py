@@ -1,9 +1,12 @@
+import asyncio
 import json
 import time
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from taskhub_v2.api.app import _required_permission, create_app
+from taskhub_v2.api.dag_routes import execution_plan_for_run
 from taskhub_v2.config import Settings
 
 
@@ -55,6 +58,33 @@ def test_productization_permissions_are_project_scoped():
     assert _required_permission("/api/requirements", "GET") == "read"
     assert _required_permission("/api/requirements", "POST") == "projects:manage"
     assert _required_permission("/api/product-specs/spec/approve", "POST") == "projects:manage"
+
+
+def test_execution_plan_is_pending_before_planning_finishes():
+    class RunService:
+        async def get(self, run_id):
+            assert run_id == "run-pending"
+            return SimpleNamespace(project_id="demo")
+
+    class Runtime:
+        async def view(self, project_id, run_id):
+            assert (project_id, run_id) == ("demo", "run-pending")
+            return {"execution_plan": None, "tasks": [], "batches": [], "attempts": []}
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(run_service=RunService(), dag_runtime=Runtime())
+        )
+    )
+
+    result = asyncio.run(
+        execution_plan_for_run("run-pending", request, page=1, page_size=100)
+    )
+
+    assert result["enabled"] is True
+    assert result["execution_plan"] is None
+    assert result["analysis"] is None
+    assert result["task_page"] == {"page": 1, "page_size": 100, "total": 0}
 
 
 def create_clear_spec(client, headers):

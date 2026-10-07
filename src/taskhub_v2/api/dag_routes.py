@@ -27,12 +27,15 @@ async def execution_plan_for_run(
         raise HTTPException(status_code=404, detail="run not found") from error
     result = await runtime.view(run.project_id, run_id)
     tasks = result["tasks"]
+    plan = result["execution_plan"]
     start = (page - 1) * page_size
     return {
         **result,
         "enabled": True,
-        "analysis": analyze_execution(
-            result["execution_plan"], tasks, result["batches"], result["attempts"]
+        "analysis": (
+            analyze_execution(plan, tasks, result["batches"], result["attempts"])
+            if plan is not None
+            else None
         ),
         "tasks": tasks[start : start + page_size],
         "task_page": {"page": page, "page_size": page_size, "total": len(tasks)},

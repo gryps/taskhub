@@ -106,6 +106,44 @@ def test_run_cost_budget_blocks_work_before_dispatch():
     asyncio.run(scenario())
 
 
+def test_missing_execution_node_is_infrastructure_failure_not_code_revision():
+    class UnavailableExecutor(RecordingExecutor):
+        async def capability_reason(self, _task):
+            return "没有满足能力要求的健康节点"
+
+    async def scenario():
+        store = MemoryProductionStore()
+        plan = await store.save(
+            ExecutionPlan(
+                project_id="demo",
+                plan_id="plan_node_unavailable",
+                version=1,
+                status="active",
+                product_spec_id="ps_demo",
+                product_spec_version=1,
+                task_ids=["task_needs_coder"],
+            )
+        )
+        await store.save(
+            ProductionTask(
+                project_id="demo",
+                task_id="task_needs_coder",
+                plan_id=plan.plan_id,
+                plan_version=1,
+                title="Needs coder",
+                objective="Implement feature",
+                required_capabilities=["coding"],
+            )
+        )
+        executor = UnavailableExecutor()
+        with pytest.raises(DagExecutionError) as caught:
+            await PersistentDagScheduler(store, executor).execute(plan.plan_id)
+        assert caught.value.reason == "execution_node_unavailable"
+        assert executor.calls == []
+
+    asyncio.run(scenario())
+
+
 def test_project_policy_is_frozen_into_new_execution_plan():
     async def scenario():
         store = MemoryProductionStore()

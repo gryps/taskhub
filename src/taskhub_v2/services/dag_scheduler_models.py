@@ -41,10 +41,28 @@ class DagTaskExecutor(Protocol):
 class DagExecutionError(RuntimeError):
     reason = "dag_task_failed"
 
-    def __init__(self, detail: str, snapshot: DagExecutionSnapshot | None = None):
+    def __init__(
+        self,
+        detail: str,
+        snapshot: DagExecutionSnapshot | None = None,
+        *,
+        reason: str = "dag_task_failed",
+    ):
         self.detail = detail
         self.snapshot = snapshot
+        self.reason = reason
         super().__init__(detail)
+
+
+def no_ready_error(reasons: dict[str, list[str]], snapshot) -> DagExecutionError:
+    unavailable = any(
+        values == ["没有满足能力要求的健康节点"] for values in reasons.values()
+    )
+    return DagExecutionError(
+        "没有任务满足 Ready 条件",
+        snapshot,
+        reason="execution_node_unavailable" if unavailable else "dag_task_failed",
+    )
 
 
 class DagExecutionOutcome(BaseModel):
