@@ -82,7 +82,7 @@ LEGACY_FUNCTION_COMPLEXITY = {
     ("src/taskhub_v2/services/containers.py", "ContainerManager.create"): 18,
     ("src/taskhub_v2/services/onboarding.py", "model_ready"): 17,
     ("src/taskhub_v2/services/onboarding.py", "onboarding_status"): 28,
-    ("src/taskhub_v2/services/revisions.py", "RevisionService.propose"): 27,
+    ("src/taskhub_v2/services/revisions.py", "RevisionService.propose"): 23,
     ("src/taskhub_v2/services/revisions.py", "RevisionService.apply"): 24,
     ("src/taskhub_v2/services/run_actions.py", "build_resume_command"): 16,
     ("src/taskhub_v2/services/dag_analysis.py", "analyze_execution"): 45,

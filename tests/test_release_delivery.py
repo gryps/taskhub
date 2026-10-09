@@ -37,6 +37,8 @@ def test_release_kit_contains_cross_platform_lifecycle_assets():
         "configure-tls.ps1",
         "connect-agent.py",
         "check-agent-connection.py",
+        "taskhub_client.py",
+        "taskhub-project-client.py",
         "package-online.sh",
         "package-online.ps1",
     }

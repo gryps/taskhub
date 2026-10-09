@@ -74,20 +74,48 @@ def test_automatic_revision_limit_requires_manual_approval():
         original = await compiled(store)
         service = RevisionService(store, Projects(), DagPlanService(store))
         statuses = []
+        plan = original.plan
+        tasks = original.tasks
         for number in range(3):
             request = await service.propose(
                 "demo",
-                original.plan.plan_id,
-                1,
+                plan.plan_id,
+                plan.version,
                 f"failure {number}",
                 actor="scheduler",
-                affected_task_ids=[original.tasks[0].task_id],
+                affected_task_ids=[tasks[0].task_id],
                 automatic=True,
             )
             statuses.append(str(request.status))
+            if request.status.value == "approved":
+                revised = await service.apply("demo", request.change_request_id, "scheduler")
+                plan, tasks = revised["execution_plan"], revised["tasks"]
         assert statuses == ["approved", "approved", "proposed"]
         requests = await service.list("demo")
         assert requests[0].plan_diff["requires_manual_approval"] is True
+
+    asyncio.run(scenario())
+
+
+def test_automatic_revision_reuses_already_created_next_version_after_interruption():
+    async def scenario():
+        store = MemoryProductionStore()
+        original = await compiled(store)
+        service = RevisionService(store, Projects(), DagPlanService(store))
+        revised = await service.prepare_automatic(
+            "demo", original.plan.plan_id, 1, "first failure"
+        )
+
+        recovered = await service.prepare_automatic(
+            "demo", original.plan.plan_id, 1, "retry after interrupted checkpoint"
+        )
+
+        assert recovered["execution_plan"].version == 2
+        assert recovered["execution_plan"].change_request_id == (
+            revised["execution_plan"].change_request_id
+        )
+        requests = await service.list("demo")
+        assert len(requests) == 1
 
     asyncio.run(scenario())
 
@@ -97,25 +125,24 @@ def test_automatic_revision_preparation_cannot_bypass_limit():
         store = MemoryProductionStore()
         original = await compiled(store)
         service = RevisionService(store, Projects(), DagPlanService(store))
+        current = {"execution_plan": original.plan}
         for number in range(2):
-            await service.propose(
-                "demo",
-                original.plan.plan_id,
-                1,
-                f"earlier failure {number}",
-                actor="scheduler",
-                affected_task_ids=[original.tasks[0].task_id],
-                automatic=True,
+            plan = current["execution_plan"]
+            current = await service.prepare_automatic(
+                "demo", plan.plan_id, plan.version, f"earlier failure {number}"
             )
+        plan = current["execution_plan"]
         try:
-            await service.prepare_automatic("demo", original.plan.plan_id, 1, "another failure")
+            await service.prepare_automatic(
+                "demo", plan.plan_id, plan.version, "another failure"
+            )
         except RevisionConflictError as error:
             assert "manual approval" in str(error)
         else:
             raise AssertionError("automatic revision bypassed the configured limit")
         requests = await service.list("demo")
         assert requests[0].status.value == "proposed"
-        assert await store.get("execution_plan", original.plan.plan_id, "2") is None
+        assert await store.get("execution_plan", original.plan.plan_id, "4") is None
 
     asyncio.run(scenario())
 

@@ -3,11 +3,16 @@
 
 import argparse
 import json
-import ssl
 import sys
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import HTTPSHandler, ProxyHandler, Request, build_opener
+from urllib.request import Request
+
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+
+from taskhub_client import build_http_opener, request_options  # noqa: E402
 
 DEFAULT_CONNECTION_FILE = Path.home() / ".codex" / "taskhub-v2-connection.json"
 
@@ -32,37 +37,6 @@ def load_connection(path: Path) -> dict:
             "connection file is missing health_url; endpoint paths must not be guessed"
         )
     return value
-
-
-def request_options(connection: dict) -> tuple[str | None, bool, dict[str, str]]:
-    health_url = str(connection["health_url"])
-    ca_file = connection.get("tls_ca_file")
-    if health_url.startswith("https://"):
-        if not ca_file:
-            raise ValueError("HTTPS connection is missing tls_ca_file")
-        if not Path(ca_file).is_file():
-            raise ValueError("tls_ca_file does not exist")
-    verified_ca_file = str(ca_file) if ca_file else None
-    trust_env = connection.get("proxy_mode") != "direct"
-    headers: dict[str, str] = {}
-    if connection.get("api_auth") == "bearer-token":
-        token_path = connection.get("agent_token_file")
-        if not token_path:
-            raise ValueError("bearer-token connection is missing agent_token_file")
-        token_file = Path(token_path)
-        if not token_file.is_file():
-            raise ValueError("agent_token_file does not exist")
-        token = token_file.read_text(encoding="utf-8").strip()
-        if not token:
-            raise ValueError("agent_token_file is empty")
-        headers["Authorization"] = f"Bearer {token}"
-    return verified_ca_file, trust_env, headers
-
-
-def build_http_opener(ca_file: str | None, trust_env: bool):
-    context = ssl.create_default_context(cafile=ca_file)
-    proxy_handler = ProxyHandler() if trust_env else ProxyHandler({})
-    return build_opener(proxy_handler, HTTPSHandler(context=context))
 
 
 def fetch_json(opener, url: str, headers: dict[str, str], timeout_seconds: float) -> dict:

@@ -76,12 +76,11 @@ class RevisionService:
             for item in tasks
             if item.task_id in affected and item.task_type == "verification"
         ]
-        existing = [
-            item
-            for item in await self.list(project_id)
-            if item.source_plan_id == plan.plan_id and item.automatic
-        ]
-        revision_number = len(existing) + 1 if automatic else plan.version
+        # Automatic revision allowance follows the durable execution-plan chain,
+        # not the number of requests. A process interruption may submit the same
+        # source version again; counting those requests would consume recovery
+        # budget without creating another plan.
+        revision_number = plan.version
         automatic_allowed = (
             automatic and revision_number <= self.projects.get(project_id).max_revision_attempts
         )
@@ -275,6 +274,11 @@ class RevisionService:
         *,
         actor: str = "workflow-governance",
     ) -> dict:
+        existing = await self.store.get("execution_plan", plan_id, str(plan_version + 1))
+        if isinstance(existing, ExecutionPlan):
+            _plan, tasks = await self._plan(project_id, plan_id, existing.version)
+            request = await self._request(project_id, existing.change_request_id)
+            return {"change_request": request, "execution_plan": existing, "tasks": tasks}
         _plan, tasks = await self._plan(project_id, plan_id, plan_version)
         seeds = [item.task_id for item in tasks if item.status == ProductionTaskStatus.BLOCKED]
         if not seeds:

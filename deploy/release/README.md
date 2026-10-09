@@ -113,3 +113,22 @@ Verify an existing connection with `check-agent-connection.py --connection-file 
 uses the descriptor's exact `health_url` and `auth_status_url`; it never derives endpoint paths from
 `base_url`. It also applies the declared CA, direct-proxy policy and Bearer token file, while its
 output contains only health, authentication and role status.
+
+Health and authentication do not identify a project run. Use the release kit's project client as
+the standard development-agent entry point:
+
+```bash
+python3 taskhub-project-client.py --connection-file PATH ensure-run \
+  --project PROJECT_ID --production-line LINE
+```
+
+`ensure-run` returns the one non-terminal run already registered for that project and production
+line. It creates a run only when none exists, and only from the project's current approved product
+specification. Multiple matches fail closed instead of choosing or creating a run. Use `projects`
+and `runs --project PROJECT_ID` for discovery, `status --run-id RUN_ID` for a bounded agent summary
+(`--full` for the complete state), and
+`resume --run-id RUN_ID --decision DECISION --comment TEXT` only when an explicit recovery decision
+is intended. `create-run` is available for an intentional new run and accepts explicit
+`--spec-id/--spec-version` when the current approved specification must not be used. All commands
+reuse the connection descriptor's TLS trust, proxy mode and protected Bearer token reference; they
+never print the credential.
