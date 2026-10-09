@@ -4,9 +4,9 @@ Updated: 2026-10-10
 
 ## Release-managed node image reconciliation and fast recovery points
 
-- The local formal Seed and Docker execution node were first upgraded to `v0.1.0-alpha.23`, then to
-  `v0.1.0-alpha.24`; both current containers run commit
-  `fa97f295421f1ad70643b4a4bfa9a3581bf8731d` and passed health checks. The authenticated agent
+- The local formal Seed and Docker execution node were upgraded through `v0.1.0-alpha.23` and
+  `v0.1.0-alpha.24` to `v0.1.0-alpha.25`; both current containers run commit
+  `60506f85e5f38ed2379d0cf21c3255c1bfa38d2f` and passed health checks. The authenticated agent
   connection also passed after restart.
 - The process-only ecommerce run was removed from the active list before upgrade. Its managed
   repository remained clean at `07b9113cfa83846b3c86ac8887315f591dad7b91`, exactly matching
@@ -20,9 +20,12 @@ Updated: 2026-10-10
   return HTTP 500. Routine online upgrades now create host-bound recovery points with exact local
   Seed, Node and PostgreSQL image IDs instead of exporting all image layers. Verification and restore
   fail closed before destructive work if any referenced image is missing or changed; standalone and
-  offline backups remain portable archives by default. A real reference recovery point at
-  `deploy/release/backups/20261009T195903Z` passed verification before and after the `alpha.24`
-  upgrade.
+  offline backups remain portable archives by default. Real reference recovery points at
+  `deploy/release/backups/20261009T195903Z` and `deploy/release/backups/20261009T201150Z` passed
+  verification around the `alpha.24` and `alpha.25` upgrades.
+- `v0.1.0-alpha.25` was pushed to both Git authorities and both ACR/GHCR image registries. The ACR
+  Seed/Node manifest digests are `sha256:2629129c8a69...` and `sha256:79c7cb526ffd...`; the GHCR
+  Seed/Node manifest digests are `sha256:101c43f95932...` and `sha256:11b0e1cc3dad...`.
 - Verification passes repository-wide Ruff and `432 passed, 26 skipped`. The first full test run had
   one transient device-auth process timing miss; that test passed alone and the complete suite then
   passed on rerun.
