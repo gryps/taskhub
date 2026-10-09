@@ -31,8 +31,21 @@ if ((Get-KeyFingerprint $BackupKey) -ne $ExpectedFingerprint) {
     throw "备份中的配置加密主密钥与备份身份不匹配。"
 }
 $BackupPostgresImage = Get-FileEnvValue (Join-Path $BackupDirectory "backup.env") "TASKHUB_POSTGRES_IMAGE"
-docker load -i (Join-Path $BackupDirectory "images.tar")
-if ($LASTEXITCODE -ne 0) { throw "备份镜像导入失败。" }
+$ImageMode = Get-FileEnvValue (Join-Path $BackupDirectory "backup.env") "TASKHUB_BACKUP_IMAGE_MODE"
+if (-not $ImageMode) { $ImageMode = "archive" }
+if ($ImageMode -eq "reference") {
+    foreach ($Prefix in @("SEED", "NODE", "POSTGRES")) {
+        $Image = Get-FileEnvValue (Join-Path $BackupDirectory "backup.env") "TASKHUB_${Prefix}_IMAGE"
+        $Expected = Get-FileEnvValue (Join-Path $BackupDirectory "backup.env") "TASKHUB_${Prefix}_IMAGE_ID"
+        $Actual = (docker image inspect $Image --format '{{.Id}}' 2>$null)
+        if ($LASTEXITCODE -ne 0 -or -not $Expected -or $Actual.Trim() -ne $Expected) {
+            throw "本机回退镜像缺失或摘要不匹配: $Image"
+        }
+    }
+} elseif ($ImageMode -eq "archive") {
+    docker load -i (Join-Path $BackupDirectory "images.tar")
+    if ($LASTEXITCODE -ne 0) { throw "备份镜像导入失败。" }
+} else { throw "备份镜像模式无效。" }
 $IdentityList = (docker run --rm -v "${BackupDirectory}:/backup:ro" $BackupPostgresImage `
     pg_restore -l /backup/postgres.dump) -join "`n"
 if ($LASTEXITCODE -ne 0 -or $IdentityList -notmatch 'taskhub_backup_identity') {

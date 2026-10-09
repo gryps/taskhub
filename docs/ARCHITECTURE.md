@@ -126,6 +126,12 @@ an explicit operator image override. Reconciliation uses the managed-configurati
 validation, version history and audit ownership remain intact, and any failure enters the existing
 verified-backup rollback path.
 
+Routine online upgrades use a host-bound recovery point: the backup records exact local image IDs
+and verifies them before any destructive restore step, avoiding a repeated full image export while
+failing closed if an old image is missing or has been retagged. Standalone and offline backups keep
+portable image archives by default. Database, configuration and TaskHub volume snapshots remain
+fresh in both modes.
+
 ## Architecture verification
 
 `tests/test_architecture.py` enforces standard documentation, source-file budgets, Python function and

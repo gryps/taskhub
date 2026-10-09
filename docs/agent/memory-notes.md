@@ -2,11 +2,11 @@
 
 Updated: 2026-10-10
 
-## Release-managed node image reconciliation
+## Release-managed node image reconciliation and fast recovery points
 
-- The local formal Seed and Docker execution node were upgraded to `v0.1.0-alpha.23` from the
-  verified recovery point `deploy/release/backups/20261009T191544Z`; both run commit
-  `8d19ba51f0c64c7ea449d0c6fa6613a2aa46c4d6` and passed health checks. The authenticated agent
+- The local formal Seed and Docker execution node were first upgraded to `v0.1.0-alpha.23`, then to
+  `v0.1.0-alpha.24`; both current containers run commit
+  `fa97f295421f1ad70643b4a4bfa9a3581bf8731d` and passed health checks. The authenticated agent
   connection also passed after restart.
 - The process-only ecommerce run was removed from the active list before upgrade. Its managed
   repository remained clean at `07b9113cfa83846b3c86ac8887315f591dad7b91`, exactly matching
@@ -16,7 +16,14 @@ Updated: 2026-10-10
   that persisted value only when it exactly matches the previous deployment image, preserves custom
   operator overrides, records the change through managed-configuration audit, and participates in
   verified-backup rollback on Linux and Windows.
-- Verification passes repository-wide Ruff and `431 passed, 26 skipped`. The first full test run had
+- Repeated `docker save` of the unchanged 1.9 GiB runtime blocked Docker Desktop and made the daemon
+  return HTTP 500. Routine online upgrades now create host-bound recovery points with exact local
+  Seed, Node and PostgreSQL image IDs instead of exporting all image layers. Verification and restore
+  fail closed before destructive work if any referenced image is missing or changed; standalone and
+  offline backups remain portable archives by default. A real reference recovery point at
+  `deploy/release/backups/20261009T195903Z` passed verification before and after the `alpha.24`
+  upgrade.
+- Verification passes repository-wide Ruff and `432 passed, 26 skipped`. The first full test run had
   one transient device-auth process timing miss; that test passed alone and the complete suite then
   passed on rerun.
 

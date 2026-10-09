@@ -22,6 +22,10 @@ node_image=$(sed -n 's/^TASKHUB_NODE_IMAGE=//p' "$env_file" | tail -n 1)
 data_volume=$(sed -n 's/^TASKHUB_DATA_VOLUME=//p' "$env_file" | tail -n 1)
 postgres_volume=$(sed -n 's/^TASKHUB_POSTGRES_VOLUME=//p' "$env_file" | tail -n 1)
 reuse_image_backup=${TASKHUB_REUSE_IMAGE_BACKUP:-}
+image_mode=${TASKHUB_BACKUP_IMAGE_MODE:-archive}
+case "$image_mode" in archive|reference) ;; *)
+  printf 'TASKHUB_BACKUP_IMAGE_MODE 只支持 archive 或 reference。\n' >&2; exit 1 ;;
+esac
 encryption_key=$(sed -n 's/^TASKHUB_CONFIG_ENCRYPTION_KEY=//p' "$env_file" | tail -n 1)
 [ -n "$encryption_key" ] || { printf '配置加密主密钥为空，拒绝生成不可验证备份。\n' >&2; exit 1; }
 key_fingerprint=$(printf 'taskhub-backup-v1:%s' "$encryption_key" | sha256_digest | awk '{print $1}')
@@ -29,7 +33,14 @@ case "$data_volume:$postgres_volume" in
   taskhub-data:taskhub-postgres-data|taskhub-seed_taskhub-data:taskhub-seed_postgres-data) ;;
   *) printf '数据卷名称不在 TaskHub 安全范围内。\n' >&2; exit 1 ;;
 esac
+seed_image_id=$(docker image inspect "$seed_image" --format '{{.Id}}')
+node_image_id=$(docker image inspect "$node_image" --format '{{.Id}}')
+postgres_image_id=$(docker image inspect "$postgres_image" --format '{{.Id}}')
 if [ -n "$reuse_image_backup" ]; then
+  [ "$image_mode" = archive ] || {
+    printf '引用模式不能复用镜像归档。\n' >&2
+    exit 1
+  }
   "$root/verify-backup.sh" "$reuse_image_backup"
   prior_seed=$(sed -n 's/^TASKHUB_SEED_IMAGE=//p' "$reuse_image_backup/backup.env" | tail -n 1)
   prior_node=$(sed -n 's/^TASKHUB_NODE_IMAGE=//p' "$reuse_image_backup/backup.env" | tail -n 1)
@@ -40,7 +51,7 @@ if [ -n "$reuse_image_backup" ]; then
       exit 1
     }
   cp "$reuse_image_backup/images.tar" "$backup/images.tar"
-else
+elif [ "$image_mode" = archive ]; then
   docker save -o "$backup/images.tar" "$seed_image" "$node_image" "$postgres_image"
 fi
 
@@ -54,9 +65,15 @@ docker run --rm -v "${data_volume:-taskhub-data}:/data" -v "$backup:/backup" "${
   printf 'TASKHUB_SEED_IMAGE=%s\n' "$seed_image"
   printf 'TASKHUB_NODE_IMAGE=%s\n' "$node_image"
   printf 'TASKHUB_POSTGRES_IMAGE=%s\n' "$postgres_image"
+  printf 'TASKHUB_BACKUP_IMAGE_MODE=%s\n' "$image_mode"
+  printf 'TASKHUB_SEED_IMAGE_ID=%s\n' "$seed_image_id"
+  printf 'TASKHUB_NODE_IMAGE_ID=%s\n' "$node_image_id"
+  printf 'TASKHUB_POSTGRES_IMAGE_ID=%s\n' "$postgres_image_id"
   printf 'TASKHUB_CONFIG_KEY_FINGERPRINT=%s\n' "$key_fingerprint"
 } >"$backup/backup.env"
-(cd "$backup" && sha256_digest .env backup.env postgres.dump taskhub-data.tar.gz images.tar compose.yaml >SHA256SUMS)
+checksum_files=".env backup.env postgres.dump taskhub-data.tar.gz compose.yaml"
+[ "$image_mode" = reference ] || checksum_files="$checksum_files images.tar"
+(cd "$backup" && sha256_digest $checksum_files >SHA256SUMS)
 "$root/verify-backup.sh" "$backup"
 
 $compose start controller

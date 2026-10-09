@@ -41,7 +41,11 @@ backup=${TASKHUB_VERIFIED_BACKUP:-}
 if [ -n "$backup" ]; then
   "$root/verify-backup.sh" "$backup"
 else
-  backup=$("$root/backup.sh" | sed -n 's/^备份完成: //p')
+  backup_image_mode=${TASKHUB_BACKUP_IMAGE_MODE:-}
+  if [ -z "$backup_image_mode" ]; then
+    if [ -n "$bundle" ]; then backup_image_mode=archive; else backup_image_mode=reference; fi
+  fi
+  backup=$(TASKHUB_BACKUP_IMAGE_MODE="$backup_image_mode" "$root/backup.sh" | sed -n 's/^备份完成: //p')
   [ -n "$backup" ] || { printf '升级前备份失败。\n' >&2; exit 1; }
 fi
 if [ -n "$bundle" ]; then

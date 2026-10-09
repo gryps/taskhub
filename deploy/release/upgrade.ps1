@@ -44,7 +44,10 @@ $Backup = $env:TASKHUB_VERIFIED_BACKUP
 if ($Backup) {
     & (Join-Path $Root "verify-backup.ps1") -BackupDirectory $Backup
 } else {
-    $BackupOutput = & (Join-Path $Root "backup.ps1")
+    $BackupImageMode = if ($env:TASKHUB_BACKUP_IMAGE_MODE) {
+        $env:TASKHUB_BACKUP_IMAGE_MODE
+    } elseif ($OfflineBundle) { "archive" } else { "reference" }
+    $BackupOutput = & (Join-Path $Root "backup.ps1") -ImageMode $BackupImageMode
     $BackupLine = ($BackupOutput | Select-String '^备份完成: ' | Select-Object -Last 1).Line
     if (-not $BackupLine) { throw "升级前备份失败。" }
     $Backup = $BackupLine.Substring(6)

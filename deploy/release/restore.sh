@@ -15,7 +15,23 @@ actual_fingerprint=$(printf 'taskhub-backup-v1:%s' "$backup_key" | sha256_digest
   printf '备份中的配置加密主密钥与备份身份不匹配。\n' >&2; exit 1;
 }
 backup_postgres_image=$(sed -n 's/^TASKHUB_POSTGRES_IMAGE=//p' "$backup/backup.env" | tail -n 1)
-docker load -i "$backup/images.tar"
+image_mode=$(sed -n 's/^TASKHUB_BACKUP_IMAGE_MODE=//p' "$backup/backup.env" | tail -n 1)
+image_mode=${image_mode:-archive}
+if [ "$image_mode" = reference ]; then
+  for prefix in SEED NODE POSTGRES; do
+    image=$(sed -n "s/^TASKHUB_${prefix}_IMAGE=//p" "$backup/backup.env" | tail -n 1)
+    expected=$(sed -n "s/^TASKHUB_${prefix}_IMAGE_ID=//p" "$backup/backup.env" | tail -n 1)
+    actual=$(docker image inspect "$image" --format '{{.Id}}' 2>/dev/null || true)
+    [ -n "$expected" ] && [ "$actual" = "$expected" ] || {
+      printf '本机回退镜像缺失或摘要不匹配: %s\n' "$image" >&2; exit 1;
+    }
+  done
+elif [ "$image_mode" = archive ]; then
+  docker load -i "$backup/images.tar"
+else
+  printf '备份镜像模式无效。\n' >&2
+  exit 1
+fi
 docker run --rm -v "$backup:/backup:ro" "${backup_postgres_image:-postgres:16-alpine}" \
   pg_restore -l /backup/postgres.dump | grep -q taskhub_backup_identity || {
     printf 'PostgreSQL 备份缺少加密密钥身份表。\n' >&2; exit 1;

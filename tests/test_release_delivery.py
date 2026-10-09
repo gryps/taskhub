@@ -231,6 +231,29 @@ def test_backup_can_reuse_only_a_verified_matching_image_archive():
         assert "运行镜像与当前部署不一致" in script
 
 
+def test_online_upgrade_uses_host_bound_reference_backup_without_image_export():
+    shell_upgrade = (RELEASE / "upgrade.sh").read_text(encoding="utf-8")
+    powershell_upgrade = (RELEASE / "upgrade.ps1").read_text(encoding="utf-8-sig")
+
+    for script in (shell_upgrade, powershell_upgrade):
+        assert "TASKHUB_BACKUP_IMAGE_MODE" in script
+        assert "reference" in script
+        assert "archive" in script
+
+    for name in ("backup.sh", "backup.ps1"):
+        script = (RELEASE / name).read_text(encoding="utf-8-sig")
+        assert "TASKHUB_BACKUP_IMAGE_MODE" in script
+        assert "TASKHUB_SEED_IMAGE_ID" in script
+        assert "TASKHUB_NODE_IMAGE_ID" in script
+        assert "TASKHUB_POSTGRES_IMAGE_ID" in script
+
+    for name in ("verify-backup.sh", "verify-backup.ps1", "restore.sh", "restore.ps1"):
+        script = (RELEASE / name).read_text(encoding="utf-8-sig")
+        assert "TASKHUB_BACKUP_IMAGE_MODE" in script
+        assert "_IMAGE_ID" in script
+        assert "本机回退镜像缺失或摘要不匹配" in script
+
+
 def test_release_images_pin_codex_and_node_has_common_role_tools():
     seed = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     node = (ROOT / "deploy" / "node" / "Dockerfile").read_text(encoding="utf-8")

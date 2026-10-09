@@ -46,6 +46,11 @@ During an upgrade, the release tools also advance the managed local-node image w
 the previous deployment image. An explicitly configured custom node image is preserved. If the
 managed image changes, Seed is restarted once before the final health check so newly created and
 upgraded nodes use the same release.
+Routine online upgrades create a host-bound reference recovery point by recording and verifying the
+exact local IDs of the current Seed, Node and PostgreSQL images instead of exporting the same large
+layers on every release. Restore fails closed if any referenced image is missing or has changed.
+Offline upgrades and standalone `backup` commands retain portable `images.tar` archives by default;
+set `TASKHUB_BACKUP_IMAGE_MODE=archive` to force that slower portable mode for an online upgrade.
 When a complete backup was just created and verified, `TASKHUB_VERIFIED_BACKUP` may point to that
 exact directory so a retry re-verifies and reuses it instead of exporting the same images again.
 Never point it at an interrupted or unverified directory.

@@ -1,6 +1,7 @@
 ﻿param(
     [string]$BackupDirectory = "",
-    [string]$ReuseImageBackup = $env:TASKHUB_REUSE_IMAGE_BACKUP
+    [string]$ReuseImageBackup = $env:TASKHUB_REUSE_IMAGE_BACKUP,
+    [string]$ImageMode = $env:TASKHUB_BACKUP_IMAGE_MODE
 )
 $ErrorActionPreference = "Continue"
 $PSDefaultParameterValues["*:ErrorAction"] = "Stop"
@@ -10,6 +11,10 @@ $EnvFile = Join-Path $Root ".env"
 $ComposeFile = Join-Path $Root "compose.yaml"
 $Timestamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
 if (-not $BackupDirectory) { $BackupDirectory = Join-Path $Root "backups\$Timestamp" }
+if (-not $ImageMode) { $ImageMode = "archive" }
+if ($ImageMode -notin @("archive", "reference")) {
+    throw "TASKHUB_BACKUP_IMAGE_MODE 只支持 archive 或 reference。"
+}
 if (-not (Test-Path $EnvFile)) { throw "缺少 $EnvFile" }
 if (Test-Path $BackupDirectory) { throw "备份目录已存在: $BackupDirectory" }
 New-Item -ItemType Directory -Force $BackupDirectory | Out-Null
@@ -39,7 +44,11 @@ if ("$DataVolume`:$PostgresVolume" -notin @(
     "taskhub-data:taskhub-postgres-data",
     "taskhub-seed_taskhub-data:taskhub-seed_postgres-data"
 )) { throw "数据卷名称不在 TaskHub 安全范围内。" }
+$SeedImageId = (docker image inspect $SeedImage --format '{{.Id}}').Trim()
+$NodeImageId = (docker image inspect $NodeImage --format '{{.Id}}').Trim()
+$PostgresImageId = (docker image inspect $PostgresImage --format '{{.Id}}').Trim()
 if ($ReuseImageBackup) {
+    if ($ImageMode -ne "archive") { throw "引用模式不能复用镜像归档。" }
     & (Join-Path $Root "verify-backup.ps1") -BackupDirectory $ReuseImageBackup
     if ($LASTEXITCODE -ne 0) { throw "复用镜像备份验证失败。" }
     $Prior = @{}
@@ -52,7 +61,7 @@ if ($ReuseImageBackup) {
         throw "复用备份的运行镜像与当前部署不一致。"
     }
     Copy-Item (Join-Path $ReuseImageBackup "images.tar") (Join-Path $BackupDirectory "images.tar")
-} else {
+} elseif ($ImageMode -eq "archive") {
     docker save -o (Join-Path $BackupDirectory "images.tar") $SeedImage $NodeImage $PostgresImage
     if ($LASTEXITCODE -ne 0) { throw "回退镜像导出失败。" }
 }
@@ -78,9 +87,15 @@ try {
         "TASKHUB_SEED_IMAGE=$SeedImage"
         "TASKHUB_NODE_IMAGE=$NodeImage"
         "TASKHUB_POSTGRES_IMAGE=$PostgresImage"
+        "TASKHUB_BACKUP_IMAGE_MODE=$ImageMode"
+        "TASKHUB_SEED_IMAGE_ID=$SeedImageId"
+        "TASKHUB_NODE_IMAGE_ID=$NodeImageId"
+        "TASKHUB_POSTGRES_IMAGE_ID=$PostgresImageId"
         "TASKHUB_CONFIG_KEY_FINGERPRINT=$KeyFingerprint"
     ) | Set-Content (Join-Path $BackupDirectory "backup.env") -Encoding ascii
-    $Checksums = foreach ($Name in @(".env", "backup.env", "postgres.dump", "taskhub-data.tar.gz", "images.tar", "compose.yaml")) {
+    $ChecksumNames = @(".env", "backup.env", "postgres.dump", "taskhub-data.tar.gz", "compose.yaml")
+    if ($ImageMode -eq "archive") { $ChecksumNames += "images.tar" }
+    $Checksums = foreach ($Name in $ChecksumNames) {
         $Hash = (Get-FileHash -Algorithm SHA256 (Join-Path $BackupDirectory $Name)).Hash.ToLowerInvariant()
         "$Hash  $Name"
     }

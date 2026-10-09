@@ -2,13 +2,26 @@
 $ErrorActionPreference = "Continue"
 $PSDefaultParameterValues["*:ErrorAction"] = "Stop"
 
+function Get-EnvValue([string]$Path, [string]$Name) {
+    $Line = Get-Content $Path | Where-Object { $_ -match "^$([regex]::Escape($Name))=" } | Select-Object -Last 1
+    if ($Line) { return ($Line -split '=', 2)[1] }
+    return ""
+}
+
 $BackupDirectory = (Resolve-Path $BackupDirectory).Path
-$Required = @(".env", "backup.env", "postgres.dump", "taskhub-data.tar.gz", "images.tar", "compose.yaml", "SHA256SUMS")
+$Required = @(".env", "backup.env", "postgres.dump", "taskhub-data.tar.gz", "compose.yaml", "SHA256SUMS")
 foreach ($Name in $Required) {
     if (-not (Test-Path (Join-Path $BackupDirectory $Name) -PathType Leaf)) {
         throw "备份缺少文件: $Name"
     }
 }
+$ImageMode = Get-EnvValue (Join-Path $BackupDirectory "backup.env") "TASKHUB_BACKUP_IMAGE_MODE"
+if (-not $ImageMode) { $ImageMode = "archive" }
+if ($ImageMode -eq "archive") {
+    if (-not (Test-Path (Join-Path $BackupDirectory "images.tar") -PathType Leaf)) {
+        throw "备份缺少文件: images.tar"
+    }
+} elseif ($ImageMode -ne "reference") { throw "备份镜像模式无效。" }
 
 foreach ($Line in (Get-Content (Join-Path $BackupDirectory "SHA256SUMS"))) {
     if ($Line -notmatch '^([a-fA-F0-9]{64})\s+(.+)$') { throw "SHA256SUMS 格式无效。" }
@@ -16,12 +29,6 @@ foreach ($Line in (Get-Content (Join-Path $BackupDirectory "SHA256SUMS"))) {
     $Name = $Matches[2]
     $Actual = (Get-FileHash -Algorithm SHA256 (Join-Path $BackupDirectory $Name)).Hash.ToLowerInvariant()
     if ($Actual -ne $Expected) { throw "备份文件摘要不匹配: $Name" }
-}
-
-function Get-EnvValue([string]$Path, [string]$Name) {
-    $Line = Get-Content $Path | Where-Object { $_ -match "^$([regex]::Escape($Name))=" } | Select-Object -Last 1
-    if ($Line) { return ($Line -split '=', 2)[1] }
-    return ""
 }
 
 function Get-KeyFingerprint([string]$Key) {
@@ -38,8 +45,19 @@ if ((Get-KeyFingerprint $BackupKey) -ne $ExpectedFingerprint) {
 }
 $PostgresImage = Get-EnvValue (Join-Path $BackupDirectory "backup.env") "TASKHUB_POSTGRES_IMAGE"
 if (-not $PostgresImage) { $PostgresImage = "postgres:16-alpine" }
-docker image inspect $PostgresImage *> $null
-if ($LASTEXITCODE -ne 0) {
+if ($ImageMode -eq "reference") {
+    foreach ($Prefix in @("SEED", "NODE", "POSTGRES")) {
+        $Image = Get-EnvValue (Join-Path $BackupDirectory "backup.env") "TASKHUB_${Prefix}_IMAGE"
+        $Expected = Get-EnvValue (Join-Path $BackupDirectory "backup.env") "TASKHUB_${Prefix}_IMAGE_ID"
+        $Actual = (docker image inspect $Image --format '{{.Id}}' 2>$null)
+        if ($LASTEXITCODE -ne 0 -or -not $Expected -or $Actual.Trim() -ne $Expected) {
+            throw "本机回退镜像缺失或摘要不匹配: $Image"
+        }
+    }
+} else {
+    docker image inspect $PostgresImage *> $null
+}
+if ($ImageMode -eq "archive" -and $LASTEXITCODE -ne 0) {
     docker load -i (Join-Path $BackupDirectory "images.tar") *> $null
     if ($LASTEXITCODE -ne 0) { throw "备份镜像归档无法加载。" }
 }
