@@ -19,7 +19,7 @@ REQUIRED_BASELINE_PATHS = (
 LEGACY_FRONTEND_FILE_LINES = {
     "src/taskhub_v2/api/static/app.js": 1424,
     "src/taskhub_v2/api/static/index.html": 731,
-    "src/taskhub_v2/api/static/resource-center.js": 1291,
+    "src/taskhub_v2/api/static/resource-center.js": 1159,
     "src/taskhub_v2/api/static/styles.css": 1472,
 }
 
@@ -39,7 +39,6 @@ LEGACY_FUNCTION_LINES = {
     ("src/taskhub_v2/services/dag_scheduler.py", "PersistentDagScheduler.execute"): 177,
     ("src/taskhub_v2/services/topologies.py", "TopologyService._findings"): 122,
     ("src/taskhub_v2/services/capability_catalog.py", "builtin_capability_packs"): 120,
-    ("src/taskhub_v2/services/containers.py", "ContainerManager.create"): 126,
     ("src/taskhub_v2/services/onboarding.py", "onboarding_status"): 123,
     ("src/taskhub_v2/services/revisions.py", "RevisionService.apply"): 114,
     ("src/taskhub_v2/services/remote_nodes.py", "RemoteNodeService._provision_locked"): 106,
@@ -79,7 +78,6 @@ LEGACY_FUNCTION_COMPLEXITY = {
     ("src/taskhub_v2/services/topologies.py", "TopologyService._findings"): 55,
     ("src/taskhub_v2/services/contract_gates.py", "_imports"): 20,
     ("src/taskhub_v2/services/node_model_config.py", "write_node_model_configuration"): 20,
-    ("src/taskhub_v2/services/containers.py", "ContainerManager.create"): 18,
     ("src/taskhub_v2/services/onboarding.py", "model_ready"): 17,
     ("src/taskhub_v2/services/onboarding.py", "onboarding_status"): 28,
     ("src/taskhub_v2/services/revisions.py", "RevisionService.propose"): 23,

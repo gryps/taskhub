@@ -7,33 +7,26 @@ from typing import BinaryIO
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
-from pydantic import BaseModel, Field
-
-from taskhub_v2.domain.models import NodeDefinition
-from taskhub_v2.security.node_credentials import NodeCredentialError
 from taskhub_v2.services.container_diagnostics import container_resources, docker_log_text
-from taskhub_v2.services.container_runtime import node_runtime_configuration
 from taskhub_v2.services.docker_engine import DockerSocketClient, DockerUnavailableError
+from taskhub_v2.services.local_node_lifecycle import (
+    ROLE_WORKLOADS,
+    ContainerCreate,
+    DockerConflictError,
+    LocalNodeLifecycleMixin,
+)
 from taskhub_v2.services.node_inventory import NodeInventoryMixin
 
-ROLE_WORKLOADS = {
-    "execution": {"build", "coding"},
-    "test": {"acceptance", "test"},
-    "preproduction": {"acceptance", "build", "test"},
-}
+__all__ = [
+    "ContainerCreate",
+    "ContainerManager",
+    "DockerConflictError",
+    "DockerUnavailableError",
+    "ROLE_WORKLOADS",
+]
 
 
-class ContainerCreate(BaseModel):
-    node_id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{1,31}$")
-    role: str = Field(pattern=r"^(execution|test|preproduction)$")
-    slots: int = Field(default=1, ge=1, le=16)
-
-
-class DockerConflictError(RuntimeError):
-    pass
-
-
-class ContainerManager(NodeInventoryMixin):
+class ContainerManager(LocalNodeLifecycleMixin, NodeInventoryMixin):
     label = "io.taskhub.managed"
 
     def __init__(
@@ -113,8 +106,12 @@ class ContainerManager(NodeInventoryMixin):
         if status != 200:
             raise DockerUnavailableError(data.get("message", "无法读取容器"))
         views = [self._view(item) for item in data]
-        if self.credentials:
-            for item in views:
+        for item in views:
+            item["desired_image"] = self.image
+            item["upgrade_available"] = bool(
+                self.image and item["image"] and item["image"] != self.image
+            )
+            if self.credentials:
                 item["credential"] = self.credentials.metadata(item["node_id"])
         return views
 
@@ -153,133 +150,6 @@ class ContainerManager(NodeInventoryMixin):
             result["agent_error"] = str(exc)[:500]
         return result
 
-    def create(self, request: ContainerCreate, *, _token: str | None = None) -> dict:
-        self._require_available()
-        name = f"taskhub-node-{request.node_id}"
-        workloads = ROLE_WORKLOADS[request.role]
-        node_command = (
-            "mkdir -p /var/lib/taskhub-node/jobs; "
-            "chown -R taskhub:taskhub /var/lib/taskhub-node; "
-            "exec runuser -u taskhub -- python -m uvicorn "
-            "taskhub_v2.node_agent:create_node_app --factory --host 0.0.0.0 --port 8020"
-        )
-        runtime_environment, runtime_host_config = node_runtime_configuration(
-            request.role,
-            self.data_volume_name,
-            self.model_accounts_volume_subpath,
-            self.openai_proxy_url,
-            self.test_database_admin_dsn,
-        )
-        payload = {
-            "Image": self.image,
-            "User": "0:0",
-            "Labels": {
-                self.label: "true",
-                "io.taskhub.node-id": request.node_id,
-                "io.taskhub.role": request.role,
-            },
-            "Env": [
-                f"TASKHUB_NODE_ID={request.node_id}",
-                f"TASKHUB_NODE_ROLE={request.role}",
-                f"TASKHUB_NODE_SLOTS={request.slots}",
-                "TASKHUB_NODE_TOKEN=__TASKHUB_NODE_CREDENTIAL__",
-                "TASKHUB_NODE_WORK_ROOT=/var/lib/taskhub-node/jobs",
-                "TASKHUB_NODE_CACHE_ROOT=/var/lib/taskhub-node/cache",
-                *runtime_environment,
-            ],
-            "Cmd": ["sh", "-c", node_command],
-            "Healthcheck": {
-                "Test": [
-                    "CMD",
-                    "python",
-                    "-c",
-                    "import os,urllib.request; "
-                    "q=urllib.request.Request('http://127.0.0.1:8020/api/health',"
-                    "headers={'Authorization':'Bearer '+os.environ['TASKHUB_NODE_TOKEN']}); "
-                    "urllib.request.urlopen(q,timeout=2).read()",
-                ],
-                "Interval": 10_000_000_000,
-                "Timeout": 3_000_000_000,
-                "StartPeriod": 20_000_000_000,
-                "Retries": 6,
-            },
-            "HostConfig": {
-                "Binds": [f"{name}-data:/var/lib/taskhub-node"],
-                "NetworkMode": self.network,
-                "RestartPolicy": {"Name": "unless-stopped"},
-                **runtime_host_config,
-            },
-        }
-        with self.lock:
-            if any(node.id == request.node_id for node in self._registered_nodes()):
-                raise DockerConflictError("节点 ID 已存在")
-            try:
-                token = _token or (
-                    self.credentials.issue(request.node_id)
-                    if self.credentials
-                    else self.node_token
-                )
-            except NodeCredentialError as exc:
-                raise DockerUnavailableError(str(exc)) from exc
-            payload["Env"] = [
-                item.replace("__TASKHUB_NODE_CREDENTIAL__", token)
-                for item in payload["Env"]
-            ]
-            try:
-                status, data = self.client.request(
-                    "POST", f"/containers/create?name={quote(name)}", payload
-                )
-            except Exception:
-                if self.credentials:
-                    self.credentials.revoke(request.node_id)
-                raise
-            if status == 409:
-                if self.credentials:
-                    self.credentials.revoke(request.node_id)
-                raise DockerConflictError(data.get("message", "同名容器已存在"))
-            if status != 201:
-                if self.credentials:
-                    self.credentials.revoke(request.node_id)
-                raise DockerUnavailableError(data.get("message", "容器创建失败"))
-            container_id = data["Id"]
-            status, start_data = self.client.request(
-                "POST", f"/containers/{quote(container_id)}/start"
-            )
-            if status not in {204, 304}:
-                self.client.request("DELETE", f"/containers/{quote(container_id)}?force=true")
-                if self.credentials:
-                    self.credentials.revoke(request.node_id)
-                raise DockerUnavailableError(start_data.get("message", "容器启动失败"))
-            try:
-                self._register(
-                    NodeDefinition(
-                        id=request.node_id,
-                        kind="remote",
-                        url=f"http://{name}:8020",
-                        slots=request.slots,
-                        workloads=workloads,
-                    )
-                )
-            except Exception:
-                self.client.request("DELETE", f"/containers/{quote(container_id)}?force=true")
-                if self.credentials:
-                    self.credentials.revoke(request.node_id)
-                raise
-        if self.operation_log:
-            self.operation_log.record(
-                "local_docker_create", "passed", node_id=request.node_id,
-                role=request.role,
-            )
-        return {
-            "id": container_id,
-            "name": name,
-            "node_id": request.node_id,
-            "role": request.role,
-            "state": "running",
-            "slots": request.slots,
-            "workloads": sorted(workloads),
-        }
-
     def action(self, node_id: str, action: str) -> dict:
         self._require_available()
         if action == "rotate-credential":
@@ -309,33 +179,6 @@ class ContainerManager(NodeInventoryMixin):
                 "local_docker_action", "passed", node_id=node_id, action=action
             )
         return {"node_id": node_id, "action": action, "ok": True}
-
-    def rotate_credential(self, node_id: str) -> dict:
-        if not self.credentials:
-            raise DockerUnavailableError("当前节点仍使用旧版部署级令牌，无法独立轮换")
-        with self.lock:
-            container = self._find(node_id)
-            node = next(
-                (item for item in self._registered_nodes() if item.id == node_id), None
-            )
-            if not node:
-                raise DockerUnavailableError("节点调度记录不存在，无法安全轮换")
-            role = (container.get("Labels") or {}).get("io.taskhub.role", "")
-            try:
-                token = self.credentials.rotate(node_id)
-            except NodeCredentialError as exc:
-                raise DockerUnavailableError(str(exc)) from exc
-            status, data = self.client.request(
-                "DELETE", f"/containers/{container['Id']}?force=true"
-            )
-            if status != 204:
-                raise DockerUnavailableError(data.get("message", "旧节点容器移除失败"))
-            self._unregister(node_id)
-            result = self.create(
-                ContainerCreate(node_id=node_id, role=role, slots=node.slots),
-                _token=token,
-            )
-        return {**result, "credential": self.credentials.metadata(node_id)}
 
     def _find(self, node_id: str) -> dict:
         filters = json.dumps({"label": [f"{self.label}=true", f"io.taskhub.node-id={node_id}"]})
@@ -386,14 +229,10 @@ class ContainerManager(NodeInventoryMixin):
     def import_image(self, archive: Path, image: str) -> dict:
         self._require_available()
         with archive.open("rb") as source:
-            messages = self.client.upload(
-                "/images/load?quiet=0", source, archive.stat().st_size
-            )
+            messages = self.client.upload("/images/load?quiet=0", source, archive.stat().st_size)
         metadata = self.image_metadata(image)
         detail = next(
-            (item.get("stream", "").strip() for item in reversed(messages)
-             if item.get("stream")),
+            (item.get("stream", "").strip() for item in reversed(messages) if item.get("stream")),
             "镜像已导入 Seed Docker Engine",
         )
-        return {**metadata, "image": image, "size_bytes": archive.stat().st_size,
-                "detail": detail}
+        return {**metadata, "image": image, "size_bytes": archive.stat().st_size, "detail": detail}

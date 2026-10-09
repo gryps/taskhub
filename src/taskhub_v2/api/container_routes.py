@@ -39,6 +39,19 @@ def create_container(payload: ContainerCreate, request: Request) -> dict:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.post("/{node_id}/upgrade")
+def upgrade_container(node_id: str, request: Request) -> dict:
+    active = getattr(request.app.state.node_scheduler, "active", {})
+    if int(active.get(node_id, 0)) > 0:
+        raise HTTPException(status_code=409, detail="节点仍有运行中的任务，请等待任务完成后升级")
+    try:
+        return manager(request).upgrade(node_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="container not found") from exc
+    except DockerUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post("/{node_id}/{action}")
 def container_action(node_id: str, action: str, request: Request) -> dict:
     if action not in {"start", "stop", "remove", "rotate-credential"}:

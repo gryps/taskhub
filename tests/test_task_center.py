@@ -197,7 +197,8 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert html.count('class="resource-disclosure-heading"') == 5
         assert html.count('class="resource-order"') == 5
         assert 'id="model-operations"' in html
-        assert "resource-center.js?v=41" in html
+        assert "local-node-management.js?v=1" in html
+        assert "resource-center.js?v=42" in html
         assert html.count('class="configuration-card"') >= 6
         assert html.count('class="management-card-grid"') >= 3
         assert 'id="login-username"' in html
@@ -227,7 +228,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert "<strong>模型服务</strong><small>高级 · 认证、角色路由与主备切换</small>" in html
         assert "<strong>工程治理</strong><small>全局规则、项目绑定与批次门禁</small>" in html
         assert "<strong>高级设置</strong><small>镜像策略、安全、备份与平台参数</small>" in html
-        assert html.count('data-resource-target=') == 0
+        assert html.count("data-resource-target=") == 0
         assert "<strong>预生产验收</strong><small>按项目启用的访问与验收环境</small>" in html
         assert "<strong>代码仓库</strong><small>项目级 Git 来源、基准分支与发布目标</small>" in html
         assert "<strong>产品规格</strong><small>需求产品化、待决策事项与批准版本</small>" in html
@@ -287,6 +288,7 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert "contract_binding" in governance_script
         assert "data-batch-governance" in governance_script
         resource_script = client.get("/static/resource-center.js").text
+        local_node_script = client.get("/static/local-node-management.js").text
         assert "/api/remote-nodes" not in resource_script
         assert "prepare-node-upgrade" not in resource_script
         assert "打开 OpenAI 官方登录页" in resource_script
@@ -308,6 +310,9 @@ def test_task_detail_exposes_automatic_nine_stage_ui():
         assert 'class="secondary copy-device-code"' in resource_script
         assert "复制设备验证码" in resource_script
         assert 'button.textContent = "已复制"' in resource_script
+        assert 'data-action="upgrade"' in local_node_script
+        assert "镜像待升级" in local_node_script
+        assert "/api/containers/${encodeURIComponent(nodeId)}/${action}" in local_node_script
         assert 'title: "执行节点"' in resource_script
         assert 'title: "测试节点"' in resource_script
         assert 'title: "预生产节点"' in resource_script
@@ -388,9 +393,7 @@ def test_task_center_publication_recovery_does_not_repeat_completed_work():
             client.post(base + "/resume", headers=headers, json={"decision": "approve"}).status_code
             == 409
         )
-        resumed = client.post(
-            base + "/resume", headers=headers, json={"decision": "retry"}
-        )
+        resumed = client.post(base + "/resume", headers=headers, json={"decision": "retry"})
         assert resumed.status_code == 200
         completed = wait_for_run(client, run_id, lambda item: item["status"] == "completed")
         assert completed["status"] == "completed"
@@ -515,9 +518,7 @@ def test_launch_resume_returns_before_slow_recovery_and_rejects_duplicates():
             await execute(run_id, payload)
 
         service._execute = slow_execute
-        returned = await service.launch_resume(
-            blocked.run_id, ResumeRequest(decision="retry")
-        )
+        returned = await service.launch_resume(blocked.run_id, ResumeRequest(decision="retry"))
         assert returned.status == RunStatus.BLOCKED
         await entered.wait()
         with pytest.raises(RunConflictError, match="active workflow action"):

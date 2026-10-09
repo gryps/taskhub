@@ -30,6 +30,7 @@
 | `workers` | 编码、验收、发布等受控执行能力 | 结构化执行结果与证据 |
 | `execution` | 节点清单、安装/质量能力匹配、槽位、任务和运行器 | 节点与调度运行事实 |
 | `node_agent` | 节点鉴权、工作区、契约安装和隔离质量命令执行 | 幂等节点任务结果 |
+| `services.local_node_lifecycle` | Seed 本机节点创建、凭据轮换、原位镜像升级、健康确认与失败回滚 | 容器生命周期；节点数据卷和调度身份保持独立 |
 | `services.external_windows_nodes` | Windows 实测机指纹确认、一次性 SSH 部署、健康确认与注册 | 外部节点元数据；不持久化 SSH 私钥 |
 | `projects` | 权威仓库创建、连接验证与项目登记 | 项目注册与仓库位置 |
 | `deployment` | 预生产部署与身份验证 | 部署结果，不拥有项目业务状态 |
@@ -44,6 +45,7 @@
 | `api/static/image-downloads.*` | 公开镜像地址呈现、响应式样式与复制交互 | 不读取认证状态或业务流程数据 |
 | `api/static/agent-access.*` | 浏览器内审批、查看和吊销开发代理连接 | 只呈现非敏感元数据，不显示或复制 Bearer 凭据 |
 | `api/static/project-activation.*` | 呈现项目激活步骤并编辑草稿契约质量命令 | 复用服务端激活报告，不在浏览器推导门禁 |
+| `api/static/local-node-management.js` | 本机节点卡片、诊断、生命周期与镜像升级交互 | 只呈现服务端镜像差异和升级结果，不自行判断任务占用 |
 | `api/static/styles.css` | 原生 token、布局和组件样式 | 历史大文件，只减不增；按稳定组件边界拆分 |
 
 ## 公共能力准入

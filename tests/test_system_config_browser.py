@@ -62,19 +62,23 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         page.locator("#login-button").click()
 
         expect(page.locator("#onboarding-page")).to_be_visible()
-        expect(page.locator("#onboarding-title")).to_have_text(
-            "第一阶段 · Seed 基础设施初始化"
-        )
+        expect(page.locator("#onboarding-title")).to_have_text("第一阶段 · Seed 基础设施初始化")
         expect(page.locator("#onboarding-page")).to_contain_text(
             "项目仓库、契约和验收资源将在接入项目后配置"
         )
         expect(page.locator("#onboarding-steps .onboarding-step")).to_have_count(6)
-        assert page.locator("#onboarding-message").evaluate(
-            "element => getComputedStyle(element).fontSize"
-        ) == "17px"
-        assert page.locator(".onboarding-step p").first.evaluate(
-            "element => getComputedStyle(element).fontSize"
-        ) == "12px"
+        assert (
+            page.locator("#onboarding-message").evaluate(
+                "element => getComputedStyle(element).fontSize"
+            )
+            == "17px"
+        )
+        assert (
+            page.locator(".onboarding-step p").first.evaluate(
+                "element => getComputedStyle(element).fontSize"
+            )
+            == "12px"
+        )
 
         page.locator("#onboarding-later").click()
         page.route(
@@ -139,22 +143,32 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         expect(project_select).to_have_value("beta-project")
         page.locator("#project-repository-disclosure > summary").click()
         expect(page.locator("#project-repository-form")).to_be_visible()
-        assert page.locator(".project-repository-card h3").evaluate(
-            "element => getComputedStyle(element).fontSize"
-        ) == "14px"
-        assert page.locator(".project-repository-facts dd").first.evaluate(
-            "element => getComputedStyle(element).fontSize"
-        ) == "13px"
-        page.locator("#test-environment-disclosure > summary").click()
-        environment_heading = page.locator(
-            "#test-environment-disclosure .project-settings-heading"
+        assert (
+            page.locator(".project-repository-card h3").evaluate(
+                "element => getComputedStyle(element).fontSize"
+            )
+            == "14px"
         )
-        assert environment_heading.locator("strong").evaluate(
-            "element => getComputedStyle(element).fontSize"
-        ) == "15px"
-        assert environment_heading.locator("small").evaluate(
-            "element => getComputedStyle(element).fontSize"
-        ) == "12px"
+        assert (
+            page.locator(".project-repository-facts dd").first.evaluate(
+                "element => getComputedStyle(element).fontSize"
+            )
+            == "13px"
+        )
+        page.locator("#test-environment-disclosure > summary").click()
+        environment_heading = page.locator("#test-environment-disclosure .project-settings-heading")
+        assert (
+            environment_heading.locator("strong").evaluate(
+                "element => getComputedStyle(element).fontSize"
+            )
+            == "15px"
+        )
+        assert (
+            environment_heading.locator("small").evaluate(
+                "element => getComputedStyle(element).fontSize"
+            )
+            == "12px"
+        )
         expect(page.locator("#test-environment-form .field-help")).to_have_count(3)
         page.locator("#nav-resources").click()
         expect(page.locator(".resource-disclosure-heading")).to_have_count(5)
@@ -162,38 +176,63 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         expect(page.locator(".system-setup-flow")).to_have_count(0)
         expect(page.locator("#hosts-disclosure")).to_have_count(0)
         expect(page.locator("#nodes-disclosure > summary")).to_contain_text("TaskHub 节点")
-        expect(page.locator("#engineering-policy-disclosure > summary")).to_contain_text(
-            "工程治理"
-        )
+        expect(page.locator("#engineering-policy-disclosure > summary")).to_contain_text("工程治理")
         page.locator("#engineering-policy-disclosure > summary").click()
         expect(page.locator("#engineering-policy-summary")).to_contain_text("已生效")
         expect(page.locator("#engineering-policy-root .governance-rule")).to_have_count(7)
         expect(page.locator("#open-policy-draft")).to_be_visible()
         page.locator("#platform-disclosure > summary").click()
-        page.locator("#platform-config-disclosure").evaluate(
-            "element => { element.open = true; }"
-        )
+        page.locator("#platform-config-disclosure").evaluate("element => { element.open = true; }")
         expect(page.locator("#platform-git-service-card")).to_be_visible()
         expect(page.locator("#platform-git-host")).to_have_value("gryps@192.168.31.3")
         expect(page.locator("#test-git-service")).to_be_visible()
         page.route(
             "**/api/providers/operations",
-            lambda route: route.fulfill(json={
-                "summary": {"providers": 2, "unhealthy_providers": 1, "invocations": 7,
-                            "fallback_events": 1, "average_duration_ms": 900,
-                            "sampled_runs": 3, "available_runs": 3},
-                "providers": [{"id": "gpt_api", "display_name": "已配置 GPT 卡片",
-                               "kind": "api", "model": "gpt-test",
-                               "configured": True, "operational_state": "cooldown",
-                               "reason": "quota_exceeded", "failure_count": 3,
-                               "recovery_count": 0, "retry_at": 1234,
-                               "billing": {"status": "unavailable", "detail": "账单权限不可用",
-                                           "metrics": []}}],
-                "usage": [{"provider": "gpt_api", "model": "gpt-test", "invocations": 7,
-                           "duration_ms": 6300, "fallback_events": 1,
-                           "average_duration_ms": 900, "roles": {"coder": 7}}],
-                "role_counts": {"coder": 7}, "role_models": {"coder": "gpt-test"},
-            }),
+            lambda route: route.fulfill(
+                json={
+                    "summary": {
+                        "providers": 2,
+                        "unhealthy_providers": 1,
+                        "invocations": 7,
+                        "fallback_events": 1,
+                        "average_duration_ms": 900,
+                        "sampled_runs": 3,
+                        "available_runs": 3,
+                    },
+                    "providers": [
+                        {
+                            "id": "gpt_api",
+                            "display_name": "已配置 GPT 卡片",
+                            "kind": "api",
+                            "model": "gpt-test",
+                            "configured": True,
+                            "operational_state": "cooldown",
+                            "reason": "quota_exceeded",
+                            "failure_count": 3,
+                            "recovery_count": 0,
+                            "retry_at": 1234,
+                            "billing": {
+                                "status": "unavailable",
+                                "detail": "账单权限不可用",
+                                "metrics": [],
+                            },
+                        }
+                    ],
+                    "usage": [
+                        {
+                            "provider": "gpt_api",
+                            "model": "gpt-test",
+                            "invocations": 7,
+                            "duration_ms": 6300,
+                            "fallback_events": 1,
+                            "average_duration_ms": 900,
+                            "roles": {"coder": 7},
+                        }
+                    ],
+                    "role_counts": {"coder": 7},
+                    "role_models": {"coder": "gpt-test"},
+                }
+            ),
         )
         page.locator("#providers-disclosure").evaluate("element => { element.open = true; }")
         page.evaluate("loadModelOperations()")
@@ -203,6 +242,58 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         expect(page.locator("#model-operations")).to_contain_text("quota_exceeded")
         expect(page.locator("#provider-summary")).to_contain_text("已认证")
         captured_model_test = {}
+        local_node_state = {"upgraded": False}
+
+        def fulfill_local_containers(route):
+            image = (
+                "taskhub-node:alpha.22" if local_node_state["upgraded"] else "taskhub-node:alpha.21"
+            )
+            route.fulfill(
+                json={
+                    "containers": [
+                        {
+                            "id": "container-work-01",
+                            "name": "taskhub-node-work-01",
+                            "node_id": "work-01",
+                            "role": "execution",
+                            "state": "running",
+                            "status": "Up 2 hours (healthy)",
+                            "image": image,
+                            "desired_image": "taskhub-node:alpha.22",
+                            "upgrade_available": not local_node_state["upgraded"],
+                        }
+                    ]
+                }
+            )
+
+        page.route(
+            "**/api/containers/status",
+            lambda route: route.fulfill(
+                json={
+                    "enabled": True,
+                    "available": True,
+                    "detail": "Docker Engine test",
+                    "image": "taskhub-node:alpha.22",
+                    "network": "taskhub-test_default",
+                }
+            ),
+        )
+        page.route("**/api/containers", fulfill_local_containers)
+
+        def fulfill_local_upgrade(route):
+            local_node_state["upgraded"] = True
+            route.fulfill(
+                json={
+                    "node_id": "work-01",
+                    "upgraded": True,
+                    "previous_image": "taskhub-node:alpha.21",
+                    "image": "taskhub-node:alpha.22",
+                    "detail": "节点已升级并通过健康检查",
+                }
+            )
+
+        page.route("**/api/containers/work-01/upgrade", fulfill_local_upgrade)
+        page.evaluate("loadContainers()")
 
         def fulfill_model_test(route):
             captured_model_test.update(route.request.post_data_json)
@@ -267,9 +358,11 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         assert role_box["x"] < action_box["x"]
         for width in (768, 680, 390):
             page.set_viewport_size({"width": width, "height": 900})
-            lower_columns = len(page.locator(".model-card-lower").evaluate(
-                "element => getComputedStyle(element).gridTemplateColumns"
-            ).split())
+            lower_columns = len(
+                page.locator(".model-card-lower")
+                .evaluate("element => getComputedStyle(element).gridTemplateColumns")
+                .split()
+            )
             assert lower_columns == (1 if width <= 900 else 2)
             assert page.evaluate(
                 "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
@@ -289,9 +382,12 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         copy_code.click()
         expect(copy_code).to_have_text("已复制")
         assert page.evaluate("window.__copiedDeviceCode") == "AB12-CD345"
-        assert page.locator("#system-disclosure > summary").evaluate(
-            "element => getComputedStyle(element).minHeight"
-        ) == "68px"
+        assert (
+            page.locator("#system-disclosure > summary").evaluate(
+                "element => getComputedStyle(element).minHeight"
+            )
+            == "68px"
+        )
         expect(page.locator("#resource-page .public-image-downloads")).to_be_attached()
         expect(page.locator("#resource-page .image-download-row")).to_have_count(2)
         expect(page.locator(".runtime-role-card")).to_have_count(4)
@@ -300,18 +396,39 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         page.locator("#nodes-disclosure summary").first.click()
         expect(page.locator("#nodes.management-card-grid")).to_be_visible()
         expect(page.locator("#managed-containers.management-card-grid")).to_be_visible()
+        local_card = page.locator("#managed-containers .management-card")
+        expect(local_card).to_contain_text("镜像待升级")
+        expect(local_card).to_contain_text("taskhub-node:alpha.22")
+        for width in (1440, 768, 390):
+            page.set_viewport_size({"width": width, "height": 900})
+            expect(local_card.locator('[data-action="upgrade"]')).to_be_visible()
+            assert page.evaluate(
+                "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+            )
+        page.set_viewport_size({"width": 1440, "height": 1000})
+        page.once("dialog", lambda dialog: dialog.accept())
+        local_card.locator('[data-action="upgrade"]').click()
+        expect(page.locator("#container-message")).to_have_text("节点已升级并通过健康检查")
+        expect(local_card.locator('[data-action="upgrade"]')).to_have_count(0)
+        expect(local_card).to_contain_text("taskhub-node:alpha.22")
         expect(page.locator("#container-target")).to_have_count(0)
         expect(page.locator("#node-upgrade-disclosure")).to_have_count(0)
         diagnostics = page.locator("#node-diagnostics").locator("xpath=..")
         diagnostics.locator("summary").click()
         expect(page.locator("#load-node-diagnostics")).to_be_visible()
         expect(page.locator("#export-diagnostics")).to_be_visible()
-        assert page.locator("#export-diagnostics").evaluate(
-            "element => getComputedStyle(element).fontSize"
-        ) == "12px"
-        assert page.locator("#export-diagnostics").evaluate(
-            "element => getComputedStyle(element).textDecorationLine"
-        ) == "none"
+        assert (
+            page.locator("#export-diagnostics").evaluate(
+                "element => getComputedStyle(element).fontSize"
+            )
+            == "12px"
+        )
+        assert (
+            page.locator("#export-diagnostics").evaluate(
+                "element => getComputedStyle(element).textDecorationLine"
+            )
+            == "none"
+        )
         page.locator("#platform-disclosure summary").first.click()
         expect(page.locator("#resource-page .public-image-downloads")).to_be_visible()
         expect(page.locator("#platform-settings .management-card")).to_have_count(4)
@@ -319,21 +436,34 @@ def test_onboarding_and_role_overview_layout(tmp_path):
         expect(page.locator(".backup-contract")).to_be_attached()
         platform_form = page.locator("#platform-settings-form").locator("xpath=..")
         platform_form.evaluate("element => { element.open = true; }")
-        assert page.locator(".backup-contract").evaluate(
-            "element => getComputedStyle(element).fontSize"
-        ) == "13px"
-        assert len(page.locator(".platform-address-fields").evaluate(
-            "element => getComputedStyle(element).gridTemplateColumns"
-        ).split()) == 2
+        assert (
+            page.locator(".backup-contract").evaluate(
+                "element => getComputedStyle(element).fontSize"
+            )
+            == "13px"
+        )
+        assert (
+            len(
+                page.locator(".platform-address-fields")
+                .evaluate("element => getComputedStyle(element).gridTemplateColumns")
+                .split()
+            )
+            == 2
+        )
         page.locator("#access-security-disclosure summary").click()
         expect(page.locator("#user-inventory")).to_contain_text("admin")
         expect(page.locator("#user-form")).to_be_visible()
         expect(page.locator(".security-overview > div")).to_have_count(3)
         expect(page.locator("#session-identity")).to_contain_text("管理员")
         page.locator("#system-disclosure").evaluate("element => { element.open = true; }")
-        assert len(page.locator(".runtime-role-grid").evaluate(
-            "element => getComputedStyle(element).gridTemplateColumns"
-        ).split()) == 2
+        assert (
+            len(
+                page.locator(".runtime-role-grid")
+                .evaluate("element => getComputedStyle(element).gridTemplateColumns")
+                .split()
+            )
+            == 2
+        )
 
         for width, height in ((768, 900), (680, 900), (390, 844)):
             page.set_viewport_size({"width": width, "height": height})
@@ -344,18 +474,28 @@ def test_onboarding_and_role_overview_layout(tmp_path):
             )
             page.locator("#system-disclosure").evaluate("element => { element.open = true; }")
             page.locator("#platform-disclosure").evaluate("element => { element.open = true; }")
-            assert len(page.locator(".runtime-role-grid").evaluate(
-                "element => getComputedStyle(element).gridTemplateColumns"
-            ).split()) == 1
-            address_columns = len(page.locator(".platform-address-fields").evaluate(
-                "element => getComputedStyle(element).gridTemplateColumns"
-            ).split())
+            assert (
+                len(
+                    page.locator(".runtime-role-grid")
+                    .evaluate("element => getComputedStyle(element).gridTemplateColumns")
+                    .split()
+                )
+                == 1
+            )
+            address_columns = len(
+                page.locator(".platform-address-fields")
+                .evaluate("element => getComputedStyle(element).gridTemplateColumns")
+                .split()
+            )
             assert address_columns == (1 if width == 390 else 2)
             page.locator("#nodes-disclosure").evaluate("element => { element.open = true; }")
+            page.locator("#create-node-disclosure").evaluate(
+                "element => { element.open = true; }"
+            )
             node_columns = len(
-                page.locator("#container-form .node-configuration-grid").evaluate(
-                    "element => getComputedStyle(element).gridTemplateColumns"
-                ).split()
+                page.locator("#container-form .node-configuration-grid")
+                .evaluate("element => getComputedStyle(element).gridTemplateColumns")
+                .split()
             )
             assert node_columns == 1
             assert page.evaluate(

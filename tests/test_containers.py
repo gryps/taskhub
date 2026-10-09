@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
@@ -8,12 +9,14 @@ from taskhub_v2.config import Settings
 from taskhub_v2.security.encryption import SecretCipher
 from taskhub_v2.security.node_credentials import NodeCredentialVault
 from taskhub_v2.services.containers import ContainerCreate, ContainerManager
+from taskhub_v2.services.docker_engine import DockerUnavailableError
 
 
 class FakeDockerClient:
     def __init__(self):
         self.calls = []
         self.containers = []
+        self.unhealthy_images = set()
 
     def request(self, method, path, payload=None):
         self.calls.append((method, path, payload))
@@ -39,12 +42,18 @@ class FakeDockerClient:
                     },
                     "State": "created",
                     "Status": "Created",
-                    "Image": "taskhub:test",
+                    "Image": payload["Image"],
                 }
             ]
             return 201, {"Id": "container-1"}
         if method == "GET" and path.startswith("/containers/json?"):
             return 200, self.containers
+        if method == "GET" and path.endswith("/json"):
+            image = self.containers[0]["Image"]
+            health = "unhealthy" if image in self.unhealthy_images else "healthy"
+            return 200, {
+                "State": {"Running": True, "Status": "running", "Health": {"Status": health}}
+            }
         if method == "POST" and path.endswith("/start"):
             self.containers[0]["State"] = "running"
             self.containers[0]["Status"] = "Up"
@@ -213,6 +222,47 @@ def test_local_container_uses_rotatable_per_node_credential(tmp_path):
     assert credentials.resolve("test-01") == ""
 
 
+def test_local_container_upgrade_preserves_identity_volume_and_credential(tmp_path):
+    credentials = NodeCredentialVault(
+        str(tmp_path / "credentials.json"),
+        SecretCipher(Fernet.generate_key().decode()),
+    )
+    docker = FakeDockerClient()
+    subject = manager(tmp_path, docker, credentials)
+    subject.image = "taskhub:old"
+    subject.create(ContainerCreate(node_id="test-01", role="test", slots=2))
+    token = credentials.resolve("test-01")
+    subject.image = "taskhub:new"
+
+    upgraded = subject.upgrade("test-01")
+
+    assert upgraded["upgraded"] is True
+    assert upgraded["previous_image"] == "taskhub:old"
+    assert upgraded["image"] == "taskhub:new"
+    assert credentials.resolve("test-01") == token
+    assert subject.list()[0]["upgrade_available"] is False
+    create_payloads = [call[2] for call in docker.calls if call[1].startswith("/containers/create")]
+    assert create_payloads[-1]["HostConfig"]["Binds"] == [
+        "taskhub-node-test-01-data:/var/lib/taskhub-node"
+    ]
+
+
+def test_local_container_upgrade_restores_old_image_after_failed_health_check(tmp_path):
+    docker = FakeDockerClient()
+    subject = manager(tmp_path, docker)
+    subject.image = "taskhub:old"
+    subject.create(ContainerCreate(node_id="test-01", role="test", slots=1))
+    subject.image = "taskhub:new"
+    docker.unhealthy_images.add("taskhub:new")
+
+    with pytest.raises(DockerUnavailableError, match="已恢复原镜像"):
+        subject.upgrade("test-01")
+
+    restored = subject.list()[0]
+    assert restored["image"] == "taskhub:old"
+    assert restored["upgrade_available"] is True
+
+
 def test_container_routes_require_auth_and_csrf(tmp_path):
     settings = Settings(
         checkpointer="memory",
@@ -241,3 +291,19 @@ def test_container_routes_require_auth_and_csrf(tmp_path):
             ).status_code
             == 201
         )
+        app.state.container_manager.image = "taskhub:new"
+        app.state.node_scheduler.active = {"test-01": 1}
+        assert (
+            client.post(
+                "/api/containers/test-01/upgrade",
+                headers=headers,
+            ).status_code
+            == 409
+        )
+        app.state.node_scheduler.active["test-01"] = 0
+        upgraded = client.post(
+            "/api/containers/test-01/upgrade",
+            headers=headers,
+        )
+        assert upgraded.status_code == 200
+        assert upgraded.json()["image"] == "taskhub:new"
