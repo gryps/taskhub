@@ -18,7 +18,9 @@ Use **System Configuration → TaskHub Nodes → Attach external Windows test ma
 
 The submitted SSH private key is not retained. A later repair requires submitting it again. The
 virtual environment and pip cache live under `C:\TaskHub`, so reinstalling the same package does not
-redownload unchanged dependencies.
+redownload unchanged dependencies. Reinstallation stops the previous scheduled-task instance before
+registering its replacement and returns success only after the authenticated Agent health endpoint
+reports the expected node ID; it never leaves a fallback process attached to the SSH session.
 
 ## Browser mode
 

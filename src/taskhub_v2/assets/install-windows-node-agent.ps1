@@ -66,6 +66,15 @@ Set-Content -Path $StartScript -Value $Launch -Encoding utf8
 $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$StartScript`""
 $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $Identity
 $Principal = New-ScheduledTaskPrincipal -UserId $Identity -LogonType Interactive -RunLevel Limited
+$ExistingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+if ($ExistingTask -and $ExistingTask.State -eq "Running") {
+  Stop-ScheduledTask -TaskName $TaskName
+  for ($Attempt = 0; $Attempt -lt 15; $Attempt++) {
+    if ((Get-ScheduledTask -TaskName $TaskName).State -ne "Running") { break }
+    Start-Sleep -Seconds 1
+  }
+}
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*taskhub_v2.node_agent*--port $Port*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Description "TaskHub native Windows test node" -Force | Out-Null
 $FirewallName = "TaskHub-$NodeId-$Port"
 if (Get-NetFirewallRule -DisplayName $FirewallName -ErrorAction SilentlyContinue) {
@@ -73,11 +82,22 @@ if (Get-NetFirewallRule -DisplayName $FirewallName -ErrorAction SilentlyContinue
 } else {
   New-NetFirewallRule -DisplayName $FirewallName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port -Profile Any | Out-Null
 }
-Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*taskhub_v2.node_agent*--port $Port*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 Start-ScheduledTask -TaskName $TaskName
-Start-Sleep -Seconds 2
-if (-not (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)) {
-  Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -ArgumentList @(
-    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$StartScript`"")
+$Ready = $false
+$HealthUri = "http://127.0.0.1:$Port/api/health"
+$HealthHeaders = @{Authorization = "Bearer $env:TASKHUB_NODE_TOKEN"}
+for ($Attempt = 0; $Attempt -lt 30; $Attempt++) {
+  try {
+    $Health = Invoke-RestMethod -Uri $HealthUri -Headers $HealthHeaders -TimeoutSec 2
+    if ($Health.node_id -eq $NodeId -and $Health.status -eq "ok") {
+      $Ready = $true
+      break
+    }
+  } catch {}
+  Start-Sleep -Seconds 1
+}
+if (-not $Ready) {
+  $TaskResult = (Get-ScheduledTaskInfo -TaskName $TaskName).LastTaskResult
+  throw "TaskHub Windows Agent did not become healthy (scheduled task result: $TaskResult)"
 }
 Write-Host "TaskHub Windows Agent installed: $NodeId"

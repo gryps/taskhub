@@ -145,7 +145,11 @@ def test_windows_installer_uses_persistent_cache_and_no_plaintext_token():
     assert "ProtectedData" in script
     assert "node-token.dpapi" in script
     assert "TaskHubNodeAgent" in script
-    assert "Start-Process -FilePath \"powershell.exe\"" in script
+    assert "Invoke-RestMethod -Uri $HealthUri" in script
+    assert "$Health.node_id -eq $NodeId" in script
+    assert "Start-Process -FilePath \"powershell.exe\"" not in script
+    assert "Stop-ScheduledTask -TaskName $TaskName" in script
+    assert script.index("Stop-ScheduledTask") < script.index("Register-ScheduledTask")
 
 
 def test_windows_ssh_bootstrap_reads_the_complete_script_before_execution():
