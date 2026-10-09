@@ -45,6 +45,11 @@ Updated: 2026-10-10
   confines documentation work to the documentation module, and attaches generated artifact expectations
   only to verification tasks. Coding-task quality commands use execution-node build capacity so a
   Windows GUI acceptance node is not silently selected as the implementation build environment.
+- The ecommerce project contract was revised and activated as v2 without creating a development run.
+  It owns the real `apps/api/app/**`, `apps/executor/src/**`, `apps/web/src/**` and `docs/**`
+  boundaries, uses `npm run bootstrap`, and records only repository-supported quality commands.
+  Project preflight passed 7/7 checks and activation passed 5/5 steps; the managed repository remained
+  clean and equal to `origin/main`.
 - ADR 0005 records the boundary decision. Ruff passes and the complete suite passes with
   `427 passed, 26 skipped`; architecture baselines were lowered for functions that became smaller.
 
