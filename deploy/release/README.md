@@ -42,6 +42,10 @@ entrypoint definitions have not changed, then overlays and reinstalls the curren
 contacting a base-image registry; it fails closed when a full rebuild is required.
 For a verified image built on the deployment host, `TASKHUB_USE_LOCAL_IMAGES=true upgrade.sh VERSION`
 skips registry pulls while retaining the normal backup, health check and automatic rollback path.
+During an upgrade, the release tools also advance the managed local-node image when it still equals
+the previous deployment image. An explicitly configured custom node image is preserved. If the
+managed image changes, Seed is restarted once before the final health check so newly created and
+upgraded nodes use the same release.
 When a complete backup was just created and verified, `TASKHUB_VERIFIED_BACKUP` may point to that
 exact directory so a retry re-verifies and reuses it instead of exporting the same images again.
 Never point it at an interrupted or unverified directory.

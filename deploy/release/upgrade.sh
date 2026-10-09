@@ -7,6 +7,7 @@ version=${1:-}
 bundle=${2:-}
 [ -n "$version" ] || { printf '用法: %s <版本> [离线包目录]\n' "$0" >&2; exit 1; }
 [ -f "$root/.env" ] || { printf '请在已初始化的 TaskHub 安装目录运行。\n' >&2; exit 1; }
+previous_node_image=$(sed -n 's/^TASKHUB_NODE_IMAGE=//p' "$root/.env" | tail -n 1)
 
 if [ -n "$bundle" ]; then
   [ -f "$bundle/SHA256SUMS" ] || { printf '离线包缺少 SHA256SUMS。\n' >&2; exit 1; }
@@ -52,10 +53,11 @@ if [ -z "$bundle" ]; then
   registry=${TASKHUB_REGISTRY:-}
   [ -z "$registry" ] || prefix="${registry%/}/"
 fi
+target_node_image="${prefix}taskhub-node:$version"
 sed -i.bak \
   -e "s|^TASKHUB_VERSION=.*|TASKHUB_VERSION=$version|" \
   -e "s|^TASKHUB_SEED_IMAGE=.*|TASKHUB_SEED_IMAGE=${prefix}taskhub-seed:$version|" \
-  -e "s|^TASKHUB_NODE_IMAGE=.*|TASKHUB_NODE_IMAGE=${prefix}taskhub-node:$version|" \
+  -e "s|^TASKHUB_NODE_IMAGE=.*|TASKHUB_NODE_IMAGE=$target_node_image|" \
   "$root/.env"
 rm -f "$root/.env.bak"
 
@@ -64,6 +66,22 @@ if ! docker compose --project-directory "$root" --env-file "$root/.env" -f "$roo
   printf '升级启动失败，开始恢复 %s。\n' "$backup" >&2
   "$root/restore.sh" "$backup"
   exit 1
+fi
+
+if ! reconciliation=$(docker compose --project-directory "$root" --env-file "$root/.env" \
+  -f "$root/compose.yaml" exec -T controller python -m taskhub_v2.release_maintenance \
+  reconcile-node-image --previous "$previous_node_image" --current "$target_node_image"); then
+  printf '节点镜像配置同步失败，开始恢复 %s。\n' "$backup" >&2
+  "$root/restore.sh" "$backup"
+  exit 1
+fi
+if [ "$reconciliation" = changed ]; then
+  if ! docker compose --project-directory "$root" --env-file "$root/.env" \
+    -f "$root/compose.yaml" restart controller; then
+    printf '节点镜像配置生效失败，开始恢复 %s。\n' "$backup" >&2
+    "$root/restore.sh" "$backup"
+    exit 1
+  fi
 fi
 
 port=$(sed -n 's/^TASKHUB_PORT=//p' "$root/.env" | tail -n 1)

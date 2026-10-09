@@ -2,6 +2,24 @@
 
 Updated: 2026-10-10
 
+## Release-managed node image reconciliation
+
+- The local formal Seed and Docker execution node were upgraded to `v0.1.0-alpha.23` from the
+  verified recovery point `deploy/release/backups/20261009T191544Z`; both run commit
+  `8d19ba51f0c64c7ea449d0c6fa6613a2aa46c4d6` and passed health checks. The authenticated agent
+  connection also passed after restart.
+- The process-only ecommerce run was removed from the active list before upgrade. Its managed
+  repository remained clean at `07b9113cfa83846b3c86ac8887315f591dad7b91`, exactly matching
+  `origin/main`, so no generated ecommerce work was submitted.
+- The upgrade exposed a general precedence defect: `.env` advanced to the new Node image while the
+  persisted managed platform value still selected the prior image. Release maintenance now advances
+  that persisted value only when it exactly matches the previous deployment image, preserves custom
+  operator overrides, records the change through managed-configuration audit, and participates in
+  verified-backup rollback on Linux and Windows.
+- Verification passes repository-wide Ruff and `431 passed, 26 skipped`. The first full test run had
+  one transient device-auth process timing miss; that test passed alone and the complete suite then
+  passed on rerun.
+
 ## Repository-aware project contracts and DAG scopes
 
 - A real process-only run against the ecommerce monorepo proved that profile template paths such as

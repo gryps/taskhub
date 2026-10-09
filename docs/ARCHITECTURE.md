@@ -120,6 +120,12 @@ archives without `.git` or project credentials and return structured results. Fo
 the release Compose and documented backup/rollback procedures; runtime secrets, databases, volumes,
 provider state, and generated artifacts remain outside source control.
 
+Release upgrades reconcile the persisted local-node image only when it still exactly matches the
+previous deployment image. This keeps Seed and its managed worker release-aligned without replacing
+an explicit operator image override. Reconciliation uses the managed-configuration service so
+validation, version history and audit ownership remain intact, and any failure enters the existing
+verified-backup rollback path.
+
 ## Architecture verification
 
 `tests/test_architecture.py` enforces standard documentation, source-file budgets, Python function and

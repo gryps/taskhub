@@ -9,6 +9,8 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $EnvFile = Join-Path $Root ".env"
 $ComposeFile = Join-Path $Root "compose.yaml"
 if (-not (Test-Path $EnvFile)) { throw "请在已初始化的 TaskHub 安装目录运行。" }
+$PreviousNodeLine = Get-Content $EnvFile | Where-Object { $_ -match '^TASKHUB_NODE_IMAGE=' } | Select-Object -Last 1
+$PreviousNodeImage = ($PreviousNodeLine -split '=', 2)[1]
 
 if ($OfflineBundle) {
     $ChecksumFile = Join-Path $OfflineBundle "SHA256SUMS"
@@ -54,10 +56,11 @@ if ($OfflineBundle) {
 $Registry = if (-not $OfflineBundle -and $env:TASKHUB_REGISTRY) {
     $env:TASKHUB_REGISTRY.TrimEnd('/') + "/"
 } else { "" }
+$TargetNodeImage = "${Registry}taskhub-node:$Version"
 $Lines = Get-Content $EnvFile | ForEach-Object {
     if ($_ -match '^TASKHUB_VERSION=') { "TASKHUB_VERSION=$Version" }
     elseif ($_ -match '^TASKHUB_SEED_IMAGE=') { "TASKHUB_SEED_IMAGE=${Registry}taskhub-seed:$Version" }
-    elseif ($_ -match '^TASKHUB_NODE_IMAGE=') { "TASKHUB_NODE_IMAGE=${Registry}taskhub-node:$Version" }
+    elseif ($_ -match '^TASKHUB_NODE_IMAGE=') { "TASKHUB_NODE_IMAGE=$TargetNodeImage" }
     else { $_ }
 }
 $Lines | Set-Content $EnvFile -Encoding ascii
@@ -66,6 +69,20 @@ docker compose --project-directory $Root --env-file $EnvFile -f $ComposeFile up 
 if ($LASTEXITCODE -ne 0) {
     & (Join-Path $Root "restore.ps1") -BackupDirectory $Backup
     throw "升级启动失败，已恢复旧版本。"
+}
+$Reconciliation = docker compose --project-directory $Root --env-file $EnvFile -f $ComposeFile `
+    exec -T controller python -m taskhub_v2.release_maintenance reconcile-node-image `
+    --previous $PreviousNodeImage --current $TargetNodeImage
+if ($LASTEXITCODE -ne 0) {
+    & (Join-Path $Root "restore.ps1") -BackupDirectory $Backup
+    throw "节点镜像配置同步失败，已恢复旧版本。"
+}
+if (($Reconciliation | Select-Object -Last 1).Trim() -eq "changed") {
+    docker compose --project-directory $Root --env-file $EnvFile -f $ComposeFile restart controller
+    if ($LASTEXITCODE -ne 0) {
+        & (Join-Path $Root "restore.ps1") -BackupDirectory $Backup
+        throw "节点镜像配置生效失败，已恢复旧版本。"
+    }
 }
 $PortLine = Get-Content $EnvFile | Where-Object { $_ -match '^TASKHUB_PORT=' } | Select-Object -Last 1
 $Port = ($PortLine -split '=', 2)[1]

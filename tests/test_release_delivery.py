@@ -87,6 +87,18 @@ def test_upgrade_can_use_verified_local_images_without_skipping_backup():
         assert "verify-backup" in script
 
 
+def test_upgrade_reconciles_inherited_node_image_before_health_check():
+    shell = (RELEASE / "upgrade.sh").read_text(encoding="utf-8")
+    powershell = (RELEASE / "upgrade.ps1").read_text(encoding="utf-8-sig")
+
+    for script in (shell, powershell):
+        assert "taskhub_v2.release_maintenance" in script
+        assert "reconcile-node-image" in script
+        assert "PreviousNodeImage" in script or "previous_node_image" in script
+        assert "TargetNodeImage" in script or "target_node_image" in script
+        assert script.index("reconcile-node-image") < script.index("/api/health")
+
+
 def test_release_compose_is_immutable_and_keeps_postgres_private():
     payload = yaml.safe_load((RELEASE / "compose.yaml").read_text(encoding="utf-8"))
     controller = payload["services"]["controller"]
@@ -117,9 +129,7 @@ def test_release_compose_preloads_unified_node_reference():
     assert controller["environment"]["TASKHUB_DOCKER_NETWORK"] == (
         "${TASKHUB_DOCKER_NETWORK:-taskhub_default}"
     )
-    assert controller["environment"]["TASKHUB_WORKER_MODE"] == (
-        "${TASKHUB_WORKER_MODE:-git}"
-    )
+    assert controller["environment"]["TASKHUB_WORKER_MODE"] == ("${TASKHUB_WORKER_MODE:-git}")
     assert controller["environment"]["TASKHUB_DATA_VOLUME_NAME"] == (
         "${TASKHUB_DATA_VOLUME:-taskhub-data}"
     )
@@ -135,8 +145,7 @@ def test_release_compose_preloads_unified_node_reference():
     assert "TASKHUB_SESSION_STATE_FILE: /var/lib/taskhub/state/sessions.json" in text
     assert "TASKHUB_AGENT_ACCESS_FILE: /var/lib/taskhub/config/agent-access.json" in text
     assert (
-        "TASKHUB_EXTERNAL_WINDOWS_NODES_FILE: "
-        "/var/lib/taskhub/config/external-windows-nodes.json"
+        "TASKHUB_EXTERNAL_WINDOWS_NODES_FILE: /var/lib/taskhub/config/external-windows-nodes.json"
     ) in text
 
 
@@ -174,8 +183,12 @@ def test_initializers_prefer_active_legacy_volumes_over_empty_standard_names():
 
 def test_backup_restore_binds_encryption_key_to_database_identity():
     for name in (
-        "backup.sh", "backup.ps1", "restore.sh", "restore.ps1",
-        "verify-backup.sh", "verify-backup.ps1",
+        "backup.sh",
+        "backup.ps1",
+        "restore.sh",
+        "restore.ps1",
+        "verify-backup.sh",
+        "verify-backup.ps1",
     ):
         text = (RELEASE / name).read_text(encoding="utf-8-sig")
         assert "TASKHUB_CONFIG_KEY_FINGERPRINT" in text
@@ -223,7 +236,7 @@ def test_release_images_pin_codex_and_node_has_common_role_tools():
     node = (ROOT / "deploy" / "node" / "Dockerfile").read_text(encoding="utf-8")
 
     assert "ARG CODEX_VERSION=" in seed
-    assert "CODEX_RELEASE=\"${CODEX_VERSION}\"" in seed
+    assert 'CODEX_RELEASE="${CODEX_VERSION}"' in seed
     assert "TASKHUB_CODEX_CLI_BIN=/usr/local/bin/codex" in seed
     assert "ARG NPM_REGISTRY=" in seed
     assert "npm config set registry" in seed
@@ -258,9 +271,7 @@ def test_release_images_pin_codex_and_node_has_common_role_tools():
         )
         # Per-release metadata must not invalidate the expensive OS, Codex,
         # and Python dependency layers on every source-only rebuild.
-        assert dockerfile.index("ARG TASKHUB_COMMIT=") > dockerfile.index(
-            "python -m pip install"
-        )
+        assert dockerfile.index("ARG TASKHUB_COMMIT=") > dockerfile.index("python -m pip install")
 
     assert "PIP_CACHE_DIR=/root/.cache/pip PIP_NO_CACHE_DIR=off" in node
 
