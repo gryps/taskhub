@@ -118,13 +118,19 @@ Health and authentication do not identify a project run. Use the release kit's p
 the standard development-agent entry point:
 
 ```bash
+python3 taskhub-project-client.py --connection-file PATH readiness \
+  --project PROJECT_ID
 python3 taskhub-project-client.py --connection-file PATH ensure-run \
   --project PROJECT_ID --production-line LINE
 ```
 
+`readiness` is read-only and reports the selected product specification, active project contract
+and stable blocker codes with the required next action. Run it when connection checks pass but no
+run id is available. It does not approve governance records or weaken the creation gate.
 `ensure-run` returns the one non-terminal run already registered for that project and production
-line. It creates a run only when none exists, and only from the project's current approved product
-specification. Multiple matches fail closed instead of choosing or creating a run. Use `projects`
+line. It creates a run only when none exists, and only when the selected product specification is
+approved and a project contract is active. Multiple matches fail closed instead of choosing or
+creating a run. Use `projects`
 and `runs --project PROJECT_ID` for discovery, `status --run-id RUN_ID` for a bounded agent summary
 (`--full` for the complete state), and
 `resume --run-id RUN_ID --decision DECISION --comment TEXT` only when an explicit recovery decision

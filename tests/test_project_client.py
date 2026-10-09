@@ -4,9 +4,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT_PATH = (
-    Path(__file__).parents[1] / "deploy" / "release" / "taskhub-project-client.py"
-)
+SCRIPT_PATH = Path(__file__).parents[1] / "deploy" / "release" / "taskhub-project-client.py"
 
 
 def load_module():
@@ -17,11 +15,12 @@ def load_module():
 
 
 class FakeClient:
-    def __init__(self, projects, runs=None, spec=None, run=None):
+    def __init__(self, projects, runs=None, spec=None, run=None, contracts=None):
         self.projects = projects
         self.runs = runs or []
         self.spec = spec
         self.run = run
+        self.contracts = contracts if contracts is not None else [active_contract()]
         self.posts = []
 
     def get(self, path, query=None):
@@ -31,6 +30,10 @@ class FakeClient:
             return {"items": self.runs}
         if path == "api/product-specs/current":
             return {"product_spec": self.spec}
+        if path.startswith("api/product-specs/"):
+            return {"product_spec": self.spec}
+        if path.endswith("/project-contracts"):
+            return {"project_contracts": self.contracts}
         if path.startswith("api/runs/"):
             return self.run
         raise AssertionError((path, query))
@@ -59,6 +62,14 @@ def project():
         "id": "ecommerce-operations-platform",
         "name": "电商运营平台",
         "repository": "/var/lib/taskhub/projects/ecommerce-operations-platform",
+    }
+
+
+def active_contract():
+    return {
+        "contract_id": "pc_ecommerce",
+        "version": 2,
+        "status": "active",
     }
 
 
@@ -118,8 +129,58 @@ def test_create_run_requires_approved_product_spec():
         [project()], [], {"spec_id": "ps_ops_data", "version": 3, "status": "draft"}
     )
 
-    with pytest.raises(module.TaskHubClientError, match="not approved"):
+    with pytest.raises(module.TaskHubClientError, match="product_spec_not_approved"):
         module.execute(client, args(command="create-run"))
+
+
+def test_readiness_reports_all_governance_blockers_with_next_actions():
+    module = load_module()
+    spec = {"spec_id": "ps_ops_data", "version": 3, "status": "in_review"}
+
+    result = module.execute(
+        FakeClient([project()], spec=spec, contracts=[]),
+        args(command="readiness"),
+    )
+
+    assert result["ready"] is False
+    assert result["product_spec"] == {
+        "spec_id": "ps_ops_data",
+        "version": 3,
+        "status": "in_review",
+    }
+    assert result["project_contract"] is None
+    assert [item["code"] for item in result["blockers"]] == [
+        "product_spec_not_approved",
+        "project_contract_not_active",
+    ]
+
+
+def test_readiness_accepts_an_explicit_approved_specification_version():
+    module = load_module()
+    spec = {"spec_id": "ps_ops_data", "version": 2, "status": "approved"}
+
+    result = module.execute(
+        FakeClient([project()], spec=spec),
+        args(
+            command="readiness",
+            spec_id="ps_ops_data",
+            spec_version=2,
+        ),
+    )
+
+    assert result["ready"] is True
+    assert result["blockers"] == []
+
+
+def test_create_run_fails_before_post_when_contract_is_not_active():
+    module = load_module()
+    spec = {"spec_id": "ps_ops_data", "version": 3, "status": "approved"}
+    client = FakeClient([project()], spec=spec, contracts=[])
+
+    with pytest.raises(module.TaskHubClientError, match="project_contract_not_active"):
+        module.execute(client, args(command="create-run"))
+
+    assert client.posts == []
 
 
 def test_project_resolution_rejects_ambiguous_names():

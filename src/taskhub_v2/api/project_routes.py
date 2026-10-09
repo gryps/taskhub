@@ -376,7 +376,9 @@ async def check_test_environment(project_id: str, request: Request) -> dict:
         raise HTTPException(status_code=409, detail="请先配置预生产环境")
 
     try:
-        async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
+        async with httpx.AsyncClient(
+            timeout=8, follow_redirects=False, trust_env=False
+        ) as client:
             response = await client.get(project.test_environment.target_url)
     except httpx.HTTPError as exc:
         return {

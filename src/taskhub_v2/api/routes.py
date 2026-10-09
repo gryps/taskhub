@@ -116,7 +116,9 @@ async def start_run(payload: StartRunRequest, request: Request, service: Service
             raise RunConflictError(f"项目代码仓库未就绪：{exc}") from exc
         if project.test_environment:
             try:
-                async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
+                async with httpx.AsyncClient(
+                    timeout=8, follow_redirects=False, trust_env=False
+                ) as client:
                     response = await client.get(project.test_environment.target_url)
                 if response.status_code >= 500:
                     raise RunConflictError(f"预生产环境未就绪：HTTP {response.status_code}")

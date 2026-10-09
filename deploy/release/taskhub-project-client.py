@@ -44,6 +44,12 @@ def parser() -> argparse.ArgumentParser:
     archive = commands.add_parser("archive", help="Archive a terminal project run")
     archive.add_argument("--run-id", required=True)
 
+    readiness = commands.add_parser(
+        "readiness", help="Inspect product governance prerequisites for a new run"
+    )
+    _project_arguments(readiness)
+    _spec_arguments(readiness)
+
     create = commands.add_parser("create-run", help="Create a run from an approved product spec")
     _project_arguments(create)
     _creation_arguments(create)
@@ -65,6 +71,10 @@ def _creation_arguments(command: argparse.ArgumentParser) -> None:
     requirement = command.add_mutually_exclusive_group()
     requirement.add_argument("--requirement")
     requirement.add_argument("--requirement-file")
+    _spec_arguments(command)
+
+
+def _spec_arguments(command: argparse.ArgumentParser) -> None:
     command.add_argument("--spec-id")
     command.add_argument("--spec-version", type=int)
 
@@ -133,9 +143,7 @@ def requirement_text(args: argparse.Namespace) -> str:
     return value
 
 
-def approved_spec(
-    client: TaskHubClient, project_id: str, args: argparse.Namespace
-) -> tuple[str, int]:
+def selected_spec(client: TaskHubClient, project_id: str, args: argparse.Namespace) -> dict | None:
     if bool(args.spec_id) != bool(args.spec_version):
         raise ValueError("--spec-id and --spec-version must be supplied together")
     if args.spec_id:
@@ -146,15 +154,80 @@ def approved_spec(
     else:
         payload = client.get("api/product-specs/current", query={"project_id": project_id})
     spec = payload.get("product_spec")
-    if not isinstance(spec, dict):
-        raise TaskHubClientError("project has no current product spec")
-    if spec.get("status") != "approved":
-        raise TaskHubClientError("product spec is not approved")
+    return spec if isinstance(spec, dict) else None
+
+
+def active_contract(client: TaskHubClient, project_id: str) -> dict | None:
+    payload = client.get(f"api/projects/{project_id}/project-contracts")
+    contracts = payload.get("project_contracts", [])
+    return next(
+        (item for item in contracts if isinstance(item, dict) and item.get("status") == "active"),
+        None,
+    )
+
+
+def record_summary(record: dict | None, identifier: str) -> dict | None:
+    if record is None:
+        return None
+    return {
+        key: record.get(key)
+        for key in (identifier, "version", "status", "updated_at")
+        if record.get(key) is not None
+    }
+
+
+def run_readiness(client: TaskHubClient, project: dict, args: argparse.Namespace) -> dict:
+    spec = selected_spec(client, project["id"], args)
+    contract = active_contract(client, project["id"])
+    blockers = []
+    if spec is None:
+        blockers.append(
+            {
+                "code": "product_spec_missing",
+                "message": (
+                    "Create, review and approve a product specification in Development Flow."
+                ),
+            }
+        )
+    elif spec.get("status") != "approved":
+        blockers.append(
+            {
+                "code": "product_spec_not_approved",
+                "message": (
+                    f"Product specification {spec.get('spec_id')}@{spec.get('version')} has status "
+                    f"{spec.get('status')!r}; approve it in Development Flow."
+                ),
+            }
+        )
+    if contract is None:
+        blockers.append(
+            {
+                "code": "project_contract_not_active",
+                "message": "Review, validate and activate a project contract in Development Flow.",
+            }
+        )
+    return {
+        "ready": not blockers,
+        "project": project,
+        "product_spec": record_summary(spec, "spec_id"),
+        "project_contract": record_summary(contract, "contract_id"),
+        "blockers": blockers,
+    }
+
+
+def approved_spec(
+    client: TaskHubClient, project: dict, args: argparse.Namespace
+) -> tuple[str, int]:
+    readiness = run_readiness(client, project, args)
+    if readiness["blockers"]:
+        details = "; ".join(f"{item['code']}: {item['message']}" for item in readiness["blockers"])
+        raise TaskHubClientError(f"run creation blocked: {details}")
+    spec = readiness["product_spec"]
     return str(spec["spec_id"]), int(spec["version"])
 
 
 def create_run(client: TaskHubClient, project: dict, args: argparse.Namespace) -> dict:
-    spec_id, version = approved_spec(client, project["id"], args)
+    spec_id, version = approved_spec(client, project, args)
     return client.post(
         "api/runs",
         {
@@ -204,14 +277,18 @@ def execute(client: TaskHubClient, args: argparse.Namespace):
     if args.command == "archive":
         return client.post(f"api/runs/{args.run_id}/archive", {})
     project = resolve_project(client, args.project)
+    if args.command == "readiness":
+        return run_readiness(client, project, args)
     if args.command == "runs":
-        return {"project": project, "runs": list_runs(
-            client, project["id"], args.production_line, args.include_archived
-        )}
+        return {
+            "project": project,
+            "runs": list_runs(client, project["id"], args.production_line, args.include_archived),
+        }
     if args.command == "create-run":
         return {"action": "created", "run": create_run(client, project, args)}
     active = [
-        item for item in list_runs(client, project["id"], args.production_line)
+        item
+        for item in list_runs(client, project["id"], args.production_line)
         if item.get("status") not in TERMINAL_STATUSES
     ]
     if len(active) > 1:

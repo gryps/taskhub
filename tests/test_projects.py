@@ -843,6 +843,8 @@ def test_project_test_environment_can_be_disabled(tmp_path: Path):
 
 
 def test_project_test_environment_can_be_checked(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ALL_PROXY", "socks5h://proxy.invalid:7893")
+    monkeypatch.setenv("all_proxy", "socks5h://proxy.invalid:7893")
     projects_file = tmp_path / "projects.json"
     repo = repository(tmp_path / "shop")
     app = create_app(Settings(admin_token="admin-secret", session_secret="session-secret",

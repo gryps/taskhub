@@ -350,7 +350,7 @@ async def _wait_for_preproduction(environment, specification, commit: str) -> di
     url = environment.target_url + specification.health_path
     deadline = asyncio.get_running_loop().time() + specification.timeout_seconds
     last_detail = "预生产健康检查超时"
-    async with httpx.AsyncClient(follow_redirects=False) as client:
+    async with httpx.AsyncClient(follow_redirects=False, trust_env=False) as client:
         while asyncio.get_running_loop().time() < deadline:
             try:
                 response = await client.get(url, timeout=5)
