@@ -171,6 +171,7 @@ def test_verification_task_runs_on_test_scheduler_without_calling_coder(tmp_path
             assert kwargs["workload"] == "test"
             assert kwargs["required_capabilities_override"] == {"python3", "pytest"}
             assert kwargs["eligible_node_ids"] == {"test-node"}
+            assert kwargs["setup_commands"] == []
             return ScheduledTests(
                 node_id="test-node",
                 tests=[CommandExecution(command=["pytest"], exit_code=0, output_tail="passed")],

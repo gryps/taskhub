@@ -72,6 +72,13 @@ After every integrated batch, the scheduler runs contract and global-governance 
 result on the execution batch. Final acceptance repeats the full contract gate and declared quality
 commands. A policy exception can downgrade only named failures within an approved scope and expiry.
 
+Contract installation commands are part of the frozen execution context. The scheduler derives node
+capabilities from both installation and quality commands, and the node agent runs installation before
+browser preparation and quality checks in every clean workspace. A failed installation stops the
+remaining checks. Existing repositories with an explicit `npm run bootstrap` script use that repository-
+owned bootstrap command in newly inferred contract drafts; otherwise the selected project profile keeps
+its standard installation command.
+
 ## Two-stage activation
 
 Seed onboarding owns only platform-wide infrastructure readiness. Project activation is a separate

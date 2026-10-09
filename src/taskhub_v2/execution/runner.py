@@ -39,6 +39,10 @@ class NodeExecutionError(RuntimeError):
         self.detail = detail
 
 
+def normalized_setup_commands(commands: list[list[str]] | None) -> list[list[str]]:
+    return list(commands or ())
+
+
 class NodeRunner:
     def __init__(self, token: str, transport=None, local_coder=None, token_resolver=None):
         self.token = token
@@ -59,10 +63,12 @@ class NodeRunner:
         git_commit: str = "",
         artifact_paths: list[str] | None = None,
         execution_environment: dict[str, str] | None = None,
+        setup_commands: list[list[str]] | None = None,
     ) -> ScheduledTests:
+        setup_commands = normalized_setup_commands(setup_commands)
         if node.kind == "local":
             tests = await self._run_local(
-                commands, timeout, workdir, execution_environment or {}
+                [*setup_commands, *commands], timeout, workdir, execution_environment or {}
             )
             return ScheduledTests(node_id=node.id, tests=tests)
         return await self._run_remote(
@@ -76,6 +82,7 @@ class NodeRunner:
             git_commit,
             artifact_paths or [],
             execution_environment or {},
+            setup_commands,
         )
 
     async def health(self, node: NodeDefinition) -> dict:
@@ -163,12 +170,13 @@ class NodeRunner:
         git_commit: str,
         artifact_paths: list[str],
         execution_environment: dict[str, str],
+        setup_commands: list[list[str]],
     ) -> ScheduledTests:
         archive = await asyncio.to_thread(self._archive, Path(workdir))
         digest = hashlib.sha256(archive).hexdigest()
         try:
             request_timeout = self._remote_request_timeout(
-                commands, timeout, required_capabilities
+                [*setup_commands, *commands], timeout, required_capabilities
             )
             async with self._client(timeout=request_timeout) as client:
                 await self._upload(client, node, job_id, archive, digest)
@@ -176,6 +184,7 @@ class NodeRunner:
                     f"{node.url.rstrip('/')}/api/jobs/{job_id}/execute",
                     json={
                         "commands": commands,
+                        "setup_commands": setup_commands,
                         "timeout_seconds": timeout,
                         "archive_sha256": digest,
                         "required_capabilities": sorted(required_capabilities),

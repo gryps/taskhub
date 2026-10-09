@@ -145,6 +145,26 @@ def test_official_profiles_and_contract_lifecycle(tmp_path):
         assert [item["status"] for item in versions] == ["active", "superseded"]
 
 
+def test_contract_prefers_repository_bootstrap_script_for_install(tmp_path):
+    repo = repository(tmp_path / "bootstrap-repo")
+    (repo / "package.json").write_text(
+        json.dumps({"scripts": {"bootstrap": "npm ci && python3 -m pip install -e ."}}),
+        encoding="utf-8",
+    )
+    git(repo, "add", "package.json")
+    git(repo, "commit", "-m", "add bootstrap")
+
+    with TestClient(create_app(settings(tmp_path, repo))) as client:
+        headers = login(client)
+        draft = client.post(
+            "/api/projects/demo/project-contracts/draft",
+            headers=headers,
+            json={"profile_id": "fullstack-web", "inferred": False},
+        ).json()
+
+    assert draft["commands"]["install"] == [["npm", "run", "bootstrap"]]
+
+
 def test_project_activation_edits_real_contract_quality_commands(tmp_path):
     repo = repository(tmp_path / "repo")
     with TestClient(create_app(settings(tmp_path, repo))) as client:

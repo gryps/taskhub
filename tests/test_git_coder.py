@@ -2,11 +2,18 @@ import asyncio
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from taskhub_v2.artifacts import ArtifactStore
-from taskhub_v2.domain.models import CodeChangeSummary, ModelResult, Plan
+from taskhub_v2.domain.models import (
+    CodeChangeSummary,
+    ModelResult,
+    Plan,
+    ScheduledTests,
+    TestExecution,
+)
 from taskhub_v2.git import GitWorkspaceManager
 from taskhub_v2.projects import ProjectRegistry
 from taskhub_v2.workers.git_coder import GitCodingWorker, WorkerExecutionError
@@ -116,6 +123,37 @@ class RecordingScheduler:
     async def run(self, job_id, *args, **kwargs):
         self.job_ids.append(job_id)
         return await self.delegate.run(job_id, *args, **kwargs)
+
+
+def test_dag_quality_uses_frozen_contract_setup_and_acceptance_commands(tmp_path):
+    class Scheduler:
+        def __init__(self):
+            self.call = None
+
+        async def run(self, *args, **kwargs):
+            self.call = (args, kwargs)
+            return ScheduledTests(
+                node_id="test-node",
+                tests=[
+                    TestExecution(
+                        command=["npm", "run", "check"], exit_code=0, output_tail="ok"
+                    )
+                ],
+            )
+
+    scheduler = Scheduler()
+    worker = GitCodingWorker(None, None, None, None, scheduler)
+    project = SimpleNamespace(test_commands=[["legacy-check"]], test_timeout_seconds=60)
+    context = {
+        "setup_commands": [["npm", "run", "bootstrap"]],
+        "acceptance_commands": [["npm", "run", "check"]],
+    }
+
+    result = asyncio.run(worker._run_quality("run-1", 2, project, str(tmp_path), context))
+
+    assert result.node_id == "test-node"
+    assert scheduler.call[0][2] == [["npm", "run", "check"]]
+    assert scheduler.call[1]["setup_commands"] == [["npm", "run", "bootstrap"]]
 
 
 def test_git_worker_changes_tests_artifacts_and_commits(tmp_path: Path):

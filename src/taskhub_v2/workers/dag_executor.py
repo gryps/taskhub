@@ -91,6 +91,7 @@ class WorkerDagExecutor:
             "required_capabilities": task.required_capabilities,
             "contracts": task.contracts,
             "acceptance_commands": task.acceptance_commands,
+            "setup_commands": contract.commands.install,
             "required_evidence": task.required_evidence,
             "expected_artifacts": task.expected_artifacts,
             "product_spec": {
@@ -147,6 +148,14 @@ class WorkerDagExecutor:
         if not task.acceptance_commands:
             raise DagIntegrationError("验证任务没有可执行验收命令")
         project = self.projects.get(task.project_id)
+        setup_commands = []
+        plan = await self.store.get("execution_plan", task.plan_id, str(task.plan_version))
+        if isinstance(plan, ExecutionPlan):
+            contract = await self.store.get(
+                "project_contract", plan.project_contract_id, str(plan.project_contract_version)
+            )
+            if isinstance(contract, ProjectContract):
+                setup_commands = contract.commands.install
         workspace = await self.workspaces.prepare(project, attempt.attempt_id, base_commit)
         scheduled = await self.test_scheduler.run(
             f"{attempt.attempt_id}-verify",
@@ -158,6 +167,7 @@ class WorkerDagExecutor:
             required_capabilities_override=set(task.required_capabilities),
             git_commit=base_commit,
             artifact_paths=task.expected_artifacts,
+            setup_commands=setup_commands,
             eligible_node_ids=(
                 await self.topology_resolver(task.project_id, "test")
                 if self.topology_resolver

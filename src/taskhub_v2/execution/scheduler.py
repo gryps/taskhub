@@ -7,7 +7,11 @@ from pathlib import Path
 
 from taskhub_v2.domain.models import NodeDefinition, Plan, ScheduledCoding, ScheduledTests
 from taskhub_v2.execution.registry import NodeRegistry
-from taskhub_v2.execution.runner import NodeExecutionError, NodeRunner
+from taskhub_v2.execution.runner import (
+    NodeExecutionError,
+    NodeRunner,
+    normalized_setup_commands,
+)
 
 
 class LocalTestScheduler:
@@ -57,8 +61,10 @@ class NodeScheduler:
         artifact_paths: list[str] | None = None,
         execution_environment: dict[str, str] | None = None,
         eligible_node_ids: set[str] | None = None,
+        setup_commands: list[list[str]] | None = None,
     ) -> ScheduledTests:
-        required = required_capabilities(commands)
+        setup_commands = normalized_setup_commands(setup_commands)
+        required = required_capabilities([*setup_commands, *commands])
         if workload == "browser_acceptance":
             required.update(
                 {
@@ -95,6 +101,7 @@ class NodeScheduler:
                         git_commit=git_commit,
                         artifact_paths=artifact_paths or [],
                         execution_environment=execution_environment or {},
+                        setup_commands=setup_commands,
                     )
                 return await self.runner.run(
                     node,
@@ -106,6 +113,7 @@ class NodeScheduler:
                     git_commit=git_commit,
                     artifact_paths=artifact_paths or [],
                     execution_environment=execution_environment or {},
+                    setup_commands=setup_commands,
                 )
             except Exception as exc:
                 failures.append(str(exc))

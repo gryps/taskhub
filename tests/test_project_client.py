@@ -152,3 +152,16 @@ def test_status_defaults_to_bounded_agent_summary():
 
     assert result["task_counts"] == {"running": 1, "pending": 1}
     assert "requirement" not in result
+
+
+def test_archive_uses_explicit_run_id():
+    module = load_module()
+    client = FakeClient([])
+
+    result = module.execute(
+        client,
+        argparse.Namespace(command="archive", run_id="run-terminal"),
+    )
+
+    assert result["run_id"] == "new-run"
+    assert client.posts == [("api/runs/run-terminal/archive", {})]

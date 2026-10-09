@@ -92,6 +92,30 @@ def test_scheduler_routes_only_to_node_with_required_tool(tmp_path):
     assert runner.calls == [("job-npm", "node-b")]
 
 
+def test_scheduler_includes_setup_commands_in_capability_matching(tmp_path):
+    async def scenario():
+        runner = RecordingRunner(
+            capabilities={
+                "node-a": {"python3": True, "pytest": True, "npm": False},
+                "node-b": {"python3": True, "pytest": True, "npm": True},
+            }
+        )
+        scheduler = NodeScheduler(registry(tmp_path), runner, str(tmp_path / "state.json"))
+        result = await scheduler.run(
+            "job-setup-npm",
+            "run-setup-npm",
+            [["python3", "-m", "pytest"]],
+            30,
+            str(tmp_path),
+            setup_commands=[["npm", "ci"]],
+        )
+        return result, runner
+
+    result, runner = asyncio.run(scenario())
+    assert result.node_id == "node-b"
+    assert runner.calls == [("job-setup-npm", "node-b")]
+
+
 def test_scheduler_honors_active_topology_node_allowlist(tmp_path):
     async def scenario():
         runner = RecordingRunner()

@@ -74,12 +74,8 @@ class GitCodingWorker:
         )
         if existing:
             existing.workspace = workspace
-            scheduled = await self.test_scheduler.run(
-                f"{run_id}-r{revision}",
-                run_id,
-                project.test_commands,
-                project.test_timeout_seconds,
-                workspace.path,
+            scheduled = await self._run_quality(
+                run_id, revision, project, workspace.path, task_context
             )
             existing.tests = scheduled.tests
             existing.execution_node = scheduled.node_id
@@ -95,7 +91,7 @@ class GitCodingWorker:
         retest_feedback = ""
         if revision:
             recovered, retest_feedback = await self._recover_uncommitted_if_valid(
-                run_id, revision, workspace, project, feedback
+                run_id, revision, workspace, project, feedback, task_context
             )
             if recovered:
                 return recovered
@@ -123,7 +119,7 @@ class GitCodingWorker:
                 and await self._has_implementation(workspace.path, workspace.base_commit)
             ):
                 return await self._evidence_only_result(
-                    run_id, revision, workspace, project, model_result
+                    run_id, revision, workspace, project, model_result, task_context
                 )
             retry_feedback = no_change_feedback(model_result, feedback)
             if retest_feedback:
@@ -165,12 +161,8 @@ class GitCodingWorker:
         if generated:
             raise WorkerExecutionError("generated_files", ", ".join(generated))
 
-        scheduled = await self.test_scheduler.run(
-            f"{run_id}-r{revision}",
-            run_id,
-            project.test_commands,
-            project.test_timeout_seconds,
-            workspace.path,
+        scheduled = await self._run_quality(
+            run_id, revision, project, workspace.path, task_context
         )
         tests = scheduled.tests
         raise_for_failed_tests(tests, model_results=model_results)
@@ -228,8 +220,22 @@ class GitCodingWorker:
         head = (await self._git(workdir, "rev-parse", "HEAD")).strip()
         return head != base_commit
 
+    async def _run_quality(self, run_id, revision, project, workdir, task_context=None):
+        context = task_context or {}
+        commands = context.get("acceptance_commands") or project.test_commands
+        setup_commands = context.get("setup_commands") or []
+        return await self.test_scheduler.run(
+            # Stable identity lets node digests reuse an unchanged recovery attempt.
+            f"{run_id}-r{revision}",
+            run_id,
+            commands,
+            project.test_timeout_seconds,
+            workdir,
+            setup_commands=setup_commands,
+        )
+
     async def _recover_uncommitted_if_valid(
-        self, run_id, revision, workspace, project, feedback
+        self, run_id, revision, workspace, project, feedback, task_context=None
     ) -> tuple[ExecutionResult | None, str]:
         changed_files = await self._changed_files(workspace.path)
         if not changed_files:
@@ -238,13 +244,8 @@ class GitCodingWorker:
         generated = [name for name in changed_files if is_generated(name)]
         if forbidden or generated:
             return None, ""
-        scheduled = await self.test_scheduler.run(
-            # Stable identity lets node digests reuse an unchanged recovery attempt.
-            f"{run_id}-r{revision}",
-            run_id,
-            project.test_commands,
-            project.test_timeout_seconds,
-            workspace.path,
+        scheduled = await self._run_quality(
+            run_id, revision, project, workspace.path, task_context
         )
         if any(test.exit_code for test in scheduled.tests):
             detail, diagnostics = failed_test_diagnostics(scheduled.tests)
@@ -295,14 +296,10 @@ class GitCodingWorker:
         ), ""
 
     async def _evidence_only_result(
-        self, run_id, revision, workspace, project, model_result
+        self, run_id, revision, workspace, project, model_result, task_context=None
     ) -> ExecutionResult:
-        scheduled = await self.test_scheduler.run(
-            f"{run_id}-r{revision}",
-            run_id,
-            project.test_commands,
-            project.test_timeout_seconds,
-            workspace.path,
+        scheduled = await self._run_quality(
+            run_id, revision, project, workspace.path, task_context
         )
         raise_for_failed_tests(scheduled.tests)
         commit = (await self._git(workspace.path, "rev-parse", "HEAD")).strip()

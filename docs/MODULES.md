@@ -12,7 +12,7 @@
 | `services.project_contracts` | 项目边界、命令和规则绑定的项目级权威 | `ProjectContract` |
 | `services.dag_plan` | 将规格、合同及规则快照编译为计划与任务 | `ExecutionPlan`、`ProductionTask` |
 | `services.dag_scheduler` | 按依赖调度批次并在集成后执行治理门禁 | `ExecutionBatch`、`TaskAttempt` |
-| `workers.dag_executor` | 为编码节点组装冻结上下文并执行批次验证 | 工作区结果，不拥有规则 |
+| `workers.dag_executor` | 为编码节点组装含安装与质量命令的冻结上下文并执行批次验证 | 工作区结果，不拥有规则 |
 
 ## 平台核心模块
 
@@ -28,8 +28,8 @@
 | `persistence` | checkpoint 和生产记录的持久化实现 | PostgreSQL/内存存储适配器 |
 | `providers` | 模型调用、路由、健康和回退适配 | 模型结果与独立运行健康状态 |
 | `workers` | 编码、验收、发布等受控执行能力 | 结构化执行结果与证据 |
-| `execution` | 节点清单、能力匹配、槽位、任务和运行器 | 节点与调度运行事实 |
-| `node_agent` | 节点鉴权、工作区和隔离命令执行 | 幂等节点任务结果 |
+| `execution` | 节点清单、安装/质量能力匹配、槽位、任务和运行器 | 节点与调度运行事实 |
+| `node_agent` | 节点鉴权、工作区、契约安装和隔离质量命令执行 | 幂等节点任务结果 |
 | `services.external_windows_nodes` | Windows 实测机指纹确认、一次性 SSH 部署、健康确认与注册 | 外部节点元数据；不持久化 SSH 私钥 |
 | `projects` | 权威仓库创建、连接验证与项目登记 | 项目注册与仓库位置 |
 | `deployment` | 预生产部署与身份验证 | 部署结果，不拥有项目业务状态 |

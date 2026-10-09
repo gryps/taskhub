@@ -19,9 +19,12 @@ from taskhub_v2.node_agent.browser_capabilities import (
     browser_versions,
     probe_browsers,
 )
-from taskhub_v2.node_agent.browser_dependencies import prepare_browser_dependencies
 from taskhub_v2.node_agent.coding import coding_available, modify_workspace, provider_health
 from taskhub_v2.node_agent.coding_cache import CodingResultCache, workspace_fingerprint
+from taskhub_v2.node_agent.quality import (
+    complete_quality_workspace,
+    prepare_quality_workspace,
+)
 from taskhub_v2.node_agent.runtime import (
     UnsafeArchiveError,
     build_execution_environment,
@@ -29,7 +32,6 @@ from taskhub_v2.node_agent.runtime import (
     execution_request_key,
     extract_workspace,
     repair_managed_virtualenv,
-    run_commands,
 )
 from taskhub_v2.node_agent.state import NodeRuntime
 from taskhub_v2.node_agent.test_database import TestDatabaseManager
@@ -45,6 +47,7 @@ NODE_ROLE_WORKLOADS = {
 
 class ExecuteRequest(BaseModel):
     commands: list[list[str]] = Field(max_length=30)
+    setup_commands: list[list[str]] = Field(default_factory=list, max_length=10)
     timeout_seconds: int = Field(default=600, ge=1, le=3600)
     archive_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     required_capabilities: set[str] = Field(default_factory=set, max_length=20)
@@ -220,35 +223,28 @@ def create_node_app() -> FastAPI:
                 if repair_managed_virtualenv(target):
                     result_file.unlink(missing_ok=True)
                 started_at = datetime.now(UTC)
-                tests = await prepare_browser_dependencies(
-                    target, payload.commands, payload.required_capabilities,
+                environment = build_execution_environment(
+                    payload.target_url, payload.git_commit,
+                    payload.execution_environment,
+                )
+                tests = await prepare_quality_workspace(
+                    target,
+                    payload.setup_commands,
+                    payload.commands,
+                    payload.required_capabilities,
                     payload.timeout_seconds,
+                    environment,
                 )
                 if not any(test["exit_code"] for test in tests):
-                    environment = build_execution_environment(
-                        payload.target_url, payload.git_commit,
-                        payload.execution_environment,
-                    )
                     if "test_database" in payload.required_capabilities:
                         with test_databases.database(job_id) as database_environment:
-                            tests.extend(
-                                await run_commands(
-                                    target,
-                                    payload.commands,
-                                    payload.timeout_seconds,
-                                    execution_environment={
-                                        **environment, **database_environment
-                                    },
-                                )
+                            await complete_quality_workspace(
+                                tests, target, payload.commands, payload.timeout_seconds,
+                                {**environment, **database_environment},
                             )
                     else:
-                        tests.extend(
-                            await run_commands(
-                                target,
-                                payload.commands,
-                                payload.timeout_seconds,
-                                execution_environment=environment,
-                            )
+                        await complete_quality_workspace(
+                            tests, target, payload.commands, payload.timeout_seconds, environment
                         )
                 artifacts = _artifact_manifest(
                     target, payload.artifact_paths, runtime.max_upload_bytes

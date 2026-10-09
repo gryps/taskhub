@@ -41,6 +41,9 @@ def parser() -> argparse.ArgumentParser:
     resume.add_argument("--decision", required=True)
     resume.add_argument("--comment", default="")
 
+    archive = commands.add_parser("archive", help="Archive a terminal project run")
+    archive.add_argument("--run-id", required=True)
+
     create = commands.add_parser("create-run", help="Create a run from an approved product spec")
     _project_arguments(create)
     _creation_arguments(create)
@@ -198,6 +201,8 @@ def execute(client: TaskHubClient, args: argparse.Namespace):
             f"api/runs/{args.run_id}/resume",
             {"decision": args.decision, "comment": args.comment},
         )
+    if args.command == "archive":
+        return client.post(f"api/runs/{args.run_id}/archive", {})
     project = resolve_project(client, args.project)
     if args.command == "runs":
         return {"project": project, "runs": list_runs(

@@ -178,6 +178,74 @@ def test_node_uploads_workspace_and_executes_commands(tmp_path, monkeypatch):
     assert (tmp_path / "cache" / "uv").is_dir()
 
 
+def test_node_executes_declared_setup_before_quality_commands(tmp_path, monkeypatch):
+    monkeypatch.setenv("TASKHUB_NODE_ID", "node-test")
+    monkeypatch.setenv("TASKHUB_NODE_TOKEN", "node-secret")
+    monkeypatch.setenv("TASKHUB_NODE_WORK_ROOT", str(tmp_path / "jobs"))
+    payload = archive({"value.txt": b"ready\n"})
+    digest = hashlib.sha256(payload).hexdigest()
+    headers = {"Authorization": "Bearer node-secret"}
+    setup = [sys.executable, "-c", "from pathlib import Path; Path('setup.ok').write_text('yes')"]
+    quality = [
+        sys.executable,
+        "-c",
+        "from pathlib import Path; assert Path('setup.ok').read_text() == 'yes'",
+    ]
+
+    with TestClient(create_node_app()) as client:
+        client.put(
+            f"/api/jobs/job-setup/workspace?sha256={digest}",
+            content=payload,
+            headers=headers,
+        ).raise_for_status()
+        response = client.post(
+            "/api/jobs/job-setup/execute",
+            json={
+                "setup_commands": [setup],
+                "commands": [quality],
+                "timeout_seconds": 30,
+                "archive_sha256": digest,
+            },
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    assert [item["command"] for item in response.json()["tests"]] == [setup, quality]
+    assert all(item["exit_code"] == 0 for item in response.json()["tests"])
+
+
+def test_node_stops_when_declared_setup_fails(tmp_path, monkeypatch):
+    monkeypatch.setenv("TASKHUB_NODE_ID", "node-test")
+    monkeypatch.setenv("TASKHUB_NODE_TOKEN", "node-secret")
+    monkeypatch.setenv("TASKHUB_NODE_WORK_ROOT", str(tmp_path / "jobs"))
+    payload = archive({"value.txt": b"ready\n"})
+    digest = hashlib.sha256(payload).hexdigest()
+    headers = {"Authorization": "Bearer node-secret"}
+    setup = [sys.executable, "-c", "raise SystemExit(23)"]
+    quality = [sys.executable, "-c", "raise SystemExit('must not run')"]
+
+    with TestClient(create_node_app()) as client:
+        client.put(
+            f"/api/jobs/job-setup-failure/workspace?sha256={digest}",
+            content=payload,
+            headers=headers,
+        ).raise_for_status()
+        response = client.post(
+            "/api/jobs/job-setup-failure/execute",
+            json={
+                "setup_commands": [setup],
+                "commands": [quality],
+                "timeout_seconds": 30,
+                "archive_sha256": digest,
+            },
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    assert [item["command"] for item in response.json()["tests"]] == [setup]
+    assert response.json()["tests"][0]["exit_code"] == 23
+
+
 def test_node_dependency_cache_honors_explicit_job_opt_out(tmp_path, monkeypatch):
     monkeypatch.setenv("PIP_NO_CACHE_DIR", "1")
     workdir = tmp_path / "jobs" / "job-1"
@@ -204,7 +272,7 @@ def test_node_dependency_cache_replaces_legacy_image_opt_out(tmp_path, monkeypat
 
 
 def test_node_reuses_persisted_execution_result(tmp_path, monkeypatch):
-    import taskhub_v2.node_agent.app as agent_module
+    import taskhub_v2.node_agent.quality as quality_module
 
     monkeypatch.setenv("TASKHUB_NODE_ID", "node-test")
     monkeypatch.setenv("TASKHUB_NODE_TOKEN", "node-secret")
@@ -219,7 +287,7 @@ def test_node_reuses_persisted_execution_result(tmp_path, monkeypatch):
         calls += 1
         return [{"command": ["test"], "exit_code": 0, "output_tail": "ok"}]
 
-    monkeypatch.setattr(agent_module, "run_commands", fake_run_commands)
+    monkeypatch.setattr(quality_module, "run_commands", fake_run_commands)
     request = {"commands": [["test"]], "timeout_seconds": 30,
                "archive_sha256": digest}
     with TestClient(create_node_app()) as client:
@@ -237,7 +305,7 @@ def test_node_reuses_persisted_execution_result(tmp_path, monkeypatch):
 
 
 def test_node_execution_cache_ignores_environment_mapping_order(tmp_path, monkeypatch):
-    import taskhub_v2.node_agent.app as agent_module
+    import taskhub_v2.node_agent.quality as quality_module
 
     monkeypatch.setenv("TASKHUB_NODE_ID", "node-test")
     monkeypatch.setenv("TASKHUB_NODE_TOKEN", "node-secret")
@@ -252,7 +320,7 @@ def test_node_execution_cache_ignores_environment_mapping_order(tmp_path, monkey
         calls += 1
         return [{"command": ["test"], "exit_code": 0, "output_tail": "ok"}]
 
-    monkeypatch.setattr(agent_module, "run_commands", fake_run_commands)
+    monkeypatch.setattr(quality_module, "run_commands", fake_run_commands)
     request = {
         "commands": [["test"]],
         "timeout_seconds": 30,
@@ -290,7 +358,7 @@ def test_node_execution_cache_ignores_environment_mapping_order(tmp_path, monkey
 def test_node_reuses_result_before_repairing_incomplete_virtualenv(
     tmp_path, monkeypatch
 ):
-    import taskhub_v2.node_agent.app as agent_module
+    import taskhub_v2.node_agent.quality as quality_module
 
     monkeypatch.setenv("TASKHUB_NODE_ID", "node-test")
     monkeypatch.setenv("TASKHUB_NODE_TOKEN", "node-secret")
@@ -305,7 +373,7 @@ def test_node_reuses_result_before_repairing_incomplete_virtualenv(
         calls += 1
         return [{"command": ["test"], "exit_code": 0, "output_tail": "ok"}]
 
-    monkeypatch.setattr(agent_module, "run_commands", fake_run_commands)
+    monkeypatch.setattr(quality_module, "run_commands", fake_run_commands)
     request = {
         "commands": [["test"]], "timeout_seconds": 30, "archive_sha256": digest
     }
@@ -333,7 +401,7 @@ def test_node_reuses_result_before_repairing_incomplete_virtualenv(
 def test_node_repairs_incomplete_managed_virtualenv_before_execute(
     tmp_path, monkeypatch
 ):
-    import taskhub_v2.node_agent.app as agent_module
+    import taskhub_v2.node_agent.quality as quality_module
 
     monkeypatch.setenv("TASKHUB_NODE_ID", "node-test")
     monkeypatch.setenv("TASKHUB_NODE_TOKEN", "node-secret")
@@ -347,7 +415,7 @@ def test_node_repairs_incomplete_managed_virtualenv_before_execute(
         observed.append(not (workdir / ".venv").exists())
         return [{"command": ["test"], "exit_code": 0, "output_tail": "ok"}]
 
-    monkeypatch.setattr(agent_module, "run_commands", fake_run_commands)
+    monkeypatch.setattr(quality_module, "run_commands", fake_run_commands)
     request = {
         "commands": [["test"]], "timeout_seconds": 30, "archive_sha256": digest
     }
@@ -373,6 +441,7 @@ def test_node_repairs_incomplete_managed_virtualenv_before_execute(
 def test_browser_node_installs_npm_dependencies_before_npx(tmp_path, monkeypatch):
     import taskhub_v2.node_agent.app as agent_module
     import taskhub_v2.node_agent.browser_dependencies as dependency_module
+    import taskhub_v2.node_agent.quality as quality_module
 
     monkeypatch.setenv("TASKHUB_NODE_ID", "node-test")
     monkeypatch.setenv("TASKHUB_NODE_TOKEN", "node-secret")
@@ -396,7 +465,7 @@ def test_browser_node_installs_npm_dependencies_before_npx(tmp_path, monkeypatch
     async def fake_run_commands(*args, **kwargs):
         return [{"command": ["npx", "playwright", "test"], "exit_code": 0, "output_tail": "ok"}]
 
-    monkeypatch.setattr(agent_module, "run_commands", fake_run_commands)
+    monkeypatch.setattr(quality_module, "run_commands", fake_run_commands)
 
     with TestClient(create_node_app()) as client:
         uploaded = client.put(
@@ -531,11 +600,14 @@ def test_remote_runner_uploads_and_executes_workspace(tmp_path, monkeypatch):
               "assert os.environ['TASKHUB_TEST_EDGE_HOST'] == '192.168.31.55'"]],
             30,
             str(worktree),
+            setup_commands=[
+                ["python3", "-c", "from pathlib import Path; Path('setup.ok').write_text('yes')"]
+            ],
             execution_environment={"TASKHUB_TEST_EDGE_HOST": "192.168.31.55"},
         )
     )
     assert result.node_id == "remote-test"
-    assert result.tests[0].exit_code == 0
+    assert [item.exit_code for item in result.tests] == [0, 0]
 
 
 def test_remote_runner_timeout_covers_each_command_and_browser_setup():

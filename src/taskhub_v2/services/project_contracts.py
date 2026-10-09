@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -108,6 +109,7 @@ class ProjectContractService:
                 )
             )
         commands = profile.commands.model_copy(deep=True)
+        commands.install = self._project_install_commands(repository, commands.install)
         if project.test_commands:
             commands.test = project.test_commands
         if project.acceptance_commands:
@@ -245,6 +247,7 @@ class ProjectContractService:
                 workload="test",
                 git_commit=self._commit(target),
                 artifact_paths=contract.artifacts.required_artifacts,
+                setup_commands=contract.commands.install,
             )
             for index, result in enumerate(scheduled.tests):
                 command = " ".join(result.command)
@@ -300,6 +303,21 @@ class ProjectContractService:
             return self.projects.get(project_id)
         except ProjectNotFoundError as error:
             raise ProjectContractNotFoundError("项目不存在") from error
+
+    @staticmethod
+    def _project_install_commands(
+        repository: Path, defaults: list[list[str]]
+    ) -> list[list[str]]:
+        package = repository / "package.json"
+        if not package.is_file():
+            return defaults
+        try:
+            scripts = json.loads(package.read_text(encoding="utf-8")).get("scripts", {})
+        except (OSError, ValueError, TypeError):
+            return defaults
+        if isinstance(scripts, dict) and isinstance(scripts.get("bootstrap"), str):
+            return [["npm", "run", "bootstrap"]]
+        return defaults
 
     @staticmethod
     def _commit(repository: Path) -> str:

@@ -128,7 +128,8 @@ specification. Multiple matches fail closed instead of choosing or creating a ru
 and `runs --project PROJECT_ID` for discovery, `status --run-id RUN_ID` for a bounded agent summary
 (`--full` for the complete state), and
 `resume --run-id RUN_ID --decision DECISION --comment TEXT` only when an explicit recovery decision
-is intended. `create-run` is available for an intentional new run and accepts explicit
+is intended. Use `archive --run-id RUN_ID` after a run reaches a terminal state and should leave
+the active task list. `create-run` is available for an intentional new run and accepts explicit
 `--spec-id/--spec-version` when the current approved specification must not be used. All commands
 reuse the connection descriptor's TLS trust, proxy mode and protected Bearer token reference; they
 never print the credential.
