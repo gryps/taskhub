@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +9,7 @@ from taskhub_v2.domain.project_contract import (
     MigrationContract,
     ModuleContract,
 )
+from taskhub_v2.services.repository_contract_inference import detect_repository_profile
 
 
 @dataclass(frozen=True)
@@ -206,21 +206,4 @@ def profile_catalog() -> dict[str, ProjectProfile]:
 
 
 def detect_profile(repository: Path) -> str:
-    package = repository / "package.json"
-    pyproject = repository / "pyproject.toml"
-    if (repository / "frontend").is_dir() and (repository / "backend").is_dir():
-        return "fullstack-web"
-    if package.is_file() and not pyproject.is_file():
-        return "frontend-spa"
-    if any((repository / name).exists() for name in ("worker.py", "celery.py", "src/worker")):
-        return "worker-service"
-    if any((repository / name).exists() for name in ("openapi.yaml", "openapi.json", "src/api")):
-        return "backend-api"
-    if package.is_file() and pyproject.is_file():
-        try:
-            payload = json.loads(package.read_text(encoding="utf-8"))
-            if payload.get("scripts", {}).get("build"):
-                return "fullstack-web"
-        except (OSError, ValueError):
-            pass
-    return "python-service"
+    return detect_repository_profile(repository)

@@ -1,6 +1,24 @@
 # TaskHub V2 Memory Notes
 
-Updated: 2026-10-03
+Updated: 2026-10-10
+
+## Repository-aware project contracts and DAG scopes
+
+- A real process-only run against the ecommerce monorepo proved that profile template paths such as
+  `src/ui/**` were being persisted even though the repository uses `apps/web/src/**`. DAG tasks were
+  also rotated through modules by step position, so a UI task could receive a nonexistent services
+  boundary. The test run was cancelled and archived before publication; the managed repository and
+  authority remote remained byte-identical and contain no commit from that run.
+- New contract drafts now infer concrete Node/Python package source roots and a documentation boundary.
+  Mixed nested Node and Python packages classify as full-stack while empty repositories retain the
+  selected profile defaults. Existing active contracts remain immutable and require an explicit new
+  version to adopt the inferred layout.
+- DAG compilation now selects paths from task intent, treats confirm/review/audit steps as verification,
+  confines documentation work to the documentation module, and attaches generated artifact expectations
+  only to verification tasks. Coding-task quality commands use execution-node build capacity so a
+  Windows GUI acceptance node is not silently selected as the implementation build environment.
+- ADR 0005 records the boundary decision. Ruff passes and the complete suite passes with
+  `427 passed, 26 skipped`; architecture baselines were lowered for functions that became smaller.
 
 ## Repository Engineering Convergence Baseline
 

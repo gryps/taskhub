@@ -165,6 +165,35 @@ def test_contract_prefers_repository_bootstrap_script_for_install(tmp_path):
     assert draft["commands"]["install"] == [["npm", "run", "bootstrap"]]
 
 
+def test_contract_infers_monorepo_source_roots_instead_of_template_paths(tmp_path):
+    repo = repository(
+        tmp_path / "monorepo",
+        {
+            "package.json": json.dumps({"scripts": {"bootstrap": "npm install"}}),
+            "apps/web/package.json": json.dumps({"scripts": {"build": "vite build"}}),
+            "apps/web/src/main.ts": "export const app = true;\n",
+            "apps/api/pyproject.toml": "[project]\nname = 'api'\nversion = '0.1.0'\n",
+            "apps/api/app/main.py": "app = object()\n",
+            "docs/ARCHITECTURE.md": "# Architecture\n",
+        },
+    )
+    with TestClient(create_app(settings(tmp_path, repo))) as client:
+        headers = login(client)
+        draft = client.post(
+            "/api/projects/demo/project-contracts/draft",
+            headers=headers,
+            json={"profile_id": None, "inferred": True},
+        ).json()
+
+    assert draft["profile_id"] == "fullstack-web"
+    assert {item["name"]: item["paths"] for item in draft["modules"]} == {
+        "web": ["apps/web/src/**"],
+        "api": ["apps/api/app/**"],
+        "documentation": ["docs/**"],
+    }
+    assert draft["directory_structure"] == ["apps", "docs"]
+
+
 def test_project_activation_edits_real_contract_quality_commands(tmp_path):
     repo = repository(tmp_path / "repo")
     with TestClient(create_app(settings(tmp_path, repo))) as client:
@@ -205,9 +234,7 @@ def test_project_activation_edits_real_contract_quality_commands(tmp_path):
         activation = client.get("/api/projects/demo/activation").json()
         assert activation["contract"]["editable"] is True
         assert activation["quality_commands"] == "python3 -m pytest -q\nnpm run check"
-        quality = next(
-            step for step in activation["steps"] if step["id"] == "quality_commands"
-        )
+        quality = next(step for step in activation["steps"] if step["id"] == "quality_commands")
         assert quality["complete"] is True
 
         client.post(f"{root}/review", headers=headers)
@@ -219,12 +246,13 @@ def test_project_activation_edits_real_contract_quality_commands(tmp_path):
             "status": "active",
             "editable": False,
         }
-        assert next(step for step in activated["steps"] if step["id"] == "contract")[
-            "complete"
-        ] is True
-        assert client.get("/api/projects/demo/project-contract").json()[
-            "project_contract"
-        ]["manual_evidence"]["confirm_inferred_boundaries"]
+        assert (
+            next(step for step in activated["steps"] if step["id"] == "contract")["complete"]
+            is True
+        )
+        assert client.get("/api/projects/demo/project-contract").json()["project_contract"][
+            "manual_evidence"
+        ]["confirm_inferred_boundaries"]
 
 
 def contract(**updates) -> ProjectContract:
@@ -260,7 +288,7 @@ def test_gates_reject_architecture_api_migration_security_and_binary_violations(
             "openapi.yaml": source,
             "src/generated/client.ts": "export const client = true;\n",
             ".taskhub/openapi.sha256": "wrong\n",
-            "secret.txt": "-----BEGIN OPENSSH " "PRIVATE KEY-----\nplaceholder\n",
+            "secret.txt": "-----BEGIN OPENSSH" + " PRIVATE KEY-----\nplaceholder\n",
             "assets/logo.png": b"\x89PNG\x00placeholder",
         },
     )

@@ -20,6 +20,7 @@ from taskhub_v2.domain.production import (
     TaskAttemptStatus,
 )
 from taskhub_v2.domain.project_contract import (
+    ArtifactContract,
     ContractCommands,
     ModuleContract,
     ProjectContract,
@@ -114,6 +115,45 @@ def test_plan_compiles_validated_dag_and_persists_exact_sources():
         assert bundle.topological_order[-1] == bundle.tasks[2].task_id
         restored = await DagPlanService(store).for_run("demo", "run-parallel")
         assert restored and restored.plan == bundle.plan
+
+    asyncio.run(scenario())
+
+
+def test_plan_selects_paths_by_task_intent_and_reserves_artifacts_for_verification():
+    async def scenario():
+        store = MemoryProductionStore()
+        checked_contract = contract().model_copy(
+            update={
+                "modules": [
+                    ModuleContract(name="web", paths=["apps/web/src/**"]),
+                    ModuleContract(name="api", paths=["apps/api/app/**"]),
+                    ModuleContract(name="documentation", paths=["docs/**"]),
+                ],
+                "artifacts": ArtifactContract(required_artifacts=["dist/**"]),
+            }
+        )
+        bundle = await DagPlanService(store).compile(
+            "demo",
+            "run-intent-paths",
+            specification(),
+            checked_contract,
+            Plan(
+                summary="component convergence",
+                steps=[
+                    "Implement UI components and responsive page states",
+                    "Update docs/ARCHITECTURE.md and ADR records",
+                    "Review final changes and audit generated artifacts",
+                ],
+                acceptance=["checks pass"],
+            ),
+        )
+
+        assert bundle.tasks[0].allowed_paths == ["apps/web/src/**"]
+        assert bundle.tasks[0].expected_artifacts == []
+        assert bundle.tasks[1].allowed_paths == ["docs/**"]
+        assert bundle.tasks[2].task_type == "verification"
+        assert bundle.tasks[2].allowed_paths == []
+        assert bundle.tasks[2].expected_artifacts == ["dist/**"]
 
     asyncio.run(scenario())
 

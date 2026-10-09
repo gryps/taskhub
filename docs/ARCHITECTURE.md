@@ -79,6 +79,19 @@ remaining checks. Existing repositories with an explicit `npm run bootstrap` scr
 owned bootstrap command in newly inferred contract drafts; otherwise the selected project profile keeps
 its standard installation command.
 
+Project profiles are fallback conventions rather than claims about an attached repository. When a
+contract draft is created for an existing repository, TaskHub scans package manifests and concrete
+`src`/`app` roots, materializes monorepo-aware module paths, and records a documentation boundary when
+present. DAG compilation then maps each task to those frozen modules by intent (for example frontend,
+API, executor, or documentation) instead of rotating tasks across modules by list position. Verification
+tasks do not receive write paths, and generated artifact expectations apply to verification rather than
+being presented to coding workers as editable output. ADR 0005 records this decision.
+
+Quality commands executed immediately after a coding task use execution-node `build` capacity because
+they validate that candidate change in the same implementation boundary. Explicit DAG verification uses
+the project `test` route, while Windows/browser acceptance remains bound to its declared acceptance
+suite. This prevents a GUI pilot node from silently becoming the default build environment.
+
 ## Two-stage activation
 
 Seed onboarding owns only platform-wide infrastructure readiness. Project activation is a separate

@@ -24,6 +24,10 @@ from taskhub_v2.services.contract_gates import (
     validate_repository,
 )
 from taskhub_v2.services.project_profiles import detect_profile, profile_catalog
+from taskhub_v2.services.repository_contract_inference import (
+    infer_repository_modules,
+    inferred_directory_structure,
+)
 
 
 class ProjectContractNotFoundError(LookupError):
@@ -98,6 +102,7 @@ class ProjectContractService:
         if previous and previous.status != ProjectContractStatus.ACTIVE:
             raise ProjectContractConflictError("当前合同版本尚未完成治理")
         profile = profiles[selected]
+        modules = infer_repository_modules(repository, selected, list(profile.modules))
         version = previous.version + 1 if previous else 1
         manual_review = []
         if inferred:
@@ -124,8 +129,8 @@ class ProjectContractService:
             repository_commit=self._commit(repository),
             languages=list(profile.languages),
             frameworks=list(profile.frameworks),
-            directory_structure=list(profile.directories),
-            modules=[item.model_copy(deep=True) for item in profile.modules],
+            directory_structure=inferred_directory_structure(modules),
+            modules=modules,
             commands=commands,
             migrations=profile.migrations.model_copy(deep=True),
             artifacts=profile.artifacts.model_copy(deep=True),
@@ -305,9 +310,7 @@ class ProjectContractService:
             raise ProjectContractNotFoundError("项目不存在") from error
 
     @staticmethod
-    def _project_install_commands(
-        repository: Path, defaults: list[list[str]]
-    ) -> list[list[str]]:
+    def _project_install_commands(repository: Path, defaults: list[list[str]]) -> list[list[str]]:
         package = repository / "package.json"
         if not package.is_file():
             return defaults

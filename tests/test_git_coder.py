@@ -29,9 +29,7 @@ class FileWritingCoder:
     def __init__(self):
         self.calls = 0
 
-    async def modify(
-        self, requirement: str, plan: Plan, workdir: str, feedback: str = ""
-    ):
+    async def modify(self, requirement: str, plan: Plan, workdir: str, feedback: str = ""):
         self.calls += 1
         Path(workdir, "feature.txt").write_text("implemented\n", encoding="utf-8")
         return ModelResult(
@@ -42,9 +40,7 @@ class FileWritingCoder:
 
 
 class PythonWritingCoder(FileWritingCoder):
-    async def modify(
-        self, requirement: str, plan: Plan, workdir: str, feedback: str = ""
-    ):
+    async def modify(self, requirement: str, plan: Plan, workdir: str, feedback: str = ""):
         self.calls += 1
         Path(workdir, "feature.py").write_text("value = 1\n", encoding="utf-8")
         return ModelResult(
@@ -135,9 +131,7 @@ def test_dag_quality_uses_frozen_contract_setup_and_acceptance_commands(tmp_path
             return ScheduledTests(
                 node_id="test-node",
                 tests=[
-                    TestExecution(
-                        command=["npm", "run", "check"], exit_code=0, output_tail="ok"
-                    )
+                    TestExecution(command=["npm", "run", "check"], exit_code=0, output_tail="ok")
                 ],
             )
 
@@ -147,12 +141,14 @@ def test_dag_quality_uses_frozen_contract_setup_and_acceptance_commands(tmp_path
     context = {
         "setup_commands": [["npm", "run", "bootstrap"]],
         "acceptance_commands": [["npm", "run", "check"]],
+        "quality_workload": "build",
     }
 
     result = asyncio.run(worker._run_quality("run-1", 2, project, str(tmp_path), context))
 
     assert result.node_id == "test-node"
     assert scheduler.call[0][2] == [["npm", "run", "check"]]
+    assert scheduler.call[1]["workload"] == "build"
     assert scheduler.call[1]["setup_commands"] == [["npm", "run", "bootstrap"]]
 
 
@@ -231,8 +227,7 @@ def test_git_worker_retests_uncommitted_changes_before_revision_coding(tmp_path:
                             [
                                 "python3",
                                 "-c",
-                                "from pathlib import Path; "
-                                f"assert Path({str(gate)!r}).exists()",
+                                f"from pathlib import Path; assert Path({str(gate)!r}).exists()",
                             ]
                         ],
                     }
@@ -350,15 +345,24 @@ def test_failed_retest_does_not_accept_empty_model_change_over_dirty_worktree(tm
     git(repository, "commit", "-m", "initial")
     projects_file = tmp_path / "projects.json"
     projects_file.write_text(
-        json.dumps({"projects": [{
-            "id": "demo",
-            "repository": str(repository),
-            "test_commands": [[
-                "python3", "-c",
-                "from pathlib import Path; "
-                "assert Path('feature.txt').read_text() == 'fixed\\n'",
-            ]],
-        }]}),
+        json.dumps(
+            {
+                "projects": [
+                    {
+                        "id": "demo",
+                        "repository": str(repository),
+                        "test_commands": [
+                            [
+                                "python3",
+                                "-c",
+                                "from pathlib import Path; "
+                                "assert Path('feature.txt').read_text() == 'fixed\\n'",
+                            ]
+                        ],
+                    }
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     coder = NoChangeThenFixRetestCoder()
@@ -372,10 +376,16 @@ def test_failed_retest_does_not_accept_empty_model_change_over_dirty_worktree(tm
 
     with pytest.raises(WorkerExecutionError):
         asyncio.run(worker.execute("run-empty-repair", "demo", "Repair", plan))
-    result = asyncio.run(worker.execute(
-        "run-empty-repair", "demo", "Repair", plan, revision=1,
-        feedback="Run the formatter fix",
-    ))
+    result = asyncio.run(
+        worker.execute(
+            "run-empty-repair",
+            "demo",
+            "Repair",
+            plan,
+            revision=1,
+            feedback="Run the formatter fix",
+        )
+    )
 
     assert result.tests[0].exit_code == 0
     assert coder.calls == 3
@@ -474,14 +484,10 @@ def test_git_worker_creates_and_recovers_revision_commit(tmp_path: Path):
 
     first = asyncio.run(worker.execute("run-revision", "demo", "Change", plan))
     revised = asyncio.run(
-        worker.execute(
-            "run-revision", "demo", "Change", plan, revision=1, feedback="Fix it"
-        )
+        worker.execute("run-revision", "demo", "Change", plan, revision=1, feedback="Fix it")
     )
     recovered = asyncio.run(
-        worker.execute(
-            "run-revision", "demo", "Change", plan, revision=1, feedback="Fix it"
-        )
+        worker.execute("run-revision", "demo", "Change", plan, revision=1, feedback="Fix it")
     )
 
     assert first.commit != revised.commit
@@ -521,7 +527,9 @@ def test_git_worker_accepts_evidence_only_revision_but_not_empty_initial_work(tm
     plan = Plan(summary="Plan", steps=["validate"], acceptance=["tests pass"])
     workspaces = GitWorkspaceManager(str(tmp_path / "workspaces"))
     initial_worker = GitCodingWorker(
-        ProjectRegistry(str(projects_file)), workspaces, NoChangeCoder(),
+        ProjectRegistry(str(projects_file)),
+        workspaces,
+        NoChangeCoder(),
         ArtifactStore(str(tmp_path / "artifacts")),
     )
 
@@ -536,21 +544,27 @@ def test_git_worker_accepts_evidence_only_revision_but_not_empty_initial_work(tm
         raise AssertionError("initial no-change implementation must be blocked")
 
     retry_worker = GitCodingWorker(
-        ProjectRegistry(str(projects_file)), GitWorkspaceManager(str(tmp_path / "retry")),
-        WriteOnRetryCoder(), ArtifactStore(str(tmp_path / "retry-artifacts")),
+        ProjectRegistry(str(projects_file)),
+        GitWorkspaceManager(str(tmp_path / "retry")),
+        WriteOnRetryCoder(),
+        ArtifactStore(str(tmp_path / "retry-artifacts")),
     )
     retried = asyncio.run(retry_worker.execute("retry", "demo", "Do work", plan))
     assert retried.changed_files == ["feature.txt"]
     assert retried.commit
 
     writing_worker = GitCodingWorker(
-        ProjectRegistry(str(projects_file)), workspaces, FileWritingCoder(),
+        ProjectRegistry(str(projects_file)),
+        workspaces,
+        FileWritingCoder(),
         ArtifactStore(str(tmp_path / "artifacts")),
     )
     first = asyncio.run(writing_worker.execute("evidence", "demo", "Do work", plan))
     evidence_coder = NoChangeCoder()
     evidence_worker = GitCodingWorker(
-        ProjectRegistry(str(projects_file)), workspaces, evidence_coder,
+        ProjectRegistry(str(projects_file)),
+        workspaces,
+        evidence_coder,
         ArtifactStore(str(tmp_path / "artifacts")),
     )
     revised = asyncio.run(

@@ -92,6 +92,10 @@ class WorkerDagExecutor:
             "contracts": task.contracts,
             "acceptance_commands": task.acceptance_commands,
             "setup_commands": contract.commands.install,
+            # Coding-task quality runs are build validation for the candidate change.
+            # Keep them on execution/build capacity; project test and Windows/browser
+            # routes remain reserved for explicit verification and acceptance tasks.
+            "quality_workload": "build",
             "required_evidence": task.required_evidence,
             "expected_artifacts": task.expected_artifacts,
             "product_spec": {

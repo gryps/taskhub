@@ -10,6 +10,8 @@
 | `services.engineering_policy_catalog` | 首次部署的内置全局规则目录 | 内置 v1 规则定义 |
 | `services.governance_gate` | 对仓库和项目合同执行可重复的规则检查 | 无持久状态，只生成门禁发现项 |
 | `services.project_contracts` | 项目边界、命令和规则绑定的项目级权威 | `ProjectContract` |
+| `services.repository_contract_inference` | 将内置档案映射为仓库真实源码根和文档边界 | 无持久状态；输出合同模块候选 |
+| `services.dag_task_scope` | 按任务意图解析验证属性和合同内可写模块 | 无持久状态；输出冻结任务作用域 |
 | `services.dag_plan` | 将规格、合同及规则快照编译为计划与任务 | `ExecutionPlan`、`ProductionTask` |
 | `services.dag_scheduler` | 按依赖调度批次并在集成后执行治理门禁 | `ExecutionBatch`、`TaskAttempt` |
 | `workers.dag_executor` | 为编码节点组装含安装与质量命令的冻结上下文并执行批次验证 | 工作区结果，不拥有规则 |

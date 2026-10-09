@@ -15,6 +15,7 @@ from taskhub_v2.domain.production import (
 )
 from taskhub_v2.domain.project_contract import ProjectContract
 from taskhub_v2.persistence.production import ProductionStore
+from taskhub_v2.services.dag_task_scope import is_verification_step, paths_for_step
 from taskhub_v2.services.dag_validation import (
     DagValidationFinding,
     contract_findings,
@@ -148,9 +149,7 @@ class DagPlanService:
                 ),
                 "dynamic_batches": True,
                 **(
-                    {
-                        "engineering_policy": contract.engineering_policy.model_dump(mode="json")
-                    }
+                    {"engineering_policy": contract.engineering_policy.model_dump(mode="json")}
                     if contract.engineering_policy.policy_id
                     else {}
                 ),
@@ -257,11 +256,8 @@ class DagPlanService:
             f"task_{plan_id.removeprefix('plan_')}_{index:03d}"
             for index in range(1, len(steps) + 1)
         ]
-        verification_words = ("test", "verify", "check", "accept", "测试", "验证", "检查", "验收")
         implementation_ids = [
-            task_ids[index]
-            for index, step in enumerate(steps)
-            if not any(word in step.lower() for word in verification_words)
+            task_ids[index] for index, step in enumerate(steps) if not is_verification_step(step)
         ]
         commands = [
             *contract.commands.test,
@@ -270,9 +266,8 @@ class DagPlanService:
         ]
         tasks = []
         for index, (task_id, step) in enumerate(zip(task_ids, steps, strict=True)):
-            verification = any(word in step.lower() for word in verification_words)
-            module = contract.modules[index % len(contract.modules)]
-            paths = [] if verification else module.paths
+            verification = is_verification_step(step)
+            paths = [] if verification else paths_for_step(step, contract)
             dependencies = implementation_ids if verification else []
             dependencies = [item for item in dependencies if item != task_id]
             locks = sorted({f"path:{lock_path(path)}" for path in paths if lock_path(path)})
@@ -323,7 +318,9 @@ class DagPlanService:
                     required_evidence=(
                         design_source[1].validation_evidence if design_source else []
                     ),
-                    expected_artifacts=contract.artifacts.required_artifacts,
+                    expected_artifacts=(
+                        contract.artifacts.required_artifacts if verification else []
+                    ),
                     resource_locks=locks,
                     priority=100 + index,
                     created_by=actor,

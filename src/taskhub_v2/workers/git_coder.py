@@ -19,6 +19,7 @@ from taskhub_v2.workers.test_diagnostics import classify_test_failure, failed_te
 
 FORBIDDEN_FILES = {".env", ".env.local", "auth.json", "credentials.json"}
 
+
 class WorkerExecutionError(RuntimeError):
     def __init__(self, reason: str, detail: str, model_results=None, diagnostics=None):
         super().__init__(detail)
@@ -108,8 +109,7 @@ class GitCodingWorker:
         model_result = await self.coder.modify(requirement, plan, workspace.path, **coding_options)
         model_results.append(model_result)
         model_changed = (
-            await worktree_fingerprint(workspace.path, self._git, is_generated)
-            != before_model
+            await worktree_fingerprint(workspace.path, self._git, is_generated) != before_model
         )
         changed_files = await self._changed_files(workspace.path)
         if not changed_files or (retest_feedback and not model_changed):
@@ -131,16 +131,13 @@ class GitCodingWorker:
             retry_options = {"feedback": retry_feedback}
             if task_context:
                 retry_options["task_context"] = task_context
-            before_retry = await worktree_fingerprint(
-                workspace.path, self._git, is_generated
-            )
+            before_retry = await worktree_fingerprint(workspace.path, self._git, is_generated)
             model_result = await self.coder.modify(
                 requirement, plan, workspace.path, **retry_options
             )
             model_results.append(model_result)
             retry_changed = (
-                await worktree_fingerprint(workspace.path, self._git, is_generated)
-                != before_retry
+                await worktree_fingerprint(workspace.path, self._git, is_generated) != before_retry
             )
             changed_files = await self._changed_files(workspace.path)
             if not changed_files or (retest_feedback and not retry_changed):
@@ -161,9 +158,7 @@ class GitCodingWorker:
         if generated:
             raise WorkerExecutionError("generated_files", ", ".join(generated))
 
-        scheduled = await self._run_quality(
-            run_id, revision, project, workspace.path, task_context
-        )
+        scheduled = await self._run_quality(run_id, revision, project, workspace.path, task_context)
         tests = scheduled.tests
         raise_for_failed_tests(tests, model_results=model_results)
 
@@ -194,9 +189,7 @@ class GitCodingWorker:
             workspace.path, "diff", "--name-only", f"{workspace.base_commit}..{commit}"
         )
         changed_files = [line for line in aggregate_files.splitlines() if line]
-        artifact = self.artifacts.write_text(
-            run_id, artifact_name(revision), "git_diff", diff
-        )
+        artifact = self.artifacts.write_text(run_id, artifact_name(revision), "git_diff", diff)
         return ExecutionResult(
             summary=model_result.content.summary,
             evidence=diff[-50_000:],
@@ -231,6 +224,7 @@ class GitCodingWorker:
             commands,
             project.test_timeout_seconds,
             workdir,
+            workload=context.get("quality_workload", "test"),
             setup_commands=setup_commands,
         )
 
@@ -244,9 +238,7 @@ class GitCodingWorker:
         generated = [name for name in changed_files if is_generated(name)]
         if forbidden or generated:
             return None, ""
-        scheduled = await self._run_quality(
-            run_id, revision, project, workspace.path, task_context
-        )
+        scheduled = await self._run_quality(run_id, revision, project, workspace.path, task_context)
         if any(test.exit_code for test in scheduled.tests):
             detail, diagnostics = failed_test_diagnostics(scheduled.tests)
             if classify_test_failure(scheduled.tests) == "tests_timeout":
@@ -256,8 +248,7 @@ class GitCodingWorker:
         changed_files = await self._changed_files(workspace.path)
         await self._git(workspace.path, "add", "-A", "--", *changed_files)
         commit_metadata = (
-            f"TaskHub-Run: {run_id}\nTaskHub-Revision: {revision}\n"
-            "TaskHub-Recovery: quality-retest"
+            f"TaskHub-Run: {run_id}\nTaskHub-Revision: {revision}\nTaskHub-Recovery: quality-retest"
         )
         if feedback:
             commit_metadata += f"\nTaskHub-Feedback: {feedback_key(feedback)}"
@@ -280,9 +271,7 @@ class GitCodingWorker:
         aggregate_files = await self._git(
             workspace.path, "diff", "--name-only", f"{workspace.base_commit}..{commit}"
         )
-        artifact = self.artifacts.write_text(
-            run_id, artifact_name(revision), "git_diff", diff
-        )
+        artifact = self.artifacts.write_text(run_id, artifact_name(revision), "git_diff", diff)
         return ExecutionResult(
             summary="Recovered existing implementation after a successful quality retest",
             evidence=diff[-50_000:],
@@ -298,9 +287,7 @@ class GitCodingWorker:
     async def _evidence_only_result(
         self, run_id, revision, workspace, project, model_result, task_context=None
     ) -> ExecutionResult:
-        scheduled = await self._run_quality(
-            run_id, revision, project, workspace.path, task_context
-        )
+        scheduled = await self._run_quality(run_id, revision, project, workspace.path, task_context)
         raise_for_failed_tests(scheduled.tests)
         commit = (await self._git(workspace.path, "rev-parse", "HEAD")).strip()
         diff = await self._git(
@@ -309,9 +296,7 @@ class GitCodingWorker:
         changed = await self._git(
             workspace.path, "diff", "--name-only", f"{workspace.base_commit}..{commit}"
         )
-        artifact = self.artifacts.write_text(
-            run_id, artifact_name(revision), "git_diff", diff
-        )
+        artifact = self.artifacts.write_text(run_id, artifact_name(revision), "git_diff", diff)
         return ExecutionResult(
             summary=model_result.content.summary,
             evidence=diff[-50_000:],
