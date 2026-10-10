@@ -10,6 +10,7 @@ from taskhub_v2.domain.production import ProductionTask, ProductionTaskStatus, T
 from taskhub_v2.persistence.production import MemoryProductionStore
 from taskhub_v2.services.dag_plan import DagPlanService
 from taskhub_v2.services.dag_scheduler import PersistentDagScheduler
+from taskhub_v2.services.revision_reason import MAX_CHANGE_REQUEST_REASON_LENGTH
 from taskhub_v2.services.revisions import RevisionConflictError, RevisionService
 from tests.test_dag_orchestration import RecordingExecutor, compiled
 
@@ -93,6 +94,31 @@ def test_automatic_revision_limit_requires_manual_approval():
         assert statuses == ["approved", "approved", "proposed"]
         requests = await service.list("demo")
         assert requests[0].plan_diff["requires_manual_approval"] is True
+
+    asyncio.run(scenario())
+
+
+def test_automatic_revision_bounds_long_failure_reason_and_preserves_tail():
+    async def scenario():
+        store = MemoryProductionStore()
+        original = await compiled(store)
+        service = RevisionService(store, Projects(), DagPlanService(store))
+        reason = "failure context\n" + ("dependency output\n" * 400) + "FINAL ACTIONABLE ERROR"
+
+        request = await service.propose(
+            "demo",
+            original.plan.plan_id,
+            1,
+            reason,
+            actor="scheduler",
+            affected_task_ids=[original.tasks[0].task_id],
+            automatic=True,
+        )
+
+        assert len(request.reason) == MAX_CHANGE_REQUEST_REASON_LENGTH
+        assert request.reason.startswith("failure context")
+        assert "earlier recovery detail truncated" in request.reason
+        assert request.reason.endswith("FINAL ACTIONABLE ERROR")
 
     asyncio.run(scenario())
 

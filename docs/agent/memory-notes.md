@@ -14,6 +14,24 @@ Updated: 2026-10-10
   or incidents. They are not current startup, project-activation, release, or acceptance prerequisites.
 - This section is the current authority when an older dated note conflicts with the active environment.
 
+## Explicit Run Creation And Bounded Recovery Diagnostics
+
+- Archiving UI-convergence runs exposed that the agent client would silently create another run
+  from the still-approved current ProductSpec whenever no non-terminal run matched a production
+  line. `ensure-run` now remains automatic only for recovery. Creating through it requires an
+  explicit `--spec-id` and `--spec-version`; `create-run` remains the deliberate creation command.
+- Three obsolete UI-convergence runs discovered across `standard` and `web` production lines were
+  interrupted or cancelled and archived without submitting their managed-project work. A project-wide
+  non-archived run query now returns zero.
+- Automatic revision feedback may retain up to 16,000 characters for the coding worker, while the
+  durable `ChangeRequest.reason` contract allows 4,000. RevisionService now bounds that persisted
+  field centrally, preserving both the initial context and actionable error tail instead of failing
+  recovery with a secondary Pydantic validation error.
+- Verification passed repository Ruff, six architecture gates and the complete Python suite
+  (`434 passed, 26 skipped`). A live client check refused implicit creation and left the active run
+  list empty. The former React Makefile commands were removed from project instructions because the
+  React canvas has already been retired.
+
 ## Release-managed node image reconciliation and fast recovery points
 
 - The local formal Seed and Docker execution node were upgraded through `v0.1.0-alpha.23` and

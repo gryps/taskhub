@@ -90,12 +90,30 @@ def test_ensure_run_recovers_unique_non_terminal_run_without_creating():
     assert client.posts == []
 
 
-def test_ensure_run_creates_from_current_approved_spec_when_no_active_run():
+def test_ensure_run_refuses_implicit_current_spec_when_no_active_run():
     module = load_module()
     spec = {"spec_id": "ps_ops_data", "version": 3, "status": "approved"}
     client = FakeClient([project()], [], spec)
 
-    result = module.execute(client, args(requirement="完成 OPS-DATA-001"))
+    with pytest.raises(module.TaskHubClientError, match="refusing to create"):
+        module.execute(client, args(requirement="完成 OPS-DATA-001"))
+
+    assert client.posts == []
+
+
+def test_ensure_run_creates_from_explicit_approved_spec_when_no_active_run():
+    module = load_module()
+    spec = {"spec_id": "ps_ops_data", "version": 3, "status": "approved"}
+    client = FakeClient([project()], [], spec)
+
+    result = module.execute(
+        client,
+        args(
+            requirement="完成 OPS-DATA-001",
+            spec_id="ps_ops_data",
+            spec_version=3,
+        ),
+    )
 
     assert result["action"] == "created"
     assert client.posts == [

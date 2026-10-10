@@ -14,6 +14,7 @@ from taskhub_v2.domain.production import (
     TaskAttemptStatus,
 )
 from taskhub_v2.services.revision_impact import affected_descendants, paths_overlap
+from taskhub_v2.services.revision_reason import bounded_change_request_reason
 
 
 class RevisionNotFoundError(LookupError):
@@ -90,7 +91,7 @@ class RevisionService:
             status=(
                 ChangeRequestStatus.APPROVED if automatic_allowed else ChangeRequestStatus.PROPOSED
             ),
-            reason=reason,
+            reason=bounded_change_request_reason(reason),
             source_event=source_event,
             source_run_id=plan.run_id,
             source_plan_id=plan.plan_id,

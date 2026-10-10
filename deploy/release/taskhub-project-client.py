@@ -55,7 +55,8 @@ def parser() -> argparse.ArgumentParser:
     _creation_arguments(create)
 
     ensure = commands.add_parser(
-        "ensure-run", help="Recover the unique active run, or create one when none exists"
+        "ensure-run",
+        help="Recover the unique active run, or create one from an explicitly selected spec",
     )
     _project_arguments(ensure)
     _creation_arguments(ensure)
@@ -297,6 +298,12 @@ def execute(client: TaskHubClient, args: argparse.Namespace):
         )
     if active:
         return {"action": "recovered", "project": project, "run": active[0]}
+    if not args.spec_id or args.spec_version is None:
+        raise TaskHubClientError(
+            "no active run exists; refusing to create from the implicit current product spec. "
+            "Verify the intended requirement, then pass both --spec-id and --spec-version, "
+            "or use create-run for an intentional new run."
+        )
     return {"action": "created", "project": project, "run": create_run(client, project, args)}
 
 

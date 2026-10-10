@@ -55,11 +55,10 @@ detailed incumbent UI contract during the staged documentation migration.
 - Python lint: `make lint`
 - Architecture gates: `make architecture`
 - Python tests: `make test`
-- React tests: `make frontend-test`
-- React type check and production build: `make frontend-build`
 - Combined local gate: `make check`
-- Frontend geometry or interaction changes additionally require real-browser checks at roughly
-  1440, 768, and 390 pixels and the project-specific browser tests.
+- Native-frontend geometry or interaction changes additionally require JavaScript syntax checks,
+  focused static/browser contract tests, and real-browser checks at roughly 1440, 768, and 390
+  pixels. The retired React canvas no longer has Makefile test or build targets.
 
 If a required command cannot run, report the exact reason and residual risk. Do not weaken a check,
 delete a test, or expand an ignore list merely to obtain a passing result.
