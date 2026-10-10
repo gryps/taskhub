@@ -31,6 +31,16 @@ Updated: 2026-10-10
   (`434 passed, 26 skipped`). A live client check refused implicit creation and left the active run
   list empty. The former React Makefile commands were removed from project instructions because the
   React canvas has already been retired.
+- Source commit `ef8645fc59c8ca6810ad17bccfd83110a0e3d394` was tagged
+  `v0.1.0-alpha.26`, pushed to both Git authorities, and published to GHCR and Aliyun ACR. GitHub
+  release workflow `38080371571` completed successfully. ACR Seed/Node manifests are
+  `sha256:701a4b860e5c...` and `sha256:0fb31f7a0f38...`; GHCR Seed/Node manifests are
+  `sha256:e29fea7c6aca...` and `sha256:a029d090db09...`.
+- The local formal Seed and `work-01` execution node now both run alpha.26 at revision `ef8645f`,
+  report healthy, and retain authenticated agent access. The standard upgrade created verified
+  recovery point `deploy/release/backups/20261010T193539Z`. The node was upgraded through the same
+  lifecycle service used by the administrator API after the bounded project-owner token correctly
+  received HTTP 403 for the privileged operation.
 
 ## Release-managed node image reconciliation and fast recovery points
 
