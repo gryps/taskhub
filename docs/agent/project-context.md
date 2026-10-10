@@ -37,14 +37,21 @@ and 390px browser layouts when page geometry or responsive behavior changes; ret
 
 ## Deployment Context
 
-The TaskHub V2 preproduction controller currently runs at `192.168.31.51`:
+The current formal environment is the local Docker deployment on this Mac. There is no separate
+production host at present:
 
-- Application: `/home/gryps/apps/taskhub-v2`
-- User service: `taskhub-v2.service`
-- HTTP port: `8200`
-- Health endpoint: `http://127.0.0.1:8200/api/health`
-- LAN URL: `http://192.168.31.51:8200`
+- Formal Seed URL: `https://127.0.0.1:8200`
+- Connection descriptor: `/Users/gryps/.codex/taskhub-v2-connection.json`
+- Windows acceptance host: `user@192.168.31.34`
+- Windows acceptance node ID: `windows-test-01`
 
-Do not assume another host is interchangeable. In particular, `192.168.31.55` was observed serving a separate ecommerce edge application on ports 80/443 and must not be overwritten as a TaskHub deployment target.
+The Windows machine is a project-authorized test resource, not a Seed host, coding node, physical-host
+pool entry, or deployment target. Project contracts bind its logical node ID; TaskHub product code
+must not hard-code its IP address or SSH identity.
+
+Earlier `.31`, `.21`, and `.51` deployments remain historical evidence only. They are not current
+readiness prerequisites and must not delay local-formal deployment or `.34` Windows acceptance.
+In particular, `192.168.31.55` was observed serving a separate ecommerce edge application on ports
+80/443 and must not be overwritten as a TaskHub deployment target.
 
 Remote secrets, `.env`, virtual environments, PostgreSQL data, workspaces, artifacts, provider state, and node configuration are runtime-owned and must not be replaced by frontend deployments.

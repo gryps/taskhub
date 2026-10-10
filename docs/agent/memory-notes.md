@@ -2,6 +2,18 @@
 
 Updated: 2026-10-10
 
+## Current Environment Authority
+
+- Until a separate production environment is provisioned, the local Docker deployment is the formal
+  TaskHub environment. Its Seed entry point is `https://127.0.0.1:8200`, and agents must use
+  `/Users/gryps/.codex/taskhub-v2-connection.json` for TLS and authenticated access.
+- The current project-authorized Windows test machine is `user@192.168.31.34`; its TaskHub logical
+  node ID is `windows-test-01`. It is an acceptance resource only, not a Seed host, coding node,
+  physical-host pool member, or deployment target.
+- Historical references to `.31`, `.21`, `.51`, and `windows-pilot-21` describe earlier deployments
+  or incidents. They are not current startup, project-activation, release, or acceptance prerequisites.
+- This section is the current authority when an older dated note conflicts with the active environment.
+
 ## Release-managed node image reconciliation and fast recovery points
 
 - The local formal Seed and Docker execution node were upgraded through `v0.1.0-alpha.23` and
@@ -913,12 +925,12 @@ Updated: 2026-10-10
   both authority Git repositories and published to GHCR and Aliyun ACR. The local formal stack was
   upgraded from the verified recovery point `deploy/release/backups/20261006T165057Z` and remained
   healthy on port 8200.
-- The ecommerce project uses its repository-owned unified quality command `npm run check`. Its
-  project contract reached review with that command, and the project registry names the logical
-  Windows acceptance node `windows-pilot-21`; no host address is embedded in TaskHub product code.
-- The Windows acceptance prerequisite is not yet satisfied: `gryps@192.168.31.21` refused the SSH
-  connection and no agent with node id `windows-pilot-21` is registered. TaskHub therefore keeps
-  the acceptance and final-preflight steps incomplete instead of reporting a false activation.
+- At the time of the alpha.9 release, the ecommerce project used its repository-owned unified quality
+  command `npm run check`, and its registry named the then-planned logical Windows acceptance node
+  `windows-pilot-21`; no host address was embedded in TaskHub product code.
+- That historical `.21` prerequisite was unsatisfied during alpha.9. It has since been superseded by
+  the current authority above: Windows acceptance uses the registered `windows-test-01` node on
+  `user@192.168.31.34`, and `.21` is no longer a readiness dependency.
 - Activating an inferred contract exposed a persistence-boundary defect: service-generated manual
   approval evidence was incorrectly compared as immutable contract content. Approval evidence is
   now excluded from the immutable business-content comparison while commands and architecture
