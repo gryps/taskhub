@@ -11,7 +11,7 @@
 | `services.governance_gate` | 对仓库和项目合同执行可重复的规则检查 | 无持久状态，只生成门禁发现项 |
 | `services.project_contracts` | 项目边界、命令和规则绑定的项目级权威 | `ProjectContract` |
 | `services.repository_contract_inference` | 将内置档案映射为仓库真实源码根和文档边界 | 无持久状态；输出合同模块候选 |
-| `services.dag_task_scope` | 按任务意图解析验证属性和合同内可写模块 | 无持久状态；输出冻结任务作用域 |
+| `services.dag_task_scope` | 按标题动作和任务意图解析前置验证、实现、最终验证及合同内可写模块 | 无持久状态；输出冻结任务阶段、规模和作用域 |
 | `services.dag_plan` | 将规格、合同及规则快照编译为计划与任务 | `ExecutionPlan`、`ProductionTask` |
 | `services.dag_scheduler` | 按依赖调度批次并在集成后执行治理门禁 | `ExecutionBatch`、`TaskAttempt` |
 | `workers.dag_executor` | 为编码节点组装含安装与质量命令的冻结上下文并执行批次验证 | 工作区结果，不拥有规则 |
@@ -23,7 +23,7 @@
 | `api` | HTTP/SSE、认证授权、输入输出适配与静态资源交付 | 路由契约；不拥有流程状态 |
 | `security.agent_access` | 开发代理配对、凭据摘要、到期与吊销 | `agent-access.json`；不拥有用户密码或浏览器会话 |
 | `workflows` | 主流程与实施子图、阶段转换、中断和恢复 | LangGraph checkpoint 中的流程位置与时间线 |
-| `services.runs` | 启动、读取、恢复和归档运行 | 通过 graph thread 操作权威状态 |
+| `services.runs` / `services.run_projection` | 启动、读取、恢复和归档运行；把实时 DAG 事实投影到运行视图 | graph thread 拥有流程位置，生产存储拥有实时执行事实 |
 | `services.project_preflight` | 聚合项目开工条件并返回可修复诊断 | 预检报告；不复制下游数据 |
 | `services.project_activation` | 编排仓库接入后的契约、质量、验收与预检步骤 | 组合读模型；不持久化第二份就绪状态 |
 | `domain` | 稳定领域记录、枚举、状态和策略契约 | 领域 schema 与校验规则 |

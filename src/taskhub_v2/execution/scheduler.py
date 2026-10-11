@@ -14,6 +14,11 @@ from taskhub_v2.execution.runner import (
 )
 
 
+async def report_assignment(callback, node_id: str) -> None:
+    if callback:
+        await callback(node_id)
+
+
 class LocalTestScheduler:
     def __init__(self):
         self.runner = NodeRunner("")
@@ -22,6 +27,9 @@ class LocalTestScheduler:
     async def run(
         self, job_id, sticky_key, commands, timeout, workdir, workload="test", **kwargs
     ) -> ScheduledTests:
+        callback = kwargs.pop("on_assigned", None)
+        if callback:
+            await callback(self.node.id)
         return await self.runner.run(self.node, job_id, commands, timeout, workdir, **kwargs)
 
     async def status(self) -> list[dict]:
@@ -62,6 +70,7 @@ class NodeScheduler:
         execution_environment: dict[str, str] | None = None,
         eligible_node_ids: set[str] | None = None,
         setup_commands: list[list[str]] | None = None,
+        on_assigned=None,
     ) -> ScheduledTests:
         setup_commands = normalized_setup_commands(setup_commands)
         required = required_capabilities([*setup_commands, *commands])
@@ -89,6 +98,7 @@ class NodeScheduler:
                     raise NodeExecutionError("; ".join(failures)) from None
                 raise
             try:
+                await report_assignment(on_assigned, node.id)
                 if workload == "browser_acceptance":
                     return await self.runner.run(
                         node,
@@ -204,6 +214,7 @@ class NodeScheduler:
         *,
         required_capabilities_override: set[str] | None = None,
         eligible_node_ids: set[str] | None = None,
+        on_assigned=None,
     ) -> ScheduledCoding:
         excluded: set[str] = set()
         failures = []
@@ -213,6 +224,7 @@ class NodeScheduler:
                 sticky_key, excluded, required, "coding", eligible_node_ids
             )
             try:
+                await report_assignment(on_assigned, node.id)
                 return await self.runner.run_coding(
                     node, job_id, requirement, plan, feedback, timeout, workdir
                 )

@@ -139,6 +139,7 @@ def test_dag_quality_uses_frozen_contract_setup_and_acceptance_commands(tmp_path
     worker = GitCodingWorker(None, None, None, None, scheduler)
     project = SimpleNamespace(test_commands=[["legacy-check"]], test_timeout_seconds=60)
     context = {
+        "task_id": "task_quality_stable",
         "setup_commands": [["npm", "run", "bootstrap"]],
         "acceptance_commands": [["npm", "run", "check"]],
         "quality_workload": "build",
@@ -147,6 +148,8 @@ def test_dag_quality_uses_frozen_contract_setup_and_acceptance_commands(tmp_path
     result = asyncio.run(worker._run_quality("run-1", 2, project, str(tmp_path), context))
 
     assert result.node_id == "test-node"
+    assert scheduler.call[0][0] == "task_quality_stable-r2"
+    assert scheduler.call[0][1] == "task_quality_stable"
     assert scheduler.call[0][2] == [["npm", "run", "check"]]
     assert scheduler.call[1]["workload"] == "build"
     assert scheduler.call[1]["setup_commands"] == [["npm", "run", "bootstrap"]]

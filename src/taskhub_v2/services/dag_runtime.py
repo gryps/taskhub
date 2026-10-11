@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from taskhub_v2.domain.dag import DagExecutionSnapshot, ExecutionBatch
 from taskhub_v2.domain.production import ProductionTask, TaskAttempt
+from taskhub_v2.services.dag_cancellation import cancel_execution
 from taskhub_v2.services.dag_plan import DagPlanService
 from taskhub_v2.services.dag_scheduler import PersistentDagScheduler
 from taskhub_v2.workers.dag_executor import WorkerDagExecutor
@@ -48,6 +49,14 @@ class ProductizedExecutionRuntime:
             "attempts": attempts,
             "latest_snapshot": snapshots[-1] if snapshots else None,
         }
+
+    async def cancel(self, project_id: str, run_id: str) -> None:
+        """Terminalize production records when an operator archives an active run."""
+        bundle = await self.planner.for_run(project_id, run_id)
+        if not bundle:
+            return
+        records = await self.store.list(project_id=project_id)
+        await cancel_execution(self.store, bundle, records)
 
 
 def build_dag_runtime(

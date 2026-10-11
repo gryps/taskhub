@@ -38,6 +38,7 @@ class RunStatus(StrEnum):
     REJECTED = "rejected"
     BLOCKED = "blocked"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class TimelineEvent(BaseModel):

@@ -42,7 +42,7 @@ STATE_TRANSITIONS: dict[str, dict[str, set[str]]] = {
         "ready": {"assigned", "blocked", "cancelled", "superseded"},
         "assigned": {"running", "ready", "blocked", "cancelled"},
         "running": {"verifying", "blocked", "revision_ready", "cancelled"},
-        "verifying": {"completed", "blocked", "revision_ready"},
+        "verifying": {"completed", "blocked", "revision_ready", "cancelled"},
         "blocked": {"ready", "revision_ready", "cancelled", "superseded"},
         "revision_ready": {"ready", "cancelled", "superseded"},
     },
@@ -50,7 +50,7 @@ STATE_TRANSITIONS: dict[str, dict[str, set[str]]] = {
         "created": {"dispatched", "abandoned"},
         "dispatched": {"running", "failed", "timed_out", "abandoned"},
         "running": {"result_received", "failed", "timed_out", "abandoned"},
-        "result_received": {"validated", "failed"},
+        "result_received": {"validated", "failed", "abandoned"},
     },
     "change_request": {
         "proposed": {"approved", "rejected"},

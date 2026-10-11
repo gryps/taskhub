@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator
 from typing import Any
@@ -17,6 +18,7 @@ from taskhub_v2.domain.models import (
     StartRunRequest,
 )
 from taskhub_v2.services.run_actions import RunActionConflict, build_resume_command
+from taskhub_v2.services.run_projection import visible_run_status, with_live_execution
 from taskhub_v2.services.run_start import build_start_payload
 from taskhub_v2.services.task_state import NODE_STAGES, checkpoint_values, workflow_steps
 
@@ -32,10 +34,11 @@ class RunConflictError(RuntimeError):
 
 
 class RunService:
-    def __init__(self, graph, projects=None, task_index=None):
+    def __init__(self, graph, projects=None, task_index=None, production_runtime=None):
         self.graph = graph
         self.projects = projects
         self.task_index = task_index
+        self.production_runtime = production_runtime
         self._action_locks: dict[str, asyncio.Lock] = {}
         self._background_tasks: set[asyncio.Task] = set()
         self._active_runs: dict[str, asyncio.Task] = {}
@@ -117,7 +120,7 @@ class RunService:
             else values["project_id"]
         )
         missing = self._project_missing(effective_project)
-        return RunView(
+        view = RunView(
             run_id=run_id,
             project_id=effective_project,
             original_project_id=(
@@ -133,7 +136,7 @@ class RunService:
             created_at=indexed.created_at if indexed else None,
             updated_at=indexed.updated_at if indexed else None,
             stage=values["current_stage"],
-            status=values["status"],
+            status=visible_run_status(values["status"], indexed),
             next_nodes=list(snapshot.next),
             pending_action=values.get("pending_action"),
             blocking_reason=values.get("blocking_reason"),
@@ -159,6 +162,7 @@ class RunService:
             project_missing=missing,
             allowed_actions=["archive", "rebind_project"] if missing else [],
         )
+        return await with_live_execution(view, self.production_runtime)
 
     async def list(self, **filters):
         page = await self.task_index.list(**filters)
@@ -187,7 +191,14 @@ class RunService:
         )
 
     async def archive(self, run_id: str):
-        await self.get(run_id)
+        current = await self.get(run_id)
+        active = self._active_runs.get(run_id)
+        if active is not None and not active.done():
+            active.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await active
+        if self.production_runtime is not None:
+            await self.production_runtime.cancel(current.project_id, run_id)
         item = await self.task_index.archive(run_id)
         if item is None:
             raise RunNotFoundError(run_id)
@@ -377,7 +388,12 @@ class RunService:
             if signature != previous:
                 yield current
                 previous = signature
-            if current.status in {RunStatus.COMPLETED, RunStatus.REJECTED, RunStatus.FAILED}:
+            if current.status in {
+                RunStatus.COMPLETED,
+                RunStatus.REJECTED,
+                RunStatus.FAILED,
+                RunStatus.CANCELLED,
+            }:
                 return
             import asyncio
 

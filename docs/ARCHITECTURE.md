@@ -107,6 +107,10 @@ quality declaration and is never a Seed-global dependency.
   or idempotent.
 - Node jobs are keyed by job ID, workspace digest, and request content so reconnects retrieve prior
   results instead of repeating commands.
+- Production-store task, batch and attempt records are the live execution read model; run responses overlay
+  them on the slower workflow checkpoint. Node assignment is persisted when the scheduler acquires a slot.
+- Archiving an active run cancels controller execution and terminalizes its production records. Active
+  archived runs are exposed as cancelled, while already terminal outcomes retain their original status.
 - Stale production lines rebase and retest before an authority fast-forward.
 - A blocked managed-project run is repaired by correcting TaskHub, configuration, infrastructure, or
   its generated project contract, then retrying through the workflow.

@@ -20,6 +20,15 @@ from taskhub_v2.workers.test_diagnostics import classify_test_failure, failed_te
 FORBIDDEN_FILES = {".env", ".env.local", "auth.json", "credentials.json"}
 
 
+def _coding_options(feedback, task_context, assignment_callback):
+    options = {"feedback": feedback}
+    if task_context:
+        options["task_context"] = task_context
+    if assignment_callback:
+        options["assignment_callback"] = assignment_callback
+    return options
+
+
 class WorkerExecutionError(RuntimeError):
     def __init__(self, reason: str, detail: str, model_results=None, diagnostics=None):
         super().__init__(detail)
@@ -42,6 +51,8 @@ def raise_for_failed_tests(tests, *, model_results=None) -> None:
 
 
 class GitCodingWorker:
+    supports_assignment_callbacks = True
+
     def __init__(
         self,
         projects: ProjectRegistry,
@@ -65,7 +76,7 @@ class GitCodingWorker:
         revision: int = 0,
         feedback: str = "",
         base_commit: str = "",
-        task_context: dict | None = None,
+        task_context: dict | None = None, assignment_callback=None,
     ) -> ExecutionResult:
         project = self.projects.get(project_id)
         workspace = await self.workspaces.prepare(project, run_id, base_commit)
@@ -102,9 +113,9 @@ class GitCodingWorker:
         if retest_feedback:
             coding_feedback = f"{feedback}\n\nLatest quality retest failed:\n{retest_feedback}"
             coding_feedback = coding_feedback.strip()[-16_000:]
-        coding_options = {"feedback": coding_feedback}
-        if task_context:
-            coding_options["task_context"] = task_context
+        coding_options = _coding_options(
+            coding_feedback, task_context, assignment_callback
+        )
         before_model = await worktree_fingerprint(workspace.path, self._git, is_generated)
         model_result = await self.coder.modify(requirement, plan, workspace.path, **coding_options)
         model_results.append(model_result)
@@ -128,9 +139,9 @@ class GitCodingWorker:
                     "fails quality "
                     "checks. You must change the worktree to repair that failure before returning."
                 )[-16_000:]
-            retry_options = {"feedback": retry_feedback}
-            if task_context:
-                retry_options["task_context"] = task_context
+            retry_options = _coding_options(
+                retry_feedback, task_context, assignment_callback
+            )
             before_retry = await worktree_fingerprint(workspace.path, self._git, is_generated)
             model_result = await self.coder.modify(
                 requirement, plan, workspace.path, **retry_options
@@ -217,10 +228,11 @@ class GitCodingWorker:
         context = task_context or {}
         commands = context.get("acceptance_commands") or project.test_commands
         setup_commands = context.get("setup_commands") or []
+        task_identity = context.get("task_id") or run_id
         return await self.test_scheduler.run(
-            # Stable identity lets node digests reuse an unchanged recovery attempt.
-            f"{run_id}-r{revision}",
-            run_id,
+            # One production task keeps one idempotent node job across scheduler attempts.
+            f"{task_identity}-r{revision}",
+            task_identity,
             commands,
             project.test_timeout_seconds,
             workdir,

@@ -294,15 +294,22 @@ class PersistentDagScheduler:
                 return task, attempt, result
             except Exception as error:
                 last_error = str(error)[:4_000]
+                timed_out = getattr(error, "reason", "") == "tests_timeout"
                 await self.store.save(
                     attempt.model_copy(
                         update={
-                            "status": TaskAttemptStatus.FAILED,
+                            "status": (
+                                TaskAttemptStatus.TIMED_OUT
+                                if timed_out
+                                else TaskAttemptStatus.FAILED
+                            ),
                             "failure_reason": last_error,
                             "finished_at": now(),
                         }
                     )
                 )
+                if timed_out:
+                    break
         await self._save_task(
             task,
             status=ProductionTaskStatus.BLOCKED,

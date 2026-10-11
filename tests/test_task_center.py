@@ -8,7 +8,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from taskhub_v2.api.app import create_app
 from taskhub_v2.config import Settings
-from taskhub_v2.domain.models import ResumeRequest, RunStatus, StartRunRequest
+from taskhub_v2.domain.models import ResumeRequest, RunStatus, RunView, StartRunRequest
 from taskhub_v2.persistence.task_index import MemoryTaskIndex
 from taskhub_v2.services.runs import RunConflictError, RunService
 from taskhub_v2.services.task_state import checkpoint_values, workflow_steps
@@ -496,6 +496,56 @@ def test_same_run_actions_are_serialized():
 
         assert results == ["same-run", "same-run"]
         assert peak == 1
+
+    asyncio.run(scenario())
+
+
+def test_archive_cancels_active_workflow_and_terminalizes_production_runtime():
+    class Runtime:
+        def __init__(self):
+            self.cancelled = []
+
+        async def cancel(self, project_id, run_id):
+            self.cancelled.append((project_id, run_id))
+
+        async def view(self, project_id, run_id):
+            return {"execution_plan": None, "tasks": [], "batches": [], "attempts": []}
+
+    async def scenario():
+        index = MemoryTaskIndex()
+        await index.upsert(
+            {
+                "run_id": "run-active-archive",
+                "project_id": "demo",
+                "requirement": "cancel me",
+                "current_stage": "implementation",
+                "status": "running",
+            }
+        )
+        runtime = Runtime()
+        service = RunService(graph=None, task_index=index, production_runtime=runtime)
+
+        async def get(run_id):
+            assert run_id == "run-active-archive"
+            return RunView(
+                run_id=run_id,
+                project_id="demo",
+                requirement="cancel me",
+                stage="implementation",
+                status="running",
+                next_nodes=[],
+            )
+
+        service.get = get
+        active = asyncio.create_task(asyncio.Event().wait())
+        service._active_runs["run-active-archive"] = active
+
+        archived = await service.archive("run-active-archive")
+
+        assert active.cancelled()
+        assert runtime.cancelled == [("demo", "run-active-archive")]
+        assert archived.status == RunStatus.CANCELLED
+        assert archived.archived_at is not None
 
     asyncio.run(scenario())
 

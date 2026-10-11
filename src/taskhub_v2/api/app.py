@@ -322,7 +322,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.run_service = RunService(
                 graph,
                 projects if effective_settings.worker_mode == "git" else None,
-                task_index,
+                task_index, app.state.dag_runtime,
             )
             app.state.exception_center = ExceptionCenterService(
                 task_index,

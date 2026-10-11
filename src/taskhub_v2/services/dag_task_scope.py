@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from taskhub_v2.domain.project_contract import ModuleContract, ProjectContract
 
 VERIFICATION_WORDS = (
@@ -19,6 +21,30 @@ VERIFICATION_WORDS = (
     "复核",
     "审计",
     "确认",
+)
+PREFLIGHT_WORDS = (
+    "preflight",
+    "prerequisite",
+    "前置确认",
+    "前置检查",
+    "前置核验",
+    "开工确认",
+)
+IMPLEMENTATION_WORDS = (
+    "implement",
+    "build",
+    "create",
+    "develop",
+    "refactor",
+    "migrate",
+    "实现",
+    "开发",
+    "新增",
+    "创建",
+    "构建",
+    "重构",
+    "迁移",
+    "改造",
 )
 DOCUMENTATION_WORDS = ("documentation", "document", "docs", "adr", "文档", "决策记录")
 MODULE_ALIASES = {
@@ -106,17 +132,91 @@ MODULE_ALIASES = {
         "视觉",
         "响应式",
     ),
-    "api": ("backend", " api ", "api/", "server", "后端", "接口"),
-    "backend": ("backend", " api ", "api/", "server", "后端", "接口"),
-    "server": ("backend", " api ", "api/", "server", "后端", "接口"),
+    "api": (
+        "backend",
+        " api ",
+        "api/",
+        "server",
+        "后端",
+        "服务端",
+        "接口",
+        "数据库",
+        "迁移",
+        "状态机",
+        "领域",
+    ),
+    "backend": (
+        "backend",
+        " api ",
+        "api/",
+        "server",
+        "后端",
+        "服务端",
+        "接口",
+        "数据库",
+        "迁移",
+        "状态机",
+        "领域",
+    ),
+    "server": (
+        "backend",
+        " api ",
+        "api/",
+        "server",
+        "后端",
+        "服务端",
+        "接口",
+        "数据库",
+        "迁移",
+        "状态机",
+        "领域",
+    ),
     "worker": ("worker", "executor", "agent", "任务执行", "执行器"),
     "executor": ("worker", "executor", "agent", "任务执行", "执行器"),
 }
 
 
 def is_verification_step(step: str) -> bool:
+    return task_phase(step) != "implementation"
+
+
+def is_preflight_step(step: str) -> bool:
+    return task_phase(step) == "preflight_verification"
+
+
+def task_phase(step: str) -> str:
+    value = step.casefold().strip()
+    heading = re.split(r"[:：\n。；;]", value, maxsplit=1)[0]
+    if any(word in heading for word in PREFLIGHT_WORDS):
+        return "preflight_verification"
+    if any(word in heading for word in IMPLEMENTATION_WORDS):
+        return "implementation"
+    if any(word in heading for word in VERIFICATION_WORDS):
+        return "verification"
+    if any(word in value for word in IMPLEMENTATION_WORDS):
+        return "implementation"
+    return "verification" if any(word in value for word in VERIFICATION_WORDS) else "implementation"
+
+
+def estimated_size_for_step(step: str) -> str:
     value = step.casefold()
-    return any(word in value for word in VERIFICATION_WORDS)
+    large_markers = ("全系统", "全部模块", "complete system", "entire system")
+    medium_markers = (
+        "migration",
+        "schema",
+        "state machine",
+        "cross-module",
+        "迁移",
+        "数据库",
+        "状态机",
+        "跨模块",
+        "领域模型",
+    )
+    if any(marker in value for marker in large_markers):
+        return "large"
+    if any(marker in value for marker in medium_markers):
+        return "medium"
+    return "small"
 
 
 def paths_for_step(step: str, contract: ProjectContract) -> list[str]:

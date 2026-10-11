@@ -15,7 +15,12 @@ from taskhub_v2.domain.production import (
 )
 from taskhub_v2.domain.project_contract import ProjectContract
 from taskhub_v2.persistence.production import ProductionStore
-from taskhub_v2.services.dag_task_scope import is_verification_step, paths_for_step
+from taskhub_v2.services.dag_task_scope import (
+    estimated_size_for_step,
+    is_preflight_step,
+    is_verification_step,
+    paths_for_step,
+)
 from taskhub_v2.services.dag_validation import (
     DagValidationFinding,
     contract_findings,
@@ -256,20 +261,23 @@ class DagPlanService:
             f"task_{plan_id.removeprefix('plan_')}_{index:03d}"
             for index in range(1, len(steps) + 1)
         ]
-        implementation_ids = [
-            task_ids[index] for index, step in enumerate(steps) if not is_verification_step(step)
-        ]
         commands = [
             *contract.commands.test,
             *contract.commands.architecture,
             *contract.commands.integration,
         ]
         tasks = []
+        completed_implementation_ids: list[str] = []
+        preflight_ids: list[str] = []
         for index, (task_id, step) in enumerate(zip(task_ids, steps, strict=True)):
             verification = is_verification_step(step)
+            preflight = is_preflight_step(step)
             paths = [] if verification else paths_for_step(step, contract)
-            dependencies = implementation_ids if verification else []
-            dependencies = [item for item in dependencies if item != task_id]
+            dependencies = (
+                [*completed_implementation_ids, *preflight_ids]
+                if verification
+                else list(preflight_ids)
+            )
             locks = sorted({f"path:{lock_path(path)}" for path in paths if lock_path(path)})
             if any(word in step.lower() for word in ("migration", "schema", "迁移", "数据库")):
                 locks.append("database:migrations")
@@ -322,10 +330,15 @@ class DagPlanService:
                         contract.artifacts.required_artifacts if verification else []
                     ),
                     resource_locks=locks,
+                    estimated_size=estimated_size_for_step(step),
                     priority=100 + index,
                     created_by=actor,
                 )
             )
+            if preflight:
+                preflight_ids.append(task_id)
+            elif not verification:
+                completed_implementation_ids.append(task_id)
         return tasks
 
     @staticmethod

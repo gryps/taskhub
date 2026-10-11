@@ -25,7 +25,10 @@ class CodexCodingRouter:
         workdir: str,
         feedback: str = "",
         task_context: dict | None = None,
+        assignment_callback=None,
     ) -> ModelResult[CodeChangeSummary]:
+        if assignment_callback:
+            await assignment_callback("controller-local")
         failures = []
         for provider in self.providers:
             available, health = (
@@ -63,6 +66,7 @@ class ScheduledCodingRouter:
         workdir: str,
         feedback: str = "",
         task_context: dict | None = None,
+        assignment_callback=None,
     ) -> ModelResult[CodeChangeSummary]:
         from pathlib import Path
 
@@ -84,6 +88,7 @@ class ScheduledCodingRouter:
             workdir,
             required_capabilities_override=set(context.get("required_capabilities") or []),
             eligible_node_ids=eligible,
+            on_assigned=assignment_callback,
         )
         scheduled.result.usage["coding_node"] = scheduled.node_id
         return scheduled.result

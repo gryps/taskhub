@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from taskhub_v2.config import Settings
-from taskhub_v2.domain.models import TaskPage, TaskSummary
+from taskhub_v2.domain.models import RunStatus, TaskPage, TaskSummary
 
 STAGE_FILTERS = {
     "implementation": {"implementation", "implementation_blocked"},
@@ -99,8 +99,19 @@ class MemoryTaskIndex:
         item = self._items.get(run_id)
         if item and item.archived_at is None:
             now = datetime.now(UTC)
+            archived_status = (
+                item.status
+                if item.status in {RunStatus.COMPLETED, RunStatus.REJECTED, RunStatus.FAILED}
+                else RunStatus.CANCELLED
+            )
             self._archive_tombstones[run_id] = now
-            item = item.model_copy(update={"archived_at": now, "updated_at": now})
+            item = item.model_copy(
+                update={
+                    "status": archived_status,
+                    "archived_at": now,
+                    "updated_at": now,
+                }
+            )
             self._items[run_id] = item
         return item
 
@@ -250,7 +261,11 @@ class PostgresTaskIndex:
             )
             await connection.execute(
                 """UPDATE taskhub_task_index
-                   SET archived_at=(SELECT archived_at FROM taskhub_task_archive
+                   SET status=CASE
+                           WHEN status IN ('completed', 'rejected', 'failed') THEN status
+                           ELSE 'cancelled'
+                       END,
+                       archived_at=(SELECT archived_at FROM taskhub_task_archive
                                     WHERE run_id=taskhub_task_index.run_id), updated_at=now()
                    WHERE run_id=%s""",
                 (run_id,),

@@ -12,6 +12,7 @@ from taskhub_v2.domain.project_contract import ProjectContract
 from taskhub_v2.git import GitWorkspaceManager
 from taskhub_v2.persistence.production import ProductionStore
 from taskhub_v2.projects import ProjectRegistry
+from taskhub_v2.workers.assignment import execute_with_assignment
 
 
 class DagIntegrationError(RuntimeError):
@@ -139,13 +140,20 @@ class WorkerDagExecutor:
             steps=[task.objective],
             acceptance=[" ".join(command) for command in task.acceptance_commands],
         )
-        return await self.worker.execute(
+
+        async def record_assignment(node_id: str) -> None:
+            await self.store.save(attempt.model_copy(update={"node_id": node_id}))
+            await self.store.save(task.model_copy(update={"assigned_node_id": node_id}))
+
+        return await execute_with_assignment(
+            self.worker,
             attempt.attempt_id,
             task.project_id,
             requirement,
             task_plan,
             base_commit=base_commit,
             task_context=context,
+            assignment_callback=record_assignment,
         )
 
     async def _verify(self, task, attempt, base_commit: str) -> ExecutionResult:
@@ -161,6 +169,11 @@ class WorkerDagExecutor:
             if isinstance(contract, ProjectContract):
                 setup_commands = contract.commands.install
         workspace = await self.workspaces.prepare(project, attempt.attempt_id, base_commit)
+
+        async def record_assignment(node_id: str) -> None:
+            await self.store.save(attempt.model_copy(update={"node_id": node_id}))
+            await self.store.save(task.model_copy(update={"assigned_node_id": node_id}))
+
         scheduled = await self.test_scheduler.run(
             f"{attempt.attempt_id}-verify",
             task.task_id,
@@ -172,6 +185,7 @@ class WorkerDagExecutor:
             git_commit=base_commit,
             artifact_paths=task.expected_artifacts,
             setup_commands=setup_commands,
+            on_assigned=record_assignment,
             eligible_node_ids=(
                 await self.topology_resolver(task.project_id, "test")
                 if self.topology_resolver

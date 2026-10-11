@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from taskhub_v2.domain.dag import ExecutionBatch
 from taskhub_v2.domain.models import (
     ExecutionResult,
     Plan,
@@ -27,6 +28,7 @@ from taskhub_v2.domain.project_contract import (
 )
 from taskhub_v2.persistence.production import MemoryProductionStore
 from taskhub_v2.services.dag_plan import DagPlanService
+from taskhub_v2.services.dag_runtime import ProductizedExecutionRuntime
 from taskhub_v2.services.dag_scheduler import PersistentDagScheduler
 from taskhub_v2.services.fair_budget import FairProjectBudget
 from taskhub_v2.workers.dag_executor import WorkerDagExecutor
@@ -158,6 +160,48 @@ def test_plan_selects_paths_by_task_intent_and_reserves_artifacts_for_verificati
     asyncio.run(scenario())
 
 
+def test_plan_preserves_preflight_order_and_does_not_misclassify_audited_service_work():
+    async def scenario():
+        store = MemoryProductionStore()
+        checked_contract = contract().model_copy(
+            update={
+                "modules": [
+                    ModuleContract(name="web", paths=["apps/web/src/**"]),
+                    ModuleContract(name="api", paths=["apps/api/app/**"]),
+                ]
+            }
+        )
+        bundle = await DagPlanService(store).compile(
+            "demo",
+            "run-supply-plan",
+            specification(),
+            checked_contract,
+            Plan(
+                summary="supply delivery",
+                steps=[
+                    "前置确认：核对项目契约和质量命令",
+                    "领域模型与数据库迁移：实现供应链状态机",
+                    "服务端流程：实现审批、审计和异常恢复",
+                    "最终验证：运行 API 与回归测试",
+                ],
+                acceptance=["checks pass"],
+            ),
+        )
+
+        preflight, migration, service, final = bundle.tasks
+        assert preflight.task_type == "verification"
+        assert preflight.depends_on == []
+        assert migration.task_type == "implementation"
+        assert migration.depends_on == [preflight.task_id]
+        assert migration.allowed_paths == ["apps/api/app/**"]
+        assert migration.estimated_size == "medium"
+        assert service.task_type == "implementation"
+        assert service.depends_on == [preflight.task_id]
+        assert final.depends_on == [migration.task_id, service.task_id, preflight.task_id]
+
+    asyncio.run(scenario())
+
+
 def test_plan_compilation_resumes_after_partial_persistence():
     class InterruptingStore(MemoryProductionStore):
         def __init__(self):
@@ -212,6 +256,7 @@ def test_verification_task_runs_on_test_scheduler_without_calling_coder(tmp_path
             assert kwargs["required_capabilities_override"] == {"python3", "pytest"}
             assert kwargs["eligible_node_ids"] == {"test-node"}
             assert kwargs["setup_commands"] == []
+            await kwargs["on_assigned"]("test-node")
             return ScheduledTests(
                 node_id="test-node",
                 tests=[CommandExecution(command=["pytest"], exit_code=0, output_tail="passed")],
@@ -243,9 +288,10 @@ def test_verification_task_runs_on_test_scheduler_without_calling_coder(tmp_path
             task_id=task.task_id,
             attempt_number=1,
         )
+        store = MemoryProductionStore()
         executor = WorkerDagExecutor(
             Coder(),
-            MemoryProductionStore(),
+            store,
             Projects(),
             workspaces=Workspaces(),
             test_scheduler=Tests(),
@@ -254,6 +300,10 @@ def test_verification_task_runs_on_test_scheduler_without_calling_coder(tmp_path
         result = await executor.execute(task, attempt, base_commit="abc1234")
         assert result.execution_node == "test-node"
         assert result.tests[0].exit_code == 0
+        assigned_task = await store.get("task", task.task_id, "1")
+        assigned_attempt = await store.get("task_attempt", attempt.attempt_id, "1")
+        assert assigned_task.assigned_node_id == "test-node"
+        assert assigned_attempt.node_id == "test-node"
 
     asyncio.run(scenario())
 
@@ -418,6 +468,79 @@ def test_resource_conflicts_are_serialized_and_failure_creates_new_attempt():
             TaskAttemptStatus.FAILED,
             TaskAttemptStatus.VALIDATED,
         ]
+
+    asyncio.run(scenario())
+
+
+def test_scheduler_does_not_repeat_an_identical_timed_out_quality_attempt():
+    class QualityTimeout(RuntimeError):
+        reason = "tests_timeout"
+
+    class TimeoutExecutor(RecordingExecutor):
+        async def execute(self, task, attempt, *, base_commit):
+            self.calls.append((task.task_id, attempt.attempt_number))
+            raise QualityTimeout("quality command timed out")
+
+    async def scenario():
+        store = MemoryProductionStore()
+        bundle = await compiled(store)
+        executor = TimeoutExecutor()
+        with pytest.raises(Exception, match="quality command timed out"):
+            await PersistentDagScheduler(store, executor).execute(bundle.plan.plan_id)
+        attempts = await store.list(project_id="demo", object_type="task_attempt")
+        assert executor.calls == [(bundle.tasks[0].task_id, 1), (bundle.tasks[1].task_id, 1)]
+        assert {item.status for item in attempts} == {TaskAttemptStatus.TIMED_OUT}
+
+    asyncio.run(scenario())
+
+
+def test_cancelling_a_run_terminalizes_its_live_production_records():
+    async def scenario():
+        store = MemoryProductionStore()
+        bundle = await compiled(store)
+        running = await store.save(
+            bundle.tasks[0].model_copy(update={"status": ProductionTaskStatus.READY})
+        )
+        running = await store.save(
+            running.model_copy(update={"status": ProductionTaskStatus.ASSIGNED})
+        )
+        running = await store.save(
+            running.model_copy(update={"status": ProductionTaskStatus.RUNNING})
+        )
+        await store.save(
+            TaskAttempt(
+                project_id="demo",
+                attempt_id="attempt_cancel_01",
+                task_id=running.task_id,
+                attempt_number=1,
+                plan_id=bundle.plan.plan_id,
+                plan_version=1,
+                status=TaskAttemptStatus.RUNNING,
+            )
+        )
+        await store.save(
+            ExecutionBatch(
+                project_id="demo",
+                batch_id="batch_cancel_001",
+                plan_id=bundle.plan.plan_id,
+                plan_version=1,
+                sequence=1,
+                status="running",
+                task_ids=[running.task_id],
+            )
+        )
+        runtime = ProductizedExecutionRuntime(
+            planner=DagPlanService(store), scheduler=None, store=store
+        )
+
+        await runtime.cancel("demo", "run-parallel")
+        view = await runtime.view("demo", "run-parallel")
+
+        assert view["execution_plan"].status == ExecutionPlanStatus.SUPERSEDED
+        assert all(task.status == ProductionTaskStatus.CANCELLED for task in view["tasks"])
+        assert view["attempts"][0].status == TaskAttemptStatus.ABANDONED
+        assert view["batches"][0].status == "failed"
+        assert view["latest_snapshot"].status == "blocked"
 
     asyncio.run(scenario())
 
